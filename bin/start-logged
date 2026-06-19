@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LOG="${ROOT}/var/log/phoenix.log"
+LOG="${ROOT}/tmp/phoenix.log"
 MAX_BYTES=$((5 * 1024 * 1024))
 
 ensure_log_dir() {

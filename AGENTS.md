@@ -29,12 +29,15 @@ get an answer grounded in that game's actual rulebook text.
 mix setup          # deps.get + ecto.create + ecto.migrate + seeds
 mix deps.get
 mix ecto.setup     # create, migrate, seed
-mix phx.server     # or `iex -S mix phx.server` for a console
 ```
+
+- **NEVER start the server.** The user starts the server themselves.
+  Before running any server-related check, first verify the server
+  is NOT already running (do NOT start it).
 
 ## Common Commands
 
-- Run server: `mix phx.server`
+- (User starts server manually)
 - Run server w/ IEx: `iex -S mix phx.server`
 - Compile (strict): `mix compile --warnings-as-errors`
 - Run all tests: `mix test`
