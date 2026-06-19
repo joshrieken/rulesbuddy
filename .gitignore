@@ -25,3 +25,7 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 boardgame-*.tar
 
+# Override global gitignore patterns that conflict with Elixir project
+!lib/
+!priv/static/assets/
+
