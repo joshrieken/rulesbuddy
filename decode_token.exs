@@ -1,0 +1,7 @@
+token = File.read!("/tmp/token.txt") |> String.trim()
+parts = String.split(token, ".")
+payload = parts |> Enum.at(1) |> Base.decode64!()
+decoded = :erlang.binary_to_term(payload)
+IO.puts("Session field: #{inspect(decoded[:session])}")
+IO.puts("Keys: #{inspect(Map.keys(decoded))}")
+IO.puts("Full: #{inspect(decoded)}")

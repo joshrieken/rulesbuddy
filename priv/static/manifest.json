@@ -1,0 +1,21 @@
+{
+  "name": "Rules Buddy",
+  "short_name": "RulesBuddy",
+  "description": "Board game rules assistant — pick a game, ask a question, get an answer grounded in the rulebook.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/images/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/images/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

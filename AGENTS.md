@@ -7,32 +7,30 @@
 
 ## Project Overview
 
-[One or two sentences: what this app does, who it's for.]
+Rules Buddy — a Phoenix LiveView app (installable as a PWA) that answers board
+game rules questions at the table. Pick a game, ask a question in plain English,
+get an answer grounded in that game's actual rulebook text.
 
-- **Type:** Phoenix web app / LiveView app / umbrella app / API
-- **Domain:** [e.g. internal tool, customer-facing app]
-- **Status:** [greenfield / actively maintained / legacy]
+- **Type:** Phoenix web app (LiveView)
+- **Domain:** personal / friend-group board game tool
+- **Status:** greenfield
 
 ## Tech Stack
 
-- Elixir [~> 1.x], OTP [26+]
-- Phoenix [x.x] [+ LiveView]
+- Elixir ~> 1.15, OTP 29
+- Phoenix 1.8 + LiveView
 - Ecto + PostgreSQL
-- [Oban — background jobs / scheduled work]
-- Version manager: [asdf / mise] — versions pinned in
-  `.tool-versions` / `mise.toml`
+- LLM: Anthropic Claude API (via Req HTTP client)
+- Version manager: asdf — versions pinned in `.tool-versions`
 
 ## Setup
 
 ```bash
-mix setup        # deps.get + ecto.setup + assets.setup
+mix setup          # deps.get + ecto.create + ecto.migrate + seeds
 mix deps.get
-mix ecto.setup    # create, migrate, seed
-mix phx.server    # or `iex -S mix phx.server` for a console
+mix ecto.setup     # create, migrate, seed
+mix phx.server     # or `iex -S mix phx.server` for a console
 ```
-
-If `mix setup` isn't a real alias, list the actual setup steps
-here instead of guessing at one.
 
 ## Common Commands
 

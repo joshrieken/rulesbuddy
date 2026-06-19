@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOG="${ROOT}/var/log/phoenix.log"
+MAX_BYTES=$((5 * 1024 * 1024))
+
+ensure_log_dir() {
+  mkdir -p "$(dirname "$LOG")"
+}
+
+trim_log() {
+  if [ -f "$LOG" ] && [ "$(stat -f%z "$LOG" 2>/dev/null || stat -c%s "$LOG" 2>/dev/null)" -gt "$MAX_BYTES" ]; then
+    tail -c "$MAX_BYTES" "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+  fi
+}
+
+ensure_log_dir
+trim_log
+cd "$ROOT"
+echo "Starting Rules Buddy at http://localhost:4000 (log: $LOG)"
+mix phx.server 2>&1 | tee -a "$LOG"
