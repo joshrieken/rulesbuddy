@@ -1278,3 +1278,66 @@ textarea {
     width: 100%;
   }
 }
+
+/* ===== Connection Status Overlay ===== */
+/* Hide all LiveView content until connected */
+body.phx-loading > *,
+body.phx-error > * {
+  visibility: hidden;
+}
+
+/* Connection lost fullscreen overlay */
+#phx-disconnected {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+#phx-disconnected::before {
+  content: "";
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: phx-spin 0.8s linear infinite;
+}
+
+#phx-disconnected::after {
+  content: "Lost connection to server. Retrying...";
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem;
+  font-weight: 500;
+  font-family: var(--font-body);
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+#phx-disconnected > * {
+  display: none;
+}
+
+@keyframes phx-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Initial loading state */
+body.phx-loading #phx-disconnected::after {
+  content: "Connecting to server...";
+}
+
+/* Show content when connected */
+body.phx-connected #phx-disconnected {
+  display: none !important;
+}
+body.phx-connected > * {
+  visibility: visible !important;
+}
