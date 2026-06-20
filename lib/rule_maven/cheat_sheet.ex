@@ -86,7 +86,7 @@ defmodule RuleMaven.CheatSheet do
   Stores progress in Settings so it survives page refresh.
   Sends {:cheat_done, game_id} to caller when complete.
   """
-  def generate_async(game, caller_pid, level \\ "compact") do
+  def generate_async(game, caller_pid, level \\ "compact", expansion_ids \\ []) do
     game_id = game.id
     started = System.system_time(:second)
 
@@ -102,7 +102,7 @@ defmodule RuleMaven.CheatSheet do
     Task.start(fn ->
       result =
         try do
-          generate_content(game, level)
+          generate_content(game, level, expansion_ids)
         rescue
           e ->
             {:error, "Unexpected error: #{Exception.message(e)}"}
@@ -232,8 +232,13 @@ defmodule RuleMaven.CheatSheet do
   Generates cheat sheet markdown content from rulebook text.
   Returns `{:ok, markdown}` or `{:error, reason}`.
   """
-  def generate_content(game, level \\ "compact") do
-    full_text = Games.rulebook_text(game)
+  def generate_content(game, level \\ "compact", expansion_ids \\ []) do
+    full_text =
+      if expansion_ids == [] do
+        Games.rulebook_text(game)
+      else
+        Games.rulebook_text_for_games([game.id | expansion_ids])
+      end
 
     if String.trim(full_text) == "" do
       {:error, "No rulebook text available for #{game.name}"}

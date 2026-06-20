@@ -191,6 +191,17 @@ defmodule RuleMaven.Games do
   defdelegate delete_rulebook_source(doc), to: __MODULE__, as: :delete_document
   defdelegate rulebook_text(game), to: __MODULE__, as: :document_full_text
 
+  def rulebook_text_for_games(game_ids) do
+    game_ids
+    |> Enum.map(fn gid ->
+      game = Repo.get!(Game, gid)
+      text = document_full_text(game)
+      "--- #{game.name} ---\n#{text}"
+    end)
+    |> Enum.reject(fn t -> String.trim(t) == "---" end)
+    |> Enum.join("\n\n")
+  end
+
   # ── Question Log ──
 
   def log_question(attrs) do
@@ -305,6 +316,10 @@ defmodule RuleMaven.Games do
   defdelegate chunk_source(source), to: __MODULE__, as: :chunk_document
 
   def retrieve_chunks(%Game{} = game, question, limit \\ 6) do
+    retrieve_chunks_for_games([game.id], question, limit)
+  end
+
+  def retrieve_chunks_for_games(game_ids, question, limit \\ 6) when is_list(game_ids) do
     # Try semantic retrieval via pgvector
     case RuleMaven.Embed.embed(question) do
       {:ok, question_vec} ->
@@ -314,7 +329,7 @@ defmodule RuleMaven.Games do
               join: d in Document,
               on: c.document_id == d.id,
               where:
-                d.game_id == ^game.id and d.status == "published" and
+                d.game_id in ^game_ids and d.status == "published" and
                   not is_nil(c.embedding),
               order_by:
                 fragment(
@@ -327,29 +342,44 @@ defmodule RuleMaven.Games do
           )
 
         if chunks == [] do
-          [{nil, document_full_text(game)}]
+          # Fallback: full text from all games
+          texts =
+            Enum.map(game_ids, fn gid ->
+              game = Repo.get!(Game, gid)
+              document_full_text(game)
+            end)
+            |> Enum.reject(&(&1 == ""))
+
+          Enum.map(texts, &{nil, &1})
         else
           Enum.map(chunks, &{nil, &1.content})
         end
 
       {:error, _} ->
-        # Fallback to keyword overlap
-        keyword_retrieve(game, question, limit)
+        # Fallback to keyword overlap across all games
+        keyword_retrieve_multi(game_ids, question, limit)
     end
   end
 
-  defp keyword_retrieve(game, question, limit) do
+  defp keyword_retrieve_multi(game_ids, question, limit) do
     chunks =
       Repo.all(
         from c in Chunk,
           join: d in Document,
           on: c.document_id == d.id,
-          where: d.game_id == ^game.id and d.status == "published",
+          where: d.game_id in ^game_ids and d.status == "published",
           select: %{content: c.content}
       )
 
     if chunks == [] do
-      [{nil, document_full_text(game)}]
+      texts =
+        Enum.map(game_ids, fn gid ->
+          game = Repo.get!(Game, gid)
+          document_full_text(game)
+        end)
+        |> Enum.reject(&(&1 == ""))
+
+      Enum.map(texts, &{nil, &1})
     else
       question_words = tokenize(question)
 
@@ -362,8 +392,18 @@ defmodule RuleMaven.Games do
       |> Enum.take(limit)
       |> Enum.reject(fn {score, _} -> score == 0 end)
       |> case do
-        [] -> [{nil, document_full_text(game)}]
-        results -> results
+        [] ->
+          texts =
+            Enum.map(game_ids, fn gid ->
+              game = Repo.get!(Game, gid)
+              document_full_text(game)
+            end)
+            |> Enum.reject(&(&1 == ""))
+
+          Enum.map(texts, &{nil, &1})
+
+        results ->
+          results
       end
     end
   end

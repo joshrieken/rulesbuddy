@@ -35,6 +35,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         cheat_level: "compact",
         cheat_refresh: 0,
         tab: "rulebook",
+        included_expansions: %{},
         bgg_search: "",
         bgg_searching: false,
         bgg_search_results: [],
@@ -106,6 +107,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             assign(socket,
               game: game,
               source_entries: entries,
+              expansions: Games.expansions_with_documents(game),
               game_changeset: Games.change_game(game),
               question_count: Games.question_count(game),
               cheat_status: cheat_status,
@@ -131,7 +133,8 @@ defmodule RuleMavenWeb.GameLive.Form do
 
           assign(socket,
             game: nil,
-            source_entries: [],
+        source_entries: [],
+        expansions: [],
             game_changeset: changeset
           )
       end
@@ -208,9 +211,25 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_event("generate_cheat", %{"level" => level}, socket) do
+  def handle_event("toggle_cheat_expansion", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    included = socket.assigns.included_expansions
+
+    included =
+      if included[id] do
+        Map.delete(included, id)
+      else
+        Map.put(included, id, true)
+      end
+
+    {:noreply, assign(socket, included_expansions: included)}
+  end
+
+  @impl true
+  def handle_event("generate_cheat", %{"level" => level} = params, socket) do
     game = socket.assigns.game
-    CheatSheet.generate_async(game, self(), level)
+    expansion_ids = parse_expansion_ids(params)
+    CheatSheet.generate_async(game, self(), level, expansion_ids)
     now = System.system_time(:second)
 
     {:noreply,
@@ -1498,6 +1517,24 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <p class="text-xs text-gray-500 mb-2">
                     Choose a density level and generate a cheat sheet from your rulebook text.
                   </p>
+                  <%= if length(@expansions) > 0 do %>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.75rem">
+                      <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;align-self:center">Include expansions:</span>
+                      <%= for exp <- @expansions do %>
+                        <label phx-click="toggle_cheat_expansion" phx-value-id={exp.id}
+                          style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:#fff", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}>
+                          <input
+                            type="checkbox"
+                            checked={Map.get(@included_expansions, exp.id)}
+                            name={"exp_#{exp.id}"}
+                            value="1"
+                            style="display:none"
+                          />
+                          {exp.name}
+                        </label>
+                      <% end %>
+                    </div>
+                  <% end %>
                   <form phx-submit="generate_cheat" class="flex items-center gap-3 mb-3">
                     <select name="level" class="border rounded px-2 py-1.5 text-xs">
                       <option value="ultra" selected={@cheat_level == "ultra"}>
@@ -1635,6 +1672,13 @@ defmodule RuleMavenWeb.GameLive.Form do
       secs = rem(seconds, 60)
       "#{mins}m #{secs}s"
     end
+  end
+
+  defp parse_expansion_ids(params) do
+    params
+    |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "exp_") end)
+    |> Enum.map(fn {k, _} -> String.replace_prefix(k, "exp_", "") end)
+    |> Enum.map(&String.to_integer/1)
   end
 
   defp level_badge_style(level) do

@@ -23,12 +23,15 @@ defmodule RuleMavenWeb.GameLive.Show do
     grouped = Games.grouped_questions(game)
     conversation = build_conversation(grouped)
     sources = Games.list_documents(game)
+    expansions = Games.expansions_with_documents(game)
 
     {:noreply,
      assign(socket,
        game: game,
        conversation: conversation,
        sources: sources,
+       expansions: expansions,
+       included_expansions: %{},
        source_count: length(sources),
        question: "",
        loading: false
@@ -78,6 +81,21 @@ defmodule RuleMavenWeb.GameLive.Show do
       [user_msg, assistant_msg | history_msgs]
     end)
     |> Enum.sort_by(& &1.timestamp, {:asc, DateTime})
+  end
+
+  @impl true
+  def handle_event("toggle_expansion", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    included = socket.assigns.included_expansions
+
+    included =
+      if included[id] do
+        Map.delete(included, id)
+      else
+        Map.put(included, id, true)
+      end
+
+    {:noreply, assign(socket, included_expansions: included)}
   end
 
   @impl true
@@ -251,11 +269,12 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   @impl true
   def handle_info({:ask_question, question}, socket) do
-    %{game: game, conversation: convo} = socket.assigns
+    %{game: game, conversation: convo, included_expansions: included} = socket.assigns
+    expansion_ids = Map.keys(included)
 
     result =
       try do
-        case RuleMaven.LLM.ask(game, question) do
+        case RuleMaven.LLM.ask(game, question, expansion_ids) do
           {:ok, %{answer: answer} = llm_result} ->
             passage = llm_result[:cited_passage]
             citation = find_citation_link(game, passage)
@@ -568,6 +587,23 @@ defmodule RuleMavenWeb.GameLive.Show do
       <!-- Input -->
       <div style="flex-shrink:0;padding:0.75rem 1rem;border-top:1px solid var(--border);background:var(--bg-surface)">
         <div style="max-width:48rem;margin:0 auto;width:100%">
+          <%= if length(@expansions) > 0 do %>
+            <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
+              <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;align-self:center">Include:</span>
+              <%= for exp <- @expansions do %>
+                <label style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:#fff", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}>
+                  <input
+                    type="checkbox"
+                    checked={Map.get(@included_expansions, exp.id)}
+                    phx-click="toggle_expansion"
+                    phx-value-id={exp.id}
+                    style="display:none"
+                  />
+                  {exp.name}
+                </label>
+              <% end %>
+            </div>
+          <% end %>
           <form phx-submit="ask" class="flex gap-2">
             <input
               type="text"

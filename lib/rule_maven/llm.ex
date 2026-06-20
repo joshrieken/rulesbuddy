@@ -31,7 +31,7 @@ defmodule RuleMaven.LLM do
   Asks a rules question about a game and returns the answer with cited passage.
   Checks FAQ cache first, falls back to retrieval + LLM on miss.
   """
-  def ask(game, question) do
+  def ask(game, question, expansion_ids \\ []) do
     # Step 0: embed the question (used for FAQ check + logging)
     question_embedding =
       case RuleMaven.Embed.embed(question) do
@@ -56,8 +56,9 @@ defmodule RuleMaven.LLM do
          faq_hit: true
        }}
     else
-      # Step 2: retrieve chunks + call LLM
-      chunks = RuleMaven.Games.retrieve_chunks(game, question)
+      # Step 2: retrieve chunks from base game + selected expansions
+      game_ids = [game.id | expansion_ids]
+      chunks = RuleMaven.Games.retrieve_chunks_for_games(game_ids, question)
       context = Enum.map_join(chunks, "\n\n---\n\n", fn {_, text} -> text end)
       system_prompt = build_system_prompt(game.name, context)
       provider_name = provider()

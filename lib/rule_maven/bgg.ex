@@ -132,7 +132,20 @@ defmodule RuleMaven.BGG do
   def enrich_game(game) do
     case fetch_game_info(game.bgg_id) do
       {:ok, info} ->
-        RuleMaven.Games.update_game(game, info)
+        expansion_links = Map.get(info, :expansion_links, [])
+        info = Map.delete(info, :expansion_links)
+
+        case RuleMaven.Games.update_game(game, info) do
+          {:ok, updated} ->
+            if expansion_links != [] do
+              link_expansions(updated, expansion_links)
+            end
+
+            {:ok, updated}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -150,7 +163,13 @@ defmodule RuleMaven.BGG do
         max_players: ~x"./maxplayers/@value"s |> transform_by(&parse_int/1),
         playing_time: ~x"./playingtime/@value"s |> transform_by(&parse_int/1),
         image_url: ~x"./image/text()"s,
-        thumbnail_url: ~x"./thumbnail/text()"s
+        thumbnail_url: ~x"./thumbnail/text()"s,
+        links: [
+          ~x"./link[@type='boardgameexpansion']"l,
+          id: ~x"./@id"s |> transform_by(&parse_int/1),
+          value: ~x"./@value"s,
+          inbound: ~x"./@inbound"s
+        ]
       )
 
     {:ok,
@@ -159,13 +178,47 @@ defmodule RuleMaven.BGG do
        min_players: parsed.min_players,
        max_players: parsed.max_players,
        playing_time: parsed.playing_time,
-       image_url: parsed.image_url
+       image_url: parsed.image_url,
+       expansion_links: parsed.links
      }}
   end
 
   defp parse_int(""), do: nil
   defp parse_int(nil), do: nil
   defp parse_int(str), do: String.to_integer(str)
+
+  @doc """
+  After enriching a game, auto-link its expansions.
+  Looks for games in the DB with matching BGG IDs from the link data.
+  """
+  def link_expansions(game, expansion_links) do
+    # inbound="true" means THIS game is an expansion of the linked game
+    # Set this game's parent to the linked game
+    inbound = Enum.filter(expansion_links, &(&1.inbound == "true"))
+
+    if inbound != [] do
+      parent_bgg_id = hd(inbound).id
+      parent = RuleMaven.Repo.get_by(RuleMaven.Games.Game, bgg_id: parent_bgg_id)
+
+      if parent do
+        RuleMaven.Games.update_game(game, %{parent_game_id: parent.id})
+      end
+    end
+
+    # inbound="false" means the linked game is an expansion OF this game
+    # Find those games in DB and set their parent to this game
+    outbound = Enum.filter(expansion_links, &(&1.inbound != "true"))
+
+    Enum.each(outbound, fn link ->
+      expansion = RuleMaven.Repo.get_by(RuleMaven.Games.Game, bgg_id: link.id)
+
+      if expansion && is_nil(expansion.parent_game_id) do
+        RuleMaven.Games.update_game(expansion, %{parent_game_id: game.id})
+      end
+    end)
+
+    :ok
+  end
 
   @doc """
   Searches BGG for board games by name. Returns `{:ok, [%{bgg_id: id, name: name, year: year}]}`.
