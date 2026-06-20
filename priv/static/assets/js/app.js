@@ -22,6 +22,16 @@ Hooks.FlashAutoHide = {
   }
 };
 
+Hooks.ExternalLink = {
+  mounted() {
+    this.el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(this.el.href, "_blank", "noopener");
+    });
+  }
+};
+
 Hooks.ChatScroll = {
   mounted() {
     document.documentElement.style.overflow = "hidden";
