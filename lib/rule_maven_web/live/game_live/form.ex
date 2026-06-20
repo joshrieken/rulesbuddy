@@ -1544,7 +1544,7 @@ defmodule RuleMavenWeb.GameLive.Form do
               </div>
             <% end %>
 
-            <% versions = CheatSheet.list_versions(doc_id) %>
+            <% versions = if doc_id, do: CheatSheet.list_versions(doc_id), else: [] %>
             <%= if length(versions) > 0 do %>
               <div class="pt-3 border-t">
                 <p class="text-xs font-semibold text-gray-500 mb-2">
