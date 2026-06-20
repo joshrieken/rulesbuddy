@@ -1,0 +1,278 @@
+defmodule RuleMaven.BGG do
+  @moduledoc """
+  BoardGameGeek XML API v2 client. Supports optional cookie-based
+  authentication for private collections.
+  """
+
+  import SweetXml
+
+  @base "https://boardgamegeek.com/xmlapi2"
+  @login_url "https://boardgamegeek.com/login/api/v1"
+
+  @doc """
+  Authenticates with BGG and returns session cookies for subsequent requests.
+  Returns `{:ok, cookies}` or `{:error, reason}`.
+  """
+  def login(username, password) do
+    body = %{credentials: %{username: username, password: password}}
+
+    case Req.post(@login_url, json: body) do
+      {:ok, %{status: 200, headers: headers}} ->
+        cookies = extract_cookies(headers)
+        {:ok, cookies}
+
+      {:ok, %{status: 401}} ->
+        {:error, "Invalid BGG username or password"}
+
+      {:ok, %{status: status}} ->
+        {:error, "BGG login returned status #{status}"}
+
+      {:error, reason} ->
+        {:error, "Login HTTP error: #{inspect(reason)}"}
+    end
+  end
+
+  @doc """
+  Fetches a user's game collection from BGG.
+  Accepts optional `cookies` keyword for authenticated access to private collections.
+  Returns `{:ok, [%{name: name, bgg_id: bgg_id}]}` or `{:error, reason}`.
+  """
+  def fetch_collection(username, opts \\ []) do
+    cookies = Keyword.get(opts, :cookies)
+    url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&brief=1"
+    headers = build_headers(cookies)
+
+    case Req.get(url, headers: headers, max_retries: 0, receive_timeout: 15_000) do
+      {:ok, %{status: 200, body: body}} ->
+        parse_collection(body)
+
+      {:ok, %{status: 202, body: _body}} ->
+        poll_accepted(username, cookies)
+
+      {:ok, %{status: 401}} ->
+        {:error, "BGG collection is private. Provide BGG credentials for access."}
+
+      {:ok, %{status: 404}} ->
+        {:error, "BGG username '#{username}' not found"}
+
+      {:ok, %{status: status}} ->
+        {:error, "BGG API returned status #{status}"}
+
+      {:error, reason} ->
+        {:error, "HTTP error: #{inspect(reason)}"}
+    end
+  end
+
+  defp poll_accepted(username, cookies, attempt \\ 0) do
+    if attempt > 10 do
+      {:error, "BGG collection still queued after 10 polls"}
+    else
+      :timer.sleep(2000 * attempt + 2000)
+
+      url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&brief=1"
+
+      case Req.get(url, headers: build_headers(cookies)) do
+        {:ok, %{status: 200, body: body}} ->
+          parse_collection(body)
+
+        {:ok, %{status: 202}} ->
+          poll_accepted(username, cookies, attempt + 1)
+
+        {:ok, %{status: 401}} ->
+          {:error, "BGG collection is private. Provide BGG credentials for access."}
+
+        {:ok, %{status: status}} ->
+          {:error, "BGG API returned status #{status}"}
+
+        {:error, reason} ->
+          {:error, "HTTP error: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  @doc """
+  Fetches detailed info for a game by BGG id.
+  Returns `{:ok, info_map}` or `{:error, reason}`.
+  """
+  def fetch_game_info(bgg_id) do
+    url = "#{@base}/thing?id=#{bgg_id}"
+    headers = build_headers(nil)
+
+    require Logger
+    Logger.debug("Fetching game info: #{url}")
+
+    case Req.get(url, headers: headers, max_retries: 0, receive_timeout: 15_000) do
+      {:ok, %{status: 200, body: body}} ->
+        Logger.debug("Game info fetched for #{bgg_id}: #{byte_size(body)} bytes")
+        parse_game_info(body)
+
+      {:ok, %{status: 202}} ->
+        :timer.sleep(3000)
+        fetch_game_info(bgg_id)
+
+      {:ok, %{status: 429}} ->
+        Logger.warning("BGG rate limited, waiting 10s...")
+        :timer.sleep(10_000)
+        fetch_game_info(bgg_id)
+
+      {:ok, %{status: status}} ->
+        Logger.error("BGG game info returned status #{status}")
+        {:error, "BGG API returned status #{status}"}
+
+      {:error, reason} ->
+        Logger.error("BGG game info HTTP error: #{inspect(reason)}")
+        {:error, "HTTP error: #{inspect(reason)}"}
+    end
+  end
+
+  @doc """
+  Fetches game info and updates the game record in the DB.
+  Returns `{:ok, game}` or `{:error, reason}`.
+  """
+  def enrich_game(game) do
+    case fetch_game_info(game.bgg_id) do
+      {:ok, info} ->
+        RuleMaven.Games.update_game(game, info)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_game_info(xml) do
+    parsed =
+      xml
+      |> parse()
+      |> xpath(
+        ~x"//items/item"e,
+        year_published: ~x"./yearpublished/@value"s |> transform_by(&parse_int/1),
+        min_players: ~x"./minplayers/@value"s |> transform_by(&parse_int/1),
+        max_players: ~x"./maxplayers/@value"s |> transform_by(&parse_int/1),
+        playing_time: ~x"./playingtime/@value"s |> transform_by(&parse_int/1),
+        image_url: ~x"./image/text()"s,
+        thumbnail_url: ~x"./thumbnail/text()"s
+      )
+
+    {:ok,
+     %{
+       year_published: parsed.year_published,
+       min_players: parsed.min_players,
+       max_players: parsed.max_players,
+       playing_time: parsed.playing_time,
+       image_url: parsed.image_url
+     }}
+  end
+
+  defp parse_int(""), do: nil
+  defp parse_int(nil), do: nil
+  defp parse_int(str), do: String.to_integer(str)
+
+  @doc """
+  Searches BGG for board games by name. Returns `{:ok, [%{bgg_id: id, name: name, year: year}]}`.
+  """
+  def search(query) do
+    url = "#{@base}/search?query=#{URI.encode_www_form(query)}&type=boardgame"
+    headers = build_headers(nil)
+
+    case Req.get(url, headers: headers, max_retries: 0, receive_timeout: 10_000) do
+      {:ok, %{status: 200, body: body}} -> parse_search(body)
+      {:ok, %{status: 429}} -> {:error, "Rate limited. Wait a moment."}
+      {:ok, %{status: status}} -> {:error, "BGG returned status #{status}"}
+      {:error, reason} -> {:error, "HTTP error: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_search(xml) do
+    parsed =
+      xml
+      |> parse()
+      |> xpath(
+        ~x"//items/item"l,
+        bgg_id: ~x"./@id"s,
+        name: ~x"./name/@value"s,
+        year: ~x"./yearpublished/@value"s
+      )
+
+    games =
+      parsed
+      |> Enum.filter(& &1.bgg_id)
+      |> Enum.map(fn item ->
+        bgg_id =
+          case Integer.parse(item.bgg_id) do
+            {id, _} -> id
+            _ -> nil
+          end
+
+        %{
+          bgg_id: bgg_id,
+          name: item.name || "",
+          year: item.year
+        }
+      end)
+      |> Enum.filter(& &1.bgg_id)
+
+    {:ok, games}
+  end
+
+  defp build_headers(cookies) do
+    headers = []
+
+    headers =
+      if cookies do
+        [{"cookie", cookies} | headers]
+      else
+        headers
+      end
+
+    headers =
+      case api_token() do
+        nil -> headers
+        token -> [{"authorization", "Bearer #{token}"} | headers]
+      end
+
+    headers
+  end
+
+  defp api_token do
+    RuleMaven.Settings.get("bgg_api_key") ||
+      RuleMaven.Settings.get("bgg_api_token")
+  end
+
+  defp extract_cookies(headers) do
+    headers
+    |> Enum.flat_map(fn
+      {"set-cookie", value} -> [String.split(value, ";") |> List.first()]
+      _ -> []
+    end)
+    |> Enum.join("; ")
+  end
+
+  defp parse_collection(xml) do
+    games =
+      xml
+      |> parse()
+      |> xpath(
+        ~x"//items/item"l,
+        objectid: ~x"./@objectid"s,
+        name: ~x"./name/text()"s
+      )
+      |> Enum.map(&build_game/1)
+      |> Enum.reject(&is_nil/1)
+
+    {:ok, games}
+  end
+
+  defp build_game(item) do
+    case Integer.parse(item.objectid) do
+      {id, ""} ->
+        name = String.trim(item.name)
+
+        if name != "" do
+          %{bgg_id: id, name: name}
+        end
+
+      _ ->
+        nil
+    end
+  end
+end

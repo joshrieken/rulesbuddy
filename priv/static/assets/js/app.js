@@ -1,6 +1,60 @@
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+
+let Hooks = {};
+Hooks.FlashAutoHide = {
+  mounted() {
+    let duration = parseInt(this.el.dataset.flashDuration) || 4000;
+    this._hide = () => {
+      this.el.style.transition = "opacity 300ms ease-out";
+      this.el.style.opacity = "0";
+      setTimeout(() => { this.el.remove(); }, 300);
+    };
+    this._timer = setTimeout(this._hide, duration);
+  },
+  updated() {
+    clearTimeout(this._timer);
+    this.el.style.opacity = "1";
+    let duration = parseInt(this.el.dataset.flashDuration) || 4000;
+    this._timer = setTimeout(this._hide, duration);
+  },
+  destroyed() {
+    clearTimeout(this._timer);
+  }
+};
+
+Hooks.ChatScroll = {
+  mounted() {
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    this.scrollToBottom();
+    this.handleEvent("scroll_bottom", () => this.scrollToBottom());
+  },
+  updated() {
+    this.scrollToBottom();
+  },
+  destroyed() {
+    document.documentElement.style.overflow = "";
+    document.body.style.overflow = "";
+  },
+  scrollToBottom() {
+    const el = this.el;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }
+};
+
+Hooks.Refocus = {
+  mounted() {
+    this.handleEvent("refocus", () => {
+      requestAnimationFrame(() => this.el.focus());
+    });
+  }
+};
+
 let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
-  params: {_csrf_token: csrfToken}
+  params: {_csrf_token: csrfToken},
+  hooks: Hooks
 });
 
 // Only connect the LiveSocket when there are LiveView elements on the page.

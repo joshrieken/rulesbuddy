@@ -1,0 +1,34 @@
+defmodule RuleMavenWeb.Router do
+  use RuleMavenWeb, :router
+
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {RuleMavenWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug RuleMavenWeb.AuthPlug
+  end
+
+  pipeline :api do
+    plug :accepts, ["json"]
+  end
+
+  scope "/", RuleMavenWeb do
+    pipe_through :browser
+
+    get "/login", SessionController, :new
+    post "/login", SessionController, :create
+    get "/logout", AuthController, :logout
+
+    live_session :default, session: {RuleMavenWeb.UserLiveAuth, :get_session, []} do
+      live "/", GameLive.Index, :index
+      live "/games/new", GameLive.Form, :new
+      live "/games/import", GameLive.Import, :index
+      live "/games/:id", GameLive.Show, :show
+      live "/games/:id/edit", GameLive.Form, :edit
+      live "/settings", SettingsLive, :index
+    end
+  end
+end

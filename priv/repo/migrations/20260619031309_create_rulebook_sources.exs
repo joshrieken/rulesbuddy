@@ -1,4 +1,4 @@
-defmodule RulesBuddy.Repo.Migrations.CreateRulebookSources do
+defmodule RuleMaven.Repo.Migrations.CreateRulebookSources do
   use Ecto.Migration
 
   def change do

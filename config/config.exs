@@ -7,19 +7,19 @@
 # General application configuration
 import Config
 
-config :rules_buddy,
-  ecto_repos: [RulesBuddy.Repo],
+config :rule_maven,
+  ecto_repos: [RuleMaven.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
-config :rules_buddy, RulesBuddyWeb.Endpoint,
+config :rule_maven, RuleMavenWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: RulesBuddyWeb.ErrorHTML, json: RulesBuddyWeb.ErrorJSON],
+    formats: [html: RuleMavenWeb.ErrorHTML, json: RuleMavenWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: RulesBuddy.PubSub,
+  pubsub_server: RuleMaven.PubSub,
   live_view: [signing_salt: "rtGgFkah"]
 
 # Configure Elixir's Logger

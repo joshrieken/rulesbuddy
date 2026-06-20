@@ -1,4 +1,4 @@
-defmodule RulesBuddy.Repo.Migrations.CreateQuestionsLog do
+defmodule RuleMaven.Repo.Migrations.CreateQuestionsLog do
   use Ecto.Migration
 
   def change do

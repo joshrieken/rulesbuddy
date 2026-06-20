@@ -1,7 +1,7 @@
-defmodule RulesBuddy.GamesFixtures do
+defmodule RuleMaven.GamesFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `RulesBuddy.Games` context.
+  entities via the `RuleMaven.Games` context.
   """
 
   @doc """
@@ -14,7 +14,7 @@ defmodule RulesBuddy.GamesFixtures do
         bgg_id: 42,
         name: "some name"
       })
-      |> RulesBuddy.Games.create_game()
+      |> RuleMaven.Games.create_game()
 
     game
   end

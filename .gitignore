@@ -25,6 +25,12 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 boardgame-*.tar
 
+# User-uploaded files
+/priv/static/uploads/
+
+# Local envrc with secrets
+.envrc.local
+
 # Override global gitignore patterns that conflict with Elixir project
 !lib/
 !priv/static/assets/

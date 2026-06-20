@@ -1,9 +1,9 @@
-defmodule RulesBuddy.MixProject do
+defmodule RuleMaven.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :rules_buddy,
+      app: :rule_maven,
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -20,7 +20,7 @@ defmodule RulesBuddy.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {RulesBuddy.Application, []},
+      mod: {RuleMaven.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -56,7 +56,8 @@ defmodule RulesBuddy.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:req, "~> 0.5"},
-      {:bcrypt_elixir, "~> 3.0"}
+      {:bcrypt_elixir, "~> 3.0"},
+      {:sweet_xml, "~> 0.7"}
     ]
   end
 

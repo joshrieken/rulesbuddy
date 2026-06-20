@@ -1,11 +1,11 @@
 import Config
 
 # Configure your database
-config :rules_buddy, RulesBuddy.Repo,
+config :rule_maven, RuleMaven.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "rules_buddy_dev",
+  database: "rule_maven_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
@@ -16,7 +16,7 @@ config :rules_buddy, RulesBuddy.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :rules_buddy, RulesBuddyWeb.Endpoint,
+config :rule_maven, RuleMavenWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}],
@@ -50,7 +50,7 @@ config :rules_buddy, RulesBuddyWeb.Endpoint,
 # different ports.
 
 # Reload browser tabs when matching files change.
-config :rules_buddy, RulesBuddyWeb.Endpoint,
+config :rule_maven, RuleMavenWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
@@ -59,13 +59,13 @@ config :rules_buddy, RulesBuddyWeb.Endpoint,
       # Gettext translations
       ~r"priv/gettext/.*\.po$"E,
       # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/rules_buddy_web/router\.ex$"E,
-      ~r"lib/rules_buddy_web/(controllers|live|components)/.*\.(ex|heex)$"E
+      ~r"lib/rule_maven_web/router\.ex$"E,
+      ~r"lib/rule_maven_web/(controllers|live|components)/.*\.(ex|heex)$"E
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :rules_buddy, dev_routes: true
+config :rule_maven, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
@@ -85,7 +85,4 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
-# LLM provider settings (picked up from env, defaults to Groq / llama3-70b)
-config :rules_buddy, :llm_api_key, System.get_env("LLM_API_KEY")
-config :rules_buddy, :llm_api_url, System.get_env("LLM_API_URL")
-config :rules_buddy, :llm_model, System.get_env("LLM_MODEL")
+# LLM and BGG configured via Settings page (stored in DB).

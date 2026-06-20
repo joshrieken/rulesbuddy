@@ -1,0 +1,446 @@
+defmodule RuleMavenWeb.GameLive.Index do
+  use RuleMavenWeb, :live_view
+
+  alias RuleMaven.{Games, BGG}
+
+  @impl true
+  def mount(_params, _session, socket) do
+    games = Games.list_games() |> Enum.sort_by(&String.downcase(&1.name))
+
+    {:ok,
+     assign(socket,
+       games: games,
+       confirm_clear: false,
+       confirm_text: "",
+       search: "",
+       refreshing: 0,
+       refresh_total: 0,
+       refresh_log: [],
+       delete_id: nil,
+       page: 1,
+       per_page: 20
+     )}
+  end
+
+  @impl true
+  def handle_event("refresh_all", _params, socket) do
+    games = socket.assigns.games |> Enum.filter(& &1.bgg_id)
+    pid = self()
+
+    Task.start(fn ->
+      Enum.with_index(games, 1)
+      |> Enum.each(fn {game, i} ->
+        send(pid, {:refresh_progress, game.name, i, length(games)})
+
+        case BGG.enrich_game(game) do
+          {:ok, _} -> send(pid, {:refresh_done, game.name, :ok})
+          {:error, _} -> send(pid, {:refresh_done, game.name, :error})
+        end
+
+        :timer.sleep(3000)
+      end)
+
+      send(pid, {:refresh_complete})
+    end)
+
+    {:noreply, assign(socket, refreshing: 0, refresh_total: length(games), refresh_log: [])}
+  end
+
+  @impl true
+  def handle_event("confirm_clear", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: true)}
+  end
+
+  @impl true
+  def handle_event("confirm_cancel", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: false, confirm_text: "")}
+  end
+
+  @impl true
+  def handle_event("confirm_input", params, socket) do
+    text = params["value"] || params["confirm_text"] || ""
+    {:noreply, assign(socket, confirm_text: text)}
+  end
+
+  @impl true
+  def handle_event("delete_game", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    {:noreply, assign(socket, delete_id: id)}
+  end
+
+  @impl true
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, delete_id: nil)}
+  end
+
+  @impl true
+  def handle_event("confirm_delete", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    game = Games.get_game!(id)
+
+    case Games.delete_game(game) do
+      {:ok, _} ->
+        games = Games.list_games() |> Enum.sort_by(&String.downcase(&1.name))
+
+        {:noreply,
+         socket
+         |> assign(games: games, delete_id: nil)
+         |> put_flash(:info, "Deleted #{game.name}.")}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to delete #{game.name}.")}
+    end
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => text}, socket) do
+    {:noreply, assign(socket, search: text, page: 1)}
+  end
+
+  @impl true
+  def handle_event("clear_search", _, socket) do
+    {:noreply, socket |> assign(search: "", page: 1) |> push_event("refocus", %{})}
+  end
+
+  @impl true
+  def handle_event("page", %{"n" => n_str}, socket) do
+    {n, _} = Integer.parse(n_str)
+    {:noreply, assign(socket, page: n)}
+  end
+
+  @impl true
+  def handle_event("per_page", %{"n" => n_str}, socket) do
+    {n, _} = Integer.parse(n_str)
+    {:noreply, assign(socket, per_page: n, page: 1)}
+  end
+
+  @impl true
+  def handle_event("clear_all_games", _params, socket) do
+    {count, _} = Games.delete_all_games()
+
+    {:noreply,
+     socket
+     |> assign(games: [], confirm_clear: false, confirm_text: "", search: "")
+     |> put_flash(:info, "Cleared #{count} game(s).")}
+  end
+
+  @impl true
+  def handle_info({:refresh_progress, name, current, total}, socket) do
+    log = ["Fetching #{name} (#{current}/#{total})..." | socket.assigns.refresh_log]
+    {:noreply, assign(socket, refreshing: current, refresh_total: total, refresh_log: log)}
+  end
+
+  @impl true
+  def handle_info({:refresh_done, name, status}, socket) do
+    icon = if status == :ok, do: "✓", else: "✗"
+    log = [icon <> " " <> name | tl(socket.assigns.refresh_log)]
+    {:noreply, assign(socket, refresh_log: log)}
+  end
+
+  @impl true
+  def handle_info({:refresh_complete}, socket) do
+    games = Games.list_games() |> Enum.sort_by(&String.downcase(&1.name))
+
+    {:noreply,
+     socket
+     |> assign(games: games, refreshing: 0, refresh_total: 0)
+     |> put_flash(:info, "Refresh complete!")}
+  end
+
+  defp filtered_games(games, ""), do: games
+
+  defp filtered_games(games, search) do
+    search = String.downcase(search)
+
+    Enum.filter(games, fn g ->
+      String.contains?(String.downcase(g.name), search)
+    end)
+  end
+
+  defp page_numbers(current, total) do
+    # Show: first, last, current ± 2, with ellipses
+    range = (current - 2)..(current + 2)
+
+    pages =
+      1..total
+      |> Enum.filter(fn p -> p == 1 or p == total or p in range end)
+
+    pages
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn
+      [a, b] when b - a > 1 -> [a, :ellipsis]
+      [a] -> [a]
+      [a, _] -> [a]
+    end)
+    |> Enum.uniq()
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="game-list">
+      <h1 class="text-2xl font-bold mb-4">Rule Maven</h1>
+
+      <form phx-change="search" phx-submit="search" class="mb-4">
+        <label class="block text-xs text-gray-400 mb-1">Search</label>
+        <div style="position:relative">
+          <input
+            type="text"
+            id="game-search"
+            name="search"
+            value={@search}
+            placeholder="Filter by name..."
+            class="w-full border rounded px-3 py-2 pr-8 text-sm"
+            autocomplete="off"
+            phx-hook="Refocus"
+          />
+          <button
+            :if={@search != ""}
+            type="button"
+            phx-click="clear_search"
+            style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);font-size:0.85rem;cursor:pointer;padding:0.25rem;line-height:1"
+          >✕</button>
+        </div>
+      </form>
+
+      <div :if={RuleMaven.Users.game_master?(@current_user)} class="mb-4 flex gap-2 flex-wrap">
+        <.button variant="primary" navigate={~p"/games/new"}>+ Add Game</.button>
+        <.button variant="secondary" navigate={~p"/games/import"}>Import from BGG</.button>
+
+        <%= if @games != [] do %>
+          <button
+            type="button"
+            phx-click="refresh_all"
+            style="background:var(--accent);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+          >
+            Refresh All from BGG
+          </button>
+
+          <%= if not @confirm_clear do %>
+            <button
+              type="button"
+              phx-click="confirm_clear"
+              style="background:#dc2626;color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Clear All Games
+            </button>
+          <% else %>
+            <form phx-change="confirm_input" style="display:inline">
+              <span class="text-sm font-medium" style="color:#dc2626">Type DELETE to confirm:</span>
+              <input
+                type="text"
+                name="confirm_text"
+                value={@confirm_text}
+                placeholder="DELETE"
+                style="border:1px solid #dc2626;border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.8rem;width:6rem"
+              />
+            </form>
+            <button
+              type="button"
+              phx-click="clear_all_games"
+              disabled={@confirm_text != "DELETE"}
+              style="background:#dc2626;color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Delete All
+            </button>
+            <button
+              type="button"
+              phx-click="confirm_cancel"
+              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Cancel
+            </button>
+          <% end %>
+        <% end %>
+      </div>
+
+      <%= if @refresh_total > 0 do %>
+        <div class="mb-4 border rounded-lg p-3">
+          <div style="width:100%;height:4px;background:var(--border);border-radius:2px;margin-bottom:0.5rem">
+            <div style={"width:#{trunc(@refreshing / @refresh_total * 100)}%;height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s"}>
+            </div>
+          </div>
+          <div class="max-h-24 overflow-y-auto space-y-0.5">
+            <%= for entry <- Enum.reverse(@refresh_log) |> Enum.take(5) do %>
+              <p class="text-xs text-gray-500">{entry}</p>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <% filtered = filtered_games(@games, @search) %>
+      <% total_pages = max(1, ceil(length(filtered) / @per_page)) %>
+      <% page_games = filtered |> Enum.drop((@page - 1) * @per_page) |> Enum.take(@per_page) %>
+
+      {pagination_bar(
+        Map.merge(assigns, %{total_pages: total_pages, pages: page_numbers(@page, total_pages)})
+      )}
+
+      <div class="space-y-3">
+        <%= for game <- page_games do %>
+          <div class="border rounded-lg p-4 flex items-center gap-4 game-card">
+            <%= if game.image_url do %>
+              <img
+                src={game.image_url}
+                alt={game.name}
+                style="width:60px;height:60px;object-fit:cover;border-radius:0.375rem;flex-shrink:0"
+              />
+            <% end %>
+            <div class="flex-1 min-w-0">
+              <h2 class="text-lg font-semibold">{game.name}</h2>
+              <p class="text-sm text-gray-500">
+                {length(Games.list_rulebook_sources(game))} source(s)
+                <%= if game.year_published do %>
+                  &middot; {game.year_published}
+                <% end %>
+                <%= if game.min_players do %>
+                  &middot; {game.min_players}-{game.max_players}p
+                <% end %>
+                <%= if game.playing_time do %>
+                  &middot; ~{game.playing_time}m
+                <% end %>
+              </p>
+            </div>
+            <div class="flex gap-2 flex-shrink-0 game-actions items-center">
+              <.link
+                navigate={~p"/games/#{game.id}"}
+                class="text-blue-600 hover:underline text-sm font-medium"
+              >Ask</.link>
+              <.link
+                :if={RuleMaven.Users.game_master?(@current_user)}
+                navigate={~p"/games/#{game.id}/edit"}
+                class="text-gray-600 hover:underline text-sm"
+              >Edit</.link>
+            </div>
+
+            <%= if RuleMaven.Users.game_master?(@current_user) do %>
+              <div class="flex-shrink-0">
+                <%= if @delete_id == game.id do %>
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs" style="color:#dc2626">Delete?</span>
+                    <button
+                      type="button"
+                      phx-click="confirm_delete"
+                      phx-value-id={game.id}
+                      style="color:#dc2626;background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer"
+                    >Yes</button>
+                    <button
+                      type="button"
+                      phx-click="cancel_delete"
+                      style="color:var(--text-secondary);background:none;border:none;font-size:0.75rem;cursor:pointer"
+                    >No</button>
+                  </div>
+                <% else %>
+                  <button
+                    type="button"
+                    phx-click="delete_game"
+                    phx-value-id={game.id}
+                    style="color:var(--text-muted);background:none;border:none;font-size:0.75rem;cursor:pointer;padding:0.25rem"
+                    title="Delete game"
+                  >✕</button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      {pagination_bar(
+        Map.merge(assigns, %{total_pages: total_pages, pages: page_numbers(@page, total_pages)})
+      )}
+
+      <%= if @games == [] do %>
+        <div class="text-center py-12 text-gray-500">
+          <p class="text-lg">No games yet.</p>
+          <p>Add a game to get started!</p>
+        </div>
+      <% end %>
+
+      <%= if @games != [] && filtered_games(@games, @search) == [] do %>
+        <div class="text-center py-12 text-gray-500">
+          <p class="text-lg">No games match "{@search}"</p>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp pagination_bar(assigns) do
+    ~H"""
+    <%= if @total_pages > 1 do %>
+      <div class="flex items-center justify-between text-sm mb-3">
+        <span class="text-xs text-gray-400">
+          Showing {(@page - 1) * @per_page + 1}–{min(
+            @page * @per_page,
+            length(filtered_games(@games, @search))
+          )} of {length(filtered_games(@games, @search))}
+          <span class="mx-1">|</span>
+          <select
+            name="per_page"
+            phx-change="per_page"
+            class="border rounded px-1 py-0.5 text-xs bg-white inline"
+            style="width:3rem"
+          >
+            <option value="10" selected={@per_page == 10}>10</option>
+            <option value="20" selected={@per_page == 20}>20</option>
+            <option value="50" selected={@per_page == 50}>50</option>
+            <option value="100" selected={@per_page == 100}>100</option>
+          </select>
+          per page
+        </span>
+        <div class="flex items-center gap-1">
+          <button
+            :if={@page > 1}
+            type="button"
+            phx-click="page"
+            phx-value-n={1}
+            class="px-2 py-1 rounded hover:bg-gray-100 text-gray-500"
+            title="First"
+          >&laquo;</button>
+          <button
+            :if={@page > 1}
+            type="button"
+            phx-click="page"
+            phx-value-n={@page - 1}
+            class="px-2 py-1 rounded hover:bg-gray-100 text-gray-500"
+          >&lsaquo;</button>
+
+          <%= for p <- @pages do %>
+            <%= if p == :ellipsis do %>
+              <span class="px-1 text-gray-300">&hellip;</span>
+            <% else %>
+              <button
+                type="button"
+                phx-click="page"
+                phx-value-n={p}
+                class={"px-2 py-1 rounded text-sm #{if p == @page, do: "bg-accent text-white font-semibold", else: "hover:bg-gray-100 text-gray-600"}"}
+                style={if p == @page, do: "background:var(--accent);color:white;border:none"}
+              >
+                {p}
+              </button>
+            <% end %>
+          <% end %>
+
+          <button
+            :if={@page < @total_pages}
+            type="button"
+            phx-click="page"
+            phx-value-n={@page + 1}
+            class="px-2 py-1 rounded hover:bg-gray-100 text-gray-500"
+          >&rsaquo;</button>
+          <button
+            :if={@page < @total_pages}
+            type="button"
+            phx-click="page"
+            phx-value-n={@total_pages}
+            class="px-2 py-1 rounded hover:bg-gray-100 text-gray-500"
+            title="Last"
+          >&raquo;</button>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+end

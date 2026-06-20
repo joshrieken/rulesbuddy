@@ -1,0 +1,1342 @@
+defmodule RuleMavenWeb.GameLive.Form do
+  use RuleMavenWeb, :live_view
+
+  alias RuleMaven.{Games, RulebookDownloader, Settings, CheatSheet}
+
+  @max_pdfs 10
+
+  @impl true
+  def mount(_params, _session, socket) do
+    socket =
+      socket
+      |> assign(
+        game: nil,
+        source_entries: [],
+        game_changeset: nil,
+        download_url: "",
+        download_label: "",
+        downloading: false,
+        download_error: nil,
+        download_ok: false,
+        searching: false,
+        bgg_results: [],
+        search_error: nil,
+        confirm_clear: false,
+        confirm_delete_cheat: false,
+        question_count: 0,
+        generating: false,
+        cheat_error: nil,
+        cheat_content: nil,
+        cheat_status: nil,
+        cheat_provider: nil,
+        cheat_model: nil,
+        cheat_elapsed: nil,
+        cheat_started_at: nil,
+        bgg_search: "",
+        bgg_searching: false,
+        bgg_search_results: [],
+        bgg_search_error: nil
+      )
+      |> allow_upload(:rulebook_pdfs,
+        accept: ["application/pdf"],
+        max_entries: @max_pdfs,
+        max_file_size: 50_000_000
+      )
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+      do_handle_params(params, socket)
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "You don't have permission to do that.")
+       |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  defp do_handle_params(params, socket) do
+    socket =
+      case params do
+        %{"id" => id} ->
+          game = Games.get_game!(id)
+
+          sources =
+            game
+            |> Games.list_rulebook_sources()
+            |> Enum.with_index()
+            |> Enum.map(fn {s, i} ->
+              %{
+                id: i,
+                source_id: s.id,
+                label: s.label,
+                text: s.full_text,
+                pdf_path: s.pdf_path,
+                html_path: s.html_path
+              }
+            end)
+
+          entries = if sources == [], do: [], else: sources
+
+          cheat_status = CheatSheet.status(game.id)
+          cheat_content = CheatSheet.stored_content(game.id)
+          cheat_error = CheatSheet.stored_error(game.id)
+          cheat_provider = CheatSheet.stored_provider(game.id)
+          cheat_model = CheatSheet.stored_model(game.id)
+          cheat_elapsed = CheatSheet.stored_elapsed(game.id)
+          cheat_started_at = CheatSheet.stored_started(game.id)
+          cancelled = CheatSheet.cancelled?(game.id)
+
+          {cheat_status, cheat_content, cheat_error} =
+            if cancelled && cheat_status in ["compressing", "generating"] do
+              CheatSheet.clear(game.id)
+              {nil, nil, nil}
+            else
+              {cheat_status, cheat_content, cheat_error}
+            end
+
+          socket =
+            assign(socket,
+              game: game,
+              source_entries: entries,
+              game_changeset: Games.change_game(game),
+              question_count: Games.question_count(game),
+              cheat_status: cheat_status,
+              cheat_content: cheat_content,
+              cheat_error: cheat_error,
+              cheat_provider: cheat_provider,
+              cheat_model: cheat_model,
+              cheat_elapsed: cheat_elapsed,
+              cheat_started_at: cheat_started_at
+            )
+
+          if cheat_status in ["compressing", "generating"] do
+            Process.send_after(self(), :poll_cheat_status, 2000)
+          end
+
+          socket
+
+        _ ->
+          changeset = Games.change_game(%Games.Game{})
+
+          assign(socket,
+            game: nil,
+            source_entries: [],
+            game_changeset: changeset
+          )
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("add_source", _params, socket) do
+    entries = socket.assigns.source_entries
+    next_id = (Enum.map(entries, & &1.id) ++ [-1]) |> Enum.max() |> Kernel.+(1)
+    {:noreply, assign(socket, source_entries: entries ++ [%{id: next_id, label: "", text: ""}])}
+  end
+
+  @impl true
+  def handle_event("remove_source", %{"id" => id}, socket) do
+    id = String.to_integer(id)
+    entries = Enum.reject(socket.assigns.source_entries, &(&1.id == id))
+    {:noreply, assign(socket, source_entries: entries)}
+  end
+
+  @impl true
+  def handle_event("delete_source", %{"source_id" => source_id}, socket) do
+    source_id = String.to_integer(source_id)
+
+    source =
+      socket.assigns.game
+      |> Games.list_rulebook_sources()
+      |> Enum.find(&(&1.id == source_id))
+
+    if source do
+      Games.delete_rulebook_source(source)
+    end
+
+    entries = Enum.reject(socket.assigns.source_entries, &(&1[:source_id] == source_id))
+    {:noreply, assign(socket, source_entries: entries)}
+  end
+
+  @impl true
+  def handle_event("confirm_clear", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: true)}
+  end
+
+  @impl true
+  def handle_event("cancel_clear", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: false)}
+  end
+
+  @impl true
+  def handle_event("clear_questions", _params, socket) do
+    game = socket.assigns.game
+    {count, _} = Games.delete_all_questions(game)
+
+    {:noreply,
+     socket
+     |> assign(confirm_clear: false, question_count: 0)
+     |> put_flash(:info, "Cleared #{count} question(s) for #{game.name}.")}
+  end
+
+  @impl true
+  def handle_event("refresh_bgg", _params, socket) do
+    socket = assign(socket, generating: true)
+    send(self(), {:refresh_bgg})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("generate_cheat", _params, socket) do
+    game = socket.assigns.game
+    CheatSheet.generate_async(game, self())
+    now = System.system_time(:second)
+
+    {:noreply,
+     socket
+     |> assign(cheat_status: "compressing", cheat_error: nil, cheat_content: nil,
+               cheat_provider: RuleMaven.LLM.provider(), cheat_model: RuleMaven.LLM.model(),
+               cheat_elapsed: 0, cheat_started_at: now)
+     |> then(fn s ->
+       Process.send_after(self(), :poll_cheat_status, 2000)
+       s
+     end)}
+  end
+
+  @impl true
+  def handle_event("delete_cheat", _params, socket) do
+    {:noreply, assign(socket, confirm_delete_cheat: true)}
+  end
+
+  @impl true
+  def handle_event("confirm_delete_cheat", _params, socket) do
+    game = socket.assigns.game
+
+    if game.cheat_pdf_path do
+      dest = Application.app_dir(:rule_maven, "priv/static/#{game.cheat_pdf_path}")
+      File.rm(dest)
+    end
+
+    {:ok, game} = Games.update_game(game, %{cheat_pdf_path: nil})
+    CheatSheet.clear(game.id)
+
+    {:noreply,
+     socket
+      |> assign(game: game, confirm_delete_cheat: false, cheat_content: nil)
+     |> put_flash(:info, "Cheat sheet deleted.")}
+  end
+
+  @impl true
+  def handle_event("cancel_delete_cheat", _params, socket) do
+    {:noreply, assign(socket, confirm_delete_cheat: false)}
+  end
+
+  @impl true
+  def handle_event("cancel_cheat_content", _params, socket) do
+    if socket.assigns.game, do: CheatSheet.clear(socket.assigns.game.id)
+    {:noreply, assign(socket, cheat_content: nil, cheat_error: nil, cheat_status: nil, cheat_started_at: nil)}
+  end
+
+  @impl true
+  def handle_event("render_cheat_pdf", %{"content" => content}, socket) do
+    game = socket.assigns.game
+    socket = assign(socket, cheat_status: "rendering", cheat_error: nil)
+
+    case CheatSheet.generate_pdf(game, content) do
+      {:ok, _pdf_path} ->
+        game = Games.get_game!(game.id)
+        CheatSheet.clear(game.id)
+
+        {:noreply,
+         socket
+         |> assign(cheat_status: nil, cheat_content: nil, game: game)
+         |> put_flash(:info, "Cheat sheet PDF generated!")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, cheat_status: nil, cheat_error: reason)}
+    end
+  end
+
+  @impl true
+  def handle_event("validate", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("download", %{"url" => url, "label" => label}, socket) do
+    url = String.trim(url)
+    label = String.trim(label)
+    socket = assign(socket, downloading: true, download_error: nil, download_ok: nil)
+
+    if url == "" do
+      {:noreply, assign(socket, downloading: false, download_error: "Enter a PDF URL")}
+    else
+      send(self(), {:download_rulebook, url, label})
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("find_download", _params, socket) do
+    socket = assign(socket, downloading: true, download_error: nil, download_ok: nil)
+    send(self(), {:find_and_download})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("bgg_search", %{"search" => query}, socket) do
+    query = String.trim(query)
+
+    if query == "" do
+      {:noreply, assign(socket, bgg_search_results: [], bgg_search_error: nil)}
+    else
+      socket = assign(socket, bgg_search: query, bgg_searching: true, bgg_search_error: nil)
+      send(self(), {:bgg_search, query})
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("bgg_select", %{"id" => bgg_id_str, "name" => name}, socket) do
+    require Logger
+    Logger.debug("bgg_select: id=#{bgg_id_str} name=#{name}")
+
+    {bgg_id, _} = Integer.parse(bgg_id_str)
+
+    changeset =
+      socket.assigns.game_changeset || RuleMaven.Games.change_game(%RuleMaven.Games.Game{})
+
+    changeset = %{
+      changeset
+      | data: %{changeset.data | name: name, bgg_id: bgg_id},
+        changes: Map.merge(changeset.changes, %{name: name, bgg_id: bgg_id})
+    }
+
+    send(self(), {:pull_bgg_info, changeset})
+
+    {:noreply,
+     socket
+     |> assign(
+       game_changeset: changeset,
+       bgg_search_results: [],
+       bgg_search: ""
+     )}
+  end
+
+  @impl true
+  def handle_event("search_bgg", _params, socket) do
+    game = socket.assigns.game
+    socket = assign(socket, searching: true, bgg_results: [], search_error: nil)
+    send(self(), {:search_bgg, game.bgg_id})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("search_download", %{"url" => url, "label" => label}, socket) do
+    url = String.trim(url)
+    label = String.trim(label)
+    socket = assign(socket, downloading: true, download_error: nil)
+    send(self(), {:download_rulebook, url, label})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save", %{"game" => game_params} = all_params, socket) do
+    # Merge BGG-pulled data from changeset into params
+    extra = socket.assigns.game_changeset.changes
+
+    game_params =
+      Map.merge(game_params, extra |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end))
+
+    source_map =
+      socket.assigns.source_entries
+      |> Enum.map(fn entry ->
+        label = all_params["label_#{entry.id}"] || ""
+        text = all_params["text_#{entry.id}"] || ""
+        {label, %{full_text: text, pdf_path: nil}}
+      end)
+      |> Enum.filter(fn {l, %{full_text: t}} -> String.trim(l) != "" && String.trim(t) != "" end)
+
+    pdf_texts =
+      consume_uploaded_entries(socket, :rulebook_pdfs, fn %{path: path}, entry ->
+        case extract_pdf_text(path, entry.client_name) do
+          {:ok, text, pdf_path, html_path} ->
+            label =
+              entry.client_name
+              |> Path.rootname()
+              |> String.replace(~r/[_\-]/, " ")
+
+            {:ok, {label, text, pdf_path, html_path}}
+
+          {:error, reason, _} ->
+            {:ok, {entry.client_name, "Error extracting text: #{reason}", nil, nil}}
+        end
+      end)
+
+    merged =
+      Enum.reduce(pdf_texts, source_map, fn {label, text, pdf_path, html_path}, acc ->
+        case acc do
+          %{^label => _} ->
+            acc
+
+          _ ->
+            Keyword.put(acc, label, %{full_text: text, pdf_path: pdf_path, html_path: html_path})
+        end
+      end)
+      |> Map.new()
+
+    save_game(socket, socket.assigns.game, game_params, merged)
+  end
+
+  @impl true
+  def handle_info({:download_rulebook, url, label}, socket) do
+    game = socket.assigns.game
+
+    case RulebookDownloader.download(game, url, label) do
+      {:ok, source} ->
+        # Reload sources to show new entry
+        sources =
+          game
+          |> Games.list_rulebook_sources()
+          |> Enum.with_index()
+          |> Enum.map(fn {s, i} ->
+            %{
+              id: i,
+              source_id: s.id,
+              label: s.label,
+              text: s.full_text,
+              pdf_path: s.pdf_path,
+              html_path: s.html_path
+            }
+          end)
+
+        {:noreply,
+         socket
+         |> assign(
+           downloading: false,
+           download_error: nil,
+           download_ok: source.pdf_path,
+           source_entries: sources
+         )
+         |> put_flash(:info, "Rulebook downloaded!")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, downloading: false, download_error: reason)}
+    end
+  end
+
+  @impl true
+  def handle_info({:find_and_download}, socket) do
+    game = socket.assigns.game
+
+    case RulebookDownloader.find_and_download(game) do
+      {:ok, source} ->
+        sources =
+          game
+          |> Games.list_rulebook_sources()
+          |> Enum.with_index()
+          |> Enum.map(fn {s, i} ->
+            %{
+              id: i,
+              source_id: s.id,
+              label: s.label,
+              text: s.full_text,
+              pdf_path: s.pdf_path,
+              html_path: s.html_path
+            }
+          end)
+
+        {:noreply,
+         socket
+         |> assign(
+           downloading: false,
+           download_error: nil,
+           download_ok: source.pdf_path,
+           source_entries: sources
+         )
+         |> put_flash(:info, "Rulebook found and downloaded!")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, downloading: false, download_error: reason)}
+    end
+  end
+
+  @impl true
+  def handle_info({:search_bgg, bgg_id}, socket) do
+    cookies = resolve_bgg_cookies()
+    require Logger
+    Logger.debug("Searching BGG for bgg_id=#{bgg_id} cookies=#{inspect(cookies != nil)}")
+
+    case RulebookDownloader.find_on_bgg(bgg_id, cookies: cookies) do
+      {:ok, results} ->
+        Logger.debug("BGG search found #{length(results)} PDFs")
+
+        search_error =
+          cond do
+            results == [] -> "No PDF rulebooks found on BGG files page"
+            cookies == nil -> nil
+            true -> nil
+          end
+
+        {:noreply,
+         assign(socket,
+           searching: false,
+           bgg_results: results,
+           search_error: search_error
+         )}
+
+      {:error, reason} ->
+        Logger.error("BGG search error: #{reason}")
+
+        reason =
+          if String.contains?(reason, "403") && is_nil(cookies) do
+            "BGG blocked the request. Set your BGG login credentials in Settings for access."
+          else
+            reason
+          end
+
+        {:noreply, assign(socket, searching: false, search_error: reason, bgg_results: [])}
+    end
+  end
+
+  @impl true
+  def handle_info(:poll_cheat_status, socket) do
+    game = socket.assigns.game
+
+    if game do
+      case CheatSheet.status(game.id) do
+        "done" ->
+          content = CheatSheet.stored_content(game.id)
+          provider = CheatSheet.stored_provider(game.id)
+          model = CheatSheet.stored_model(game.id)
+          elapsed = CheatSheet.stored_elapsed(game.id)
+
+          {:noreply,
+           socket
+           |> assign(cheat_status: nil, cheat_content: content, cheat_error: nil,
+                     cheat_provider: provider, cheat_model: model, cheat_elapsed: elapsed,
+                     cheat_started_at: nil)
+           |> put_flash(:info, "Content generated! Review and edit below, then click Generate PDF.")}
+
+        "error" ->
+          error = CheatSheet.stored_error(game.id)
+
+          {:noreply, assign(socket, cheat_status: nil, cheat_error: error)}
+
+        status when status in ["compressing", "generating"] ->
+          started = socket.assigns.cheat_started_at || CheatSheet.stored_started(game.id)
+          stuck? = started && System.system_time(:second) - started > 600
+          provider = CheatSheet.stored_provider(game.id)
+          model = CheatSheet.stored_model(game.id)
+          elapsed = started && System.system_time(:second) - started
+
+          if stuck? do
+            CheatSheet.clear(game.id)
+            {:noreply, assign(socket, cheat_status: nil, cheat_error: "Generation timed out after 10 minutes. Try again.")}
+          else
+            Process.send_after(self(), :poll_cheat_status, 2000)
+            {:noreply, assign(socket, cheat_status: status, cheat_provider: provider, cheat_model: model, cheat_elapsed: elapsed)}
+          end
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:cheat_done, game_id}, socket) do
+    if socket.assigns.game && socket.assigns.game.id == game_id do
+      send(self(), :poll_cheat_status)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:refresh_bgg}, socket) do
+    game = socket.assigns.game
+
+    case RuleMaven.BGG.enrich_game(game) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(generating: false, game: updated)
+         |> put_flash(:info, "Game info refreshed from BGG!")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(generating: false)
+         |> put_flash(:error, "Failed to refresh: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_info({:bgg_search, query}, socket) do
+    result =
+      try do
+        RuleMaven.BGG.search(query)
+      rescue
+        e ->
+          {:error, Exception.message(e)}
+      end
+
+    case result do
+      {:ok, results} ->
+        {:noreply,
+         assign(socket,
+           bgg_searching: false,
+           bgg_search_results: results,
+           bgg_search_error: if(results == [], do: "No games found for '#{query}'")
+         )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, bgg_searching: false, bgg_search_error: reason)}
+    end
+  end
+
+  @impl true
+  def handle_info({:pull_bgg_info, changeset}, socket) do
+    case RuleMaven.BGG.fetch_game_info(changeset.data.bgg_id) do
+      {:ok, info} ->
+        changeset = %{
+          changeset
+          | data: %{
+              changeset.data
+              | year_published: info.year_published,
+                min_players: info.min_players,
+                max_players: info.max_players,
+                playing_time: info.playing_time,
+                image_url: info.image_url
+            },
+            changes:
+              Map.merge(changeset.changes, %{
+                year_published: info.year_published,
+                min_players: info.min_players,
+                max_players: info.max_players,
+                playing_time: info.playing_time,
+                image_url: info.image_url
+              })
+        }
+
+        {:noreply,
+         socket
+         |> assign(game_changeset: changeset)
+         |> put_flash(:info, "Info pulled from BGG!")}
+
+      {:error, _} ->
+    {:noreply, socket}
+  end
+  end
+
+  defp resolve_bgg_cookies do
+    bgg_user = Settings.get("bgg_user")
+    bgg_pass = Settings.get("bgg_pass")
+
+    if bgg_user && bgg_pass do
+      case RuleMaven.BGG.login(bgg_user, bgg_pass) do
+        {:ok, cookies} -> cookies
+        _ -> nil
+      end
+    end
+  end
+
+  defp extract_pdf_text(path, client_name) do
+    upload_dir = Application.app_dir(:rule_maven, "priv/static/uploads/rulebooks")
+    File.mkdir_p!(upload_dir)
+
+    filename = "#{System.system_time(:millisecond)}_#{client_name}"
+    pdf_path = Path.join("uploads/rulebooks", filename)
+    dest = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
+
+    case File.cp(path, dest) do
+      :ok ->
+        case System.cmd("pdftotext", [path, "-"]) do
+          {text, 0} ->
+            if String.trim(text) == "" do
+              case ocr_text(path) do
+                {:ok, ocr_text} ->
+                  html_path = text_to_html(ocr_text, pdf_path)
+                  {:ok, ocr_text, pdf_path, html_path}
+
+                {:error, reason} ->
+                  {:error, reason, pdf_path}
+              end
+            else
+              html_path = text_to_html(text, pdf_path)
+              {:ok, text, pdf_path, html_path}
+            end
+
+          {_output, _exit_code} ->
+            case ocr_text(path) do
+              {:ok, ocr_text} ->
+                html_path = text_to_html(ocr_text, pdf_path)
+                {:ok, ocr_text, pdf_path, html_path}
+
+              {:error, reason} ->
+                {:error, reason, pdf_path}
+            end
+        end
+
+      {:error, reason} ->
+        {:error, "Failed to save PDF: #{reason}", nil}
+    end
+  rescue
+    e ->
+      {:error, "pdftotext error: #{Exception.message(e)}", nil}
+  end
+
+  defp text_to_html(text, pdf_path) do
+    html_filename = Path.basename(pdf_path, Path.extname(pdf_path)) <> ".html"
+    html_path = Path.join(Path.dirname(pdf_path), html_filename)
+    dest = Application.app_dir(:rule_maven, "priv/static/#{html_path}")
+
+    pages = String.split(text, "\f")
+
+    {paragraphs, _para_num} =
+      pages
+      |> Enum.with_index(1)
+      |> Enum.reduce({[], 1}, fn {page_text, page_num}, {acc, para_num} ->
+        page_text = String.trim(page_text)
+
+        if page_text == "" do
+          {acc, para_num}
+        else
+          page_paras =
+            page_text
+            |> String.split(~r{\n\s*\n})
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+
+          marker = "<div class=\"page-break\">— Page #{page_num} —</div>"
+
+          {page_acc, next_para} =
+            Enum.reduce(page_paras, {[marker | acc], para_num}, fn para, {list, pn} ->
+              para_html =
+                "<p id=\"p#{pn}\" data-page=\"#{page_num}\">#{String.replace(para, "\n", "<br>")}</p>"
+
+              {[para_html | list], pn + 1}
+            end)
+
+          {page_acc, next_para}
+        end
+      end)
+
+    paragraphs_html = paragraphs |> Enum.reverse() |> Enum.join("\n")
+
+    html = """
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8">
+    <style>
+      body { font-family: Georgia, serif; font-size: 14px; line-height: 1.6; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+      p { margin: 0.5rem 0; }
+      p:hover { background: #fffde7; }
+      .page-break { margin: 1.5rem 0 0.5rem 0; font-size: 12px; color: #999; border-top: 1px dashed #ccc; padding-top: 0.5rem; font-weight: 600; }
+    </style></head>
+    <body>
+    #{paragraphs_html}
+    </body></html>
+    """
+
+    File.write!(dest, html)
+    html_path
+  rescue
+    _ -> nil
+  end
+
+  defp ocr_text(pdf_path) do
+    if System.find_executable("tesseract") do
+      tmp_dir = Application.app_dir(:rule_maven, "tmp/ocr")
+      File.mkdir_p!(tmp_dir)
+      prefix = Path.join(tmp_dir, "#{System.system_time(:millisecond)}_page")
+
+      case System.cmd("pdftoppm", ["-png", "-r", "300", pdf_path, prefix]) do
+        {_, 0} ->
+          images =
+            tmp_dir
+            |> File.ls!()
+            |> Enum.filter(&String.starts_with?(&1, Path.basename(prefix)))
+            |> Enum.sort()
+            |> Enum.map(&Path.join(tmp_dir, &1))
+
+          text =
+            images
+            |> Enum.map(fn img ->
+              case System.cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
+                     stderr_to_stdout: true
+                   ) do
+                {t, _} -> t
+              end
+            end)
+            |> Enum.join("\f")
+
+          Enum.each(images, &File.rm/1)
+
+          if String.trim(text) == "" do
+            {:error, "OCR produced no text — scanned PDF may be unreadable"}
+          else
+            {:ok, text}
+          end
+
+        {_, _} ->
+          {:error, "pdftoppm failed"}
+      end
+    else
+      {:error, "Scanned PDF. Install tesseract: brew install tesseract"}
+    end
+  end
+
+  defp save_game(socket, nil, game_params, source_map) do
+    case Games.create_game(game_params) do
+      {:ok, game} ->
+        Enum.each(source_map, fn {label,
+                                  %{full_text: text, pdf_path: pdf_path, html_path: html_path}} ->
+          Games.create_rulebook_source(%{
+            game_id: game.id,
+            label: label,
+            full_text: text,
+            pdf_path: pdf_path,
+            html_path: html_path
+          })
+        end)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Game created!")
+         |> push_navigate(to: ~p"/games/#{game.id}/edit")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, game_changeset: changeset)}
+    end
+  end
+
+  defp save_game(socket, game, game_params, source_map) do
+    case Games.update_game(game, game_params) do
+      {:ok, game} ->
+        existing = Games.list_rulebook_sources(game)
+
+        existing
+        |> Enum.filter(fn s -> not Map.has_key?(source_map, s.label) end)
+        |> Enum.each(&Games.delete_rulebook_source/1)
+
+        existing_labels = MapSet.new(existing, & &1.label)
+
+        source_map
+        |> Enum.filter(fn {label, _} -> not MapSet.member?(existing_labels, label) end)
+        |> Enum.each(fn {label, %{full_text: text, pdf_path: pdf_path, html_path: html_path}} ->
+          Games.create_rulebook_source(%{
+            game_id: game.id,
+            label: label,
+            full_text: text,
+            pdf_path: pdf_path,
+            html_path: html_path
+          })
+        end)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Game updated!")
+         |> push_navigate(to: ~p"/games/#{game.id}/edit")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, game_changeset: changeset)}
+    end
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="game-form">
+      <div class="mb-4 flex items-center justify-between">
+        <.link navigate={~p"/"} class="text-blue-600 hover:underline text-sm">
+          &larr; Back to games
+        </.link>
+        <.link
+          :if={@game}
+          navigate={~p"/games/#{@game.id}"}
+          class="text-blue-600 hover:underline text-sm"
+        >
+          Ask questions &rarr;
+        </.link>
+      </div>
+
+      <h1 class="text-2xl font-bold mb-6">
+        {if @game, do: "Edit #{@game.name}", else: "Add Game"}
+        <%= if @game && @game.bgg_id do %>
+          <.link
+            href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}"}
+            target="_blank"
+            rel="noopener"
+            class="text-blue-500 hover:underline text-sm font-normal ml-2"
+          >
+            View on BGG
+          </.link>
+          <button
+            type="button"
+            phx-click="refresh_bgg"
+            style="color:var(--accent);background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;margin-left:0.5rem"
+          >
+            Refresh info
+          </button>
+        <% end %>
+      </h1>
+
+      <div class="edit-layout" style="display:flex;gap:2rem;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <!-- BGG Search Results Preview -->
+          <%= if @game_changeset && @game_changeset.data.bgg_id do %>
+            <div class="flex gap-3 items-center mb-4 p-3 border rounded-lg bg-gray-50">
+              <%= if @game_changeset.data.image_url do %>
+                <img
+                  src={@game_changeset.data.image_url}
+                  alt=""
+                  style="width:80px;height:80px;object-fit:cover;border-radius:0.375rem;flex-shrink:0"
+                />
+              <% end %>
+              <div>
+                <p class="font-semibold">{@game_changeset.data.name}</p>
+                <p class="text-xs text-gray-500">
+                  <%= if @game_changeset.data.year_published do %>
+                    {@game_changeset.data.year_published}
+                  <% end %>
+                  <%= if @game_changeset.data.min_players do %>
+                    &middot; {@game_changeset.data.min_players}-{@game_changeset.data.max_players}p
+                  <% end %>
+                  <%= if @game_changeset.data.playing_time do %>
+                    &middot; ~{@game_changeset.data.playing_time}m
+                  <% end %>
+                </p>
+                <p class="text-xs text-gray-400 mt-0.5">BGG ID: {@game_changeset.data.bgg_id}</p>
+              </div>
+            </div>
+          <% end %>
+
+          <!-- Search BGG to auto-fill -->
+          <div class="border rounded-lg p-3 mb-4">
+            <label class="block text-xs font-medium mb-1 text-gray-500">
+              Find on BGG to auto-fill
+            </label>
+            <form phx-submit="bgg_search" class="flex gap-2">
+              <input
+                type="text"
+                name="search"
+                value={@bgg_search}
+                placeholder="Search BGG by game name..."
+                class="flex-1 border rounded px-3 py-2 text-sm"
+                autocomplete="off"
+              />
+              <button
+                type="submit"
+                disabled={@bgg_searching}
+                style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer;white-space:nowrap"
+              >
+                Search
+              </button>
+            </form>
+
+            <%= if @bgg_searching do %>
+              <p class="text-xs text-gray-400 mt-1">Searching...</p>
+            <% end %>
+
+            <%= if @bgg_search_error do %>
+              <p class="text-xs text-red-500 mt-1">{@bgg_search_error}</p>
+            <% end %>
+
+            <%= if @bgg_search_results != [] do %>
+              <div class="mt-2 border rounded max-h-40 overflow-y-auto">
+                <%= for result <- @bgg_search_results |> Enum.take(10) do %>
+                  <button
+                    type="button"
+                    phx-click="bgg_select"
+                    phx-value-id={result.bgg_id}
+                    phx-value-name={result.name}
+                    class="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 border-b last:border-b-0"
+                  >
+                    <span class="font-medium">{result.name}</span>
+                    <span :if={result.year} class="text-gray-400 ml-2">({result.year})</span>
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+
+          <.form
+            for={@game_changeset}
+            id="game-form"
+            phx-change="validate"
+            phx-submit="save"
+            class="space-y-6"
+          >
+            <div>
+              <label for="game_name" class="block text-sm font-medium mb-1">Game Name</label>
+              <input
+                type="text"
+                name="game[name]"
+                id="game_name"
+                value={@game_changeset.data.name}
+                class="w-full border rounded px-3 py-2"
+                required
+              />
+            </div>
+
+            <div>
+              <label for="game_bgg_id" class="block text-sm font-medium mb-1">
+                BGG ID <span class="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="number"
+                name="game[bgg_id]"
+                id="game_bgg_id"
+                value={@game_changeset.data.bgg_id}
+                class="w-full border rounded px-3 py-2"
+              />
+            </div>
+
+            <div class="space-y-4">
+              <h2 class="text-lg font-semibold">Rulebook Sources</h2>
+
+              <%= for entry <- @source_entries do %>
+                <div class="border rounded p-4">
+                  <div class="flex gap-2 items-start">
+                    <div class="flex-1">
+                      <label class="block text-sm font-medium mb-1">Label</label>
+                      <input
+                        type="text"
+                        name={"label_#{entry.id}"}
+                        value={entry.label}
+                        placeholder="e.g. Core Rulebook"
+                        class="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div class="flex-1">
+                      <label class="block text-sm font-medium mb-1">Text</label>
+                      <textarea
+                        name={"text_#{entry.id}"}
+                        rows="8"
+                        class="w-full border rounded px-3 py-2 font-mono text-xs"
+                        placeholder="Paste rulebook text here..."
+                      ><%= entry.text %></textarea>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <button
+                        :if={length(@source_entries) > 1}
+                        type="button"
+                        phx-click="remove_source"
+                        phx-value-id={entry.id}
+                        class="btn-remove-source"
+                      >
+                        ✕
+                      </button>
+                      <button
+                        :if={entry[:source_id]}
+                        type="button"
+                        phx-click="delete_source"
+                        phx-value-source_id={entry.source_id}
+                        style="color:#dc2626;background:none;border:none;font-size:0.75rem;cursor:pointer;white-space:nowrap;margin-top:0.25rem"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <%= if entry[:pdf_path] do %>
+                    <div class="mt-2 flex gap-3">
+                      <.link
+                        href={"/#{entry.pdf_path}"}
+                        target="_blank"
+                        class="text-blue-600 hover:underline text-xs"
+                      >
+                        View PDF
+                      </.link>
+                      <%= if entry[:html_path] do %>
+                        <.link
+                          href={"/#{entry.html_path}"}
+                          target="_blank"
+                          class="text-green-600 hover:underline text-xs"
+                        >
+                          View as HTML
+                        </.link>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <button
+                type="button"
+                phx-click="add_source"
+                class="btn-add-source"
+              >
+                + Add manual rules entry
+              </button>
+            </div>
+
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <label class="block text-sm font-medium mb-2">Or upload PDF rulebooks</label>
+              <.live_file_input upload={@uploads.rulebook_pdfs} class="block mx-auto text-sm" />
+              <%= for entry <- @uploads.rulebook_pdfs.entries do %>
+                <p class="text-xs text-gray-500 mt-1">{entry.client_name} ({entry.progress}%)</p>
+              <% end %>
+            </div>
+
+            <div class="flex gap-3">
+              <.button variant="primary" type="submit">Save</.button>
+              <.button variant="secondary" navigate={~p"/"}>Cancel</.button>
+            </div>
+          </.form>
+        </div>
+
+        <!-- Right column: side panels -->
+        <div style="width:340px;flex-shrink:0">
+          <!-- Download rulebook from URL (edit mode only) -->
+          <%= if @game do %>
+            <div class="border rounded-lg p-4 mb-4">
+              <h2 class="text-lg font-semibold mb-3">Download rulebook from URL</h2>
+
+              <div class="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  phx-click="find_download"
+                  disabled={@downloading}
+                  style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+                >
+                  Find &amp; Download
+                </button>
+
+                <%= if @game.bgg_id do %>
+                  <button
+                    type="button"
+                    phx-click="search_bgg"
+                    disabled={@searching}
+                    style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+                  >
+                    {if @searching, do: "Searching BGG...", else: "Find on BGG"}
+                  </button>
+                <% end %>
+              </div>
+
+              <%= if @game.bgg_id do %>
+                <%= if @search_error do %>
+                  <p class="text-sm text-red-500 mb-2">{@search_error}</p>
+                  <p class="text-xs text-gray-400 mb-2">
+                    Try the{" "}
+                    <.link
+                      href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}/files"}
+                      target="_blank"
+                      rel="noopener"
+                      class="text-blue-500 hover:underline"
+                    >
+                      BGG files page
+                    </.link>
+                    {" "}to find rulebooks manually.
+                  </p>
+                <% end %>
+
+                <%= if @bgg_results != [] do %>
+                  <div class="border rounded p-2 mb-3 max-h-48 overflow-y-auto space-y-1">
+                    <%= for result <- @bgg_results do %>
+                      <div class="flex items-center justify-between text-xs p-1 hover:bg-gray-50 rounded">
+                        <span class="truncate">{result.label}</span>
+                        <button
+                          type="button"
+                          phx-click="search_download"
+                          phx-value-url={result.url}
+                          phx-value-label={result.label}
+                          disabled={@downloading}
+                          style="color:var(--accent);border:none;background:none;font-size:0.75rem;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:0.5rem"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              <% end %>
+
+              <form phx-submit="download" class="space-y-2">
+                <div>
+                  <label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label>
+                  <input
+                    type="text"
+                    name="url"
+                    value={@download_url}
+                    placeholder="https://example.com/rulebook.pdf"
+                    class="w-full border rounded px-3 py-2 text-sm"
+                    disabled={@downloading}
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label>
+                  <input
+                    type="text"
+                    name="label"
+                    value={@download_label}
+                    placeholder="e.g. Core Rulebook"
+                    class="w-full border rounded px-3 py-2 text-sm"
+                    disabled={@downloading}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={@downloading}
+                  style="background:var(--accent);color:white;border:none;padding:0.5rem 1rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"
+                >
+                  {if @downloading, do: "Downloading...", else: "Download & Extract"}
+                </button>
+              </form>
+
+              <%= if @download_ok do %>
+                <p class="text-sm mt-2" style="color:#166534">
+                  Downloaded!{" "}
+                  <.link href={"/#{@download_ok}"} target="_blank" class="underline font-semibold">
+                    View PDF
+                  </.link>
+                  {" "}or go to the{" "}
+                  <.link navigate={~p"/games/#{@game.id}"} class="underline font-semibold">
+                Ask page
+              </.link>.
+                </p>
+              <% end %>
+
+              <%= if @download_error do %>
+                <p class="text-sm text-red-500 mt-2">{@download_error}</p>
+              <% end %>
+            </div>
+          <% end %>
+
+          <!-- Cheat Sheet (edit mode only) -->
+          <%= if @game do %>
+            <div class="mt-6 border rounded-lg p-4">
+              <h2 class="text-sm font-semibold mb-2">Cheat Sheet</h2>
+
+              <%= if @cheat_status do %>
+                <div class="flex items-center gap-3 mb-1">
+                  <p class="text-xs text-gray-500">
+                    {if @cheat_status == "compressing", do: "Compressing rulebook text...", else: "Generating cheat sheet content..."}
+                  </p>
+                  <button type="button" phx-click="cancel_cheat_content" style="color:#dc2626;background:none;border:none;font-size:0.7rem;font-weight:600;cursor:pointer">Cancel</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">
+                  {@cheat_provider} &middot; {@cheat_model}
+                  <%= if @cheat_elapsed do %> &middot; {format_elapsed(@cheat_elapsed)}<% end %>
+                </p>
+                <div class="w-full rounded-full mb-2" style="height:6px;background:var(--border)">
+                  <div class="rounded-full animate-pulse" style="width:100%;height:6px;background:var(--accent)"></div>
+                </div>
+              <% end %>
+
+              <%= if @cheat_content do %>
+                <p class="text-xs text-gray-400 mb-1">
+                  Generated with {@cheat_provider} &middot; {@cheat_model}
+                  <%= if @cheat_elapsed, do: "in #{format_elapsed(@cheat_elapsed)}" %>
+                </p>
+                <p class="text-xs text-gray-500 mb-2">Review and edit the generated markdown, then create the PDF.</p>
+                <form id="cheat-pdf-form" phx-submit="render_cheat_pdf">
+                  <textarea name="content" rows="16" class="w-full border rounded px-3 py-2 font-mono text-xs mb-2"><%= @cheat_content %></textarea>
+                  <div class="flex gap-2">
+                    <button type="submit" disabled={@cheat_status != nil} style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">
+                      {if @cheat_status, do: "Rendering...", else: "Generate PDF"}
+                    </button>
+                    <button type="button" phx-click="cancel_cheat_content" style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              <% else %>
+                <%= if @game.cheat_pdf_path do %>
+                  <div class="flex items-center gap-3">
+                    <.link href={"/#{@game.cheat_pdf_path}"} target="_blank" class="text-blue-600 hover:underline text-sm font-semibold">
+                      Download current cheat sheet
+                    </.link>
+                    <span class="text-xs text-gray-400">|</span>
+                    <button type="button" phx-click="generate_cheat" disabled={@cheat_status != nil} style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">
+                      {if @cheat_status, do: "Generating...", else: "Regenerate"}
+                    </button>
+                    <span class="text-xs text-gray-400">|</span>
+                    <%= if @confirm_delete_cheat do %>
+                      <span class="text-xs" style="color:#dc2626">Delete?</span>
+                      <button type="button" phx-click="confirm_delete_cheat" style="color:#dc2626;background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer">Yes</button>
+                      <button type="button" phx-click="cancel_delete_cheat" style="color:var(--text-secondary);background:none;border:none;font-size:0.75rem;cursor:pointer">No</button>
+                    <% else %>
+                      <button type="button" phx-click="delete_cheat" style="color:#dc2626;background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer">Delete</button>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <%= if Enum.any?(@source_entries, &(&1[:source_id] || String.trim(&1.text || "") != "")) do %>
+                    <p class="text-xs text-gray-500 mb-2">Generate cheat sheet content from your rulebook text. Review and edit before creating the PDF.</p>
+                    <button type="button" phx-click="generate_cheat" disabled={@cheat_status != nil} style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">
+                      {if @cheat_status, do: "Generating...", else: "Generate Cheat Sheet"}
+                    </button>
+                  <% else %>
+                    <p class="text-xs text-gray-400">Add rulebook text or upload a PDF first, then generate a cheat sheet.</p>
+                  <% end %>
+                <% end %>
+              <% end %>
+
+              <%= if @cheat_error do %>
+                <p class="text-sm text-red-500 mt-2">{@cheat_error}</p>
+              <% end %>
+            </div>
+          <% end %>
+
+          <!-- Clear Questions (edit mode only) -->
+          <%= if @game && @question_count > 0 do %>
+            <div class="mt-6 border border-red-200 rounded-lg p-4">
+              <h2 class="text-sm font-semibold mb-2" style="color:#dc2626">Danger Zone</h2>
+
+              <%= if not @confirm_clear do %>
+                <p class="text-xs text-gray-500 mb-2">
+                  Clear all questions and answers logged for this game.
+                </p>
+                <button
+                  type="button"
+                  phx-click="confirm_clear"
+                  style="background:#dc2626;color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+                >
+                  Clear All Questions
+                </button>
+              <% else %>
+                <p class="text-sm font-medium mb-2" style="color:#dc2626">
+                  Are you sure? This cannot be undone.
+                </p>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    phx-click="clear_questions"
+                    style="background:#dc2626;color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+                  >
+                    Yes, clear all
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="cancel_clear"
+                    style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  def format_elapsed(seconds) do
+    if seconds < 60 do
+      "#{seconds}s"
+    else
+      mins = div(seconds, 60)
+      secs = rem(seconds, 60)
+      "#{mins}m #{secs}s"
+    end
+  end
+end

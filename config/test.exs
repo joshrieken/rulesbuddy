@@ -5,17 +5,17 @@ import Config
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
-config :rules_buddy, RulesBuddy.Repo,
+config :rule_maven, RuleMaven.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "rules_buddy_test#{System.get_env("MIX_TEST_PARTITION")}",
+  database: "rule_maven_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :rules_buddy, RulesBuddyWeb.Endpoint,
+config :rule_maven, RuleMavenWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "b7nFAn8+dA6MI2uj33v6K6k+vIyQlk7dWyh8J12BgfmiJrfGvF7OtK1rvwlGKsbr",
   server: false

@@ -1,4 +1,4 @@
-defmodule RulesBuddy.Repo.Migrations.CreateGames do
+defmodule RuleMaven.Repo.Migrations.CreateGames do
   use Ecto.Migration
 
   def change do

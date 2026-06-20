@@ -1,4 +1,4 @@
-defmodule RulesBuddy.Repo.Migrations.AddUsernameToUsers do
+defmodule RuleMaven.Repo.Migrations.AddUsernameToUsers do
   use Ecto.Migration
 
   def change do
