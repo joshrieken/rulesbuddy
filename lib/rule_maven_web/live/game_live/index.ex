@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.GameLive.Index do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Games, BGG}
+  alias RuleMaven.Games
 
   @impl true
   def mount(_params, _session, socket) do
@@ -33,16 +33,12 @@ defmodule RuleMavenWeb.GameLive.Index do
        confirm_clear: false,
        confirm_text: "",
        search: "",
-       refreshing: 0,
-       refresh_total: 0,
-       refresh_log: [],
        delete_id: nil,
        page: 1,
        per_page: 20,
        selected_idx: -1,
        display_count: 20,
-       expanded_games: %{},
-       refresh_version: 0
+       expanded_games: %{}
      )}
   end
 
@@ -59,40 +55,6 @@ defmodule RuleMavenWeb.GameLive.Index do
       end
 
     {:noreply, assign(socket, expanded_games: expanded)}
-  end
-
-  @impl true
-  def handle_event("refresh_all", _params, socket) do
-    require Logger
-    Logger.debug("refresh_all clicked, games count: #{length(socket.assigns.games)}")
-
-    games = socket.assigns.games |> Enum.filter(& &1.bgg_id)
-    Logger.debug("games with bgg_id: #{length(games)}")
-    pid = self()
-
-    Task.start(fn ->
-      Enum.with_index(games, 1)
-      |> Enum.each(fn {game, i} ->
-        send(pid, {:refresh_progress, game.name, i, length(games)})
-
-        case BGG.enrich_game(game, force: true) do
-          {:ok, _} -> send(pid, {:refresh_done, game.name, :ok})
-          {:error, _} -> send(pid, {:refresh_done, game.name, :error})
-        end
-
-        :timer.sleep(3000)
-      end)
-
-      send(pid, {:refresh_complete})
-    end)
-
-    {:noreply,
-     assign(socket,
-       refreshing: 0,
-       refresh_total: length(games),
-       refresh_log: [],
-       refresh_version: socket.assigns.refresh_version + 1
-     )}
   end
 
   @impl true
@@ -241,59 +203,6 @@ defmodule RuleMavenWeb.GameLive.Index do
     |> Enum.sort_by(&String.downcase(&1.name))
   end
 
-  @impl true
-  def handle_info({:refresh_progress, name, current, total}, socket) do
-    require Logger
-    Logger.debug("refresh_progress: #{name} #{current}/#{total}")
-
-    log = ["Fetching #{name} (#{current}/#{total})..." | socket.assigns.refresh_log]
-    ver = socket.assigns.refresh_version + 1
-
-    {:noreply,
-     assign(socket,
-       refreshing: current,
-       refresh_total: total,
-       refresh_log: log,
-       refresh_version: ver
-     )}
-  end
-
-  @impl true
-  def handle_info({:refresh_done, name, status}, socket) do
-    icon = if status == :ok, do: "✓", else: "✗"
-    log = [icon <> " " <> name | tl(socket.assigns.refresh_log)]
-    ver = socket.assigns.refresh_version + 1
-    {:noreply, assign(socket, refresh_log: log, refresh_version: ver)}
-  end
-
-  @impl true
-  def handle_info({:refresh_complete}, socket) do
-    games = load_games(socket)
-
-    expansion_counts =
-      Enum.reduce(games, %{}, fn game, acc ->
-        count = length(Games.expansions_with_documents(game))
-        Map.put(acc, game.id, count)
-      end)
-
-    source_counts =
-      Enum.reduce(games, %{}, fn game, acc ->
-        count = length(Games.list_documents(game))
-        Map.put(acc, game.id, count)
-      end)
-
-    {:noreply,
-     socket
-     |> assign(
-       games: games,
-       expansion_counts: expansion_counts,
-       source_counts: source_counts,
-       refreshing: 0,
-       refresh_total: 0
-     )
-     |> put_flash(:info, "Refresh complete!")}
-  end
-
   defp filtered_games(games, ""), do: games
 
   defp filtered_games(games, search) do
@@ -337,13 +246,12 @@ defmodule RuleMavenWeb.GameLive.Index do
         <.button variant="secondary" navigate={~p"/games/import"}>Import from BGG</.button>
 
         <%= if @games != [] do %>
-          <button
-            type="button"
-            phx-click="refresh_all"
-            style="background:var(--accent);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+          <.link
+            navigate={~p"/games/refresh"}
+            style="display:inline-block;background:var(--accent);color:white;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;text-decoration:none"
           >
             Refresh All from BGG
-          </button>
+          </.link>
 
           <%= if not @confirm_clear do %>
             <button
@@ -382,21 +290,6 @@ defmodule RuleMavenWeb.GameLive.Index do
           <% end %>
         <% end %>
       </div>
-
-      <%= if @refresh_total > 0 do %>
-        <div class="mb-4 border rounded-lg p-3" data-refresh={@refresh_version}>
-          <p class="text-xs text-gray-500 mb-1">{@refreshing}/{@refresh_total}</p>
-          <div style="width:100%;height:4px;background:var(--border);border-radius:2px;margin-bottom:0.5rem">
-            <div style={"width:#{trunc(@refreshing / @refresh_total * 100)}%;height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s"}>
-            </div>
-          </div>
-          <div class="max-h-24 overflow-y-auto space-y-0.5">
-            <%= for entry <- Enum.reverse(@refresh_log) |> Enum.take(5) do %>
-              <p class="text-xs text-gray-500">{entry}</p>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
 
       <% filtered = filtered_games(@games, @search) %>
       <% display_games = visible_games(assigns) %>
