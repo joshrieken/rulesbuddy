@@ -384,7 +384,8 @@ defmodule RuleMavenWeb.GameLive.Index do
                   &middot; ~{game.playing_time}m
                 <% end %>
                 <%= if expansion_count > 0 do %>
-                  &middot; <span style="color:var(--accent);font-weight:600">{expansion_count} expansion(s)</span>
+                  &middot;
+                  <span style="color:var(--accent);font-weight:600">{expansion_count} expansion(s)</span>
                 <% end %>
               </p>
             </div>

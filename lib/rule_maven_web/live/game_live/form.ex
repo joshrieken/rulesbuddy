@@ -133,8 +133,8 @@ defmodule RuleMavenWeb.GameLive.Form do
 
           assign(socket,
             game: nil,
-        source_entries: [],
-        expansions: [],
+            source_entries: [],
+            expansions: [],
             game_changeset: changeset
           )
       end
@@ -1172,10 +1172,11 @@ defmodule RuleMavenWeb.GameLive.Form do
               </div>
 
               <%= if @game do %>
-                <% base_games = Games.list_base_games() |> Enum.reject(& &1.id == @game.id) %>
+                <% base_games = Games.list_base_games() |> Enum.reject(&(&1.id == @game.id)) %>
                 <div>
                   <label for="game_parent_game_id" class="block text-sm font-medium mb-1">
-                    Base Game <span class="text-gray-400">(optional — set if this is an expansion)</span>
+                    Base Game
+                    <span class="text-gray-400">(optional — set if this is an expansion)</span>
                   </label>
                   <select
                     name="game[parent_game_id]"
@@ -1184,7 +1185,10 @@ defmodule RuleMavenWeb.GameLive.Form do
                   >
                     <option value="">None (standalone game)</option>
                     <%= for base <- base_games do %>
-                      <option value={base.id} selected={@game_changeset.data.parent_game_id == base.id}>
+                      <option
+                        value={base.id}
+                        selected={@game_changeset.data.parent_game_id == base.id}
+                      >
                         {base.name}
                       </option>
                     <% end %>
@@ -1521,8 +1525,11 @@ defmodule RuleMavenWeb.GameLive.Form do
                     <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.75rem">
                       <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;align-self:center">Include expansions:</span>
                       <%= for exp <- @expansions do %>
-                        <label phx-click="toggle_cheat_expansion" phx-value-id={exp.id}
-                          style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:#fff", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}>
+                        <label
+                          phx-click="toggle_cheat_expansion"
+                          phx-value-id={exp.id}
+                          style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:#fff", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}
+                        >
                           <input
                             type="checkbox"
                             checked={Map.get(@included_expansions, exp.id)}
