@@ -337,6 +337,14 @@ defmodule RuleMavenWeb.GameLive.Show do
               &larr; Games
             </.link>
             <h1 class="text-base font-bold truncate">{@game.name}</h1>
+            <%= if @game.bgg_id do %>
+              <.link
+                href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}"}
+                target="_blank"
+                rel="noopener"
+                style="color:#ea580c;text-decoration:none;font-size:0.7rem;font-weight:600;flex-shrink:0"
+              >BGG</.link>
+            <% end %>
             <%= if @game.image_url do %>
               <img
                 src={@game.image_url}

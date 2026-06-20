@@ -362,6 +362,13 @@ defmodule RuleMavenWeb.GameLive.Index do
             </div>
             <div class="flex gap-2 flex-shrink-0 game-actions items-center">
               <.link
+                :if={game.bgg_id}
+                href={"https://boardgamegeek.com/boardgame/#{game.bgg_id}"}
+                target="_blank"
+                rel="noopener"
+                style="color:#ea580c;text-decoration:none;font-size:0.8rem;font-weight:600"
+              >BGG</.link>
+              <.link
                 navigate={~p"/games/#{game.id}"}
                 class="text-blue-600 hover:underline text-sm font-medium"
               >Ask</.link>
