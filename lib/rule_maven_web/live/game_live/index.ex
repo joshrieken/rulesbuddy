@@ -56,7 +56,11 @@ defmodule RuleMavenWeb.GameLive.Index do
 
   @impl true
   def handle_event("refresh_all", _params, socket) do
+    require Logger
+    Logger.debug("refresh_all clicked, games count: #{length(socket.assigns.games)}")
+
     games = socket.assigns.games |> Enum.filter(& &1.bgg_id)
+    Logger.debug("games with bgg_id: #{length(games)}")
     pid = self()
 
     Task.start(fn ->
@@ -232,6 +236,9 @@ defmodule RuleMavenWeb.GameLive.Index do
 
   @impl true
   def handle_info({:refresh_progress, name, current, total}, socket) do
+    require Logger
+    Logger.debug("refresh_progress: #{name} #{current}/#{total}")
+
     log = ["Fetching #{name} (#{current}/#{total})..." | socket.assigns.refresh_log]
     ver = socket.assigns.refresh_version + 1
 
@@ -359,6 +366,7 @@ defmodule RuleMavenWeb.GameLive.Index do
 
       <%= if @refresh_total > 0 do %>
         <div class="mb-4 border rounded-lg p-3" data-refresh={@refresh_version}>
+          <p class="text-xs text-gray-500 mb-1">{@refreshing}/{@refresh_total}</p>
           <div style="width:100%;height:4px;background:var(--border);border-radius:2px;margin-bottom:0.5rem">
             <div style={"width:#{trunc(@refreshing / @refresh_total * 100)}%;height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s"}>
             </div>
