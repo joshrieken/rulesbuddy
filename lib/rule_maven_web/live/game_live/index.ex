@@ -12,10 +12,16 @@ defmodule RuleMavenWeb.GameLive.Index do
         Games.list_games_with_documents()
       end
 
-    # Preload expansion counts for rendering
+    # Preload expansion counts and source counts for rendering
     expansion_counts =
       Enum.reduce(games, %{}, fn game, acc ->
         count = length(Games.expansions_with_documents(game))
+        Map.put(acc, game.id, count)
+      end)
+
+    source_counts =
+      Enum.reduce(games, %{}, fn game, acc ->
+        count = length(Games.list_documents(game))
         Map.put(acc, game.id, count)
       end)
 
@@ -23,6 +29,7 @@ defmodule RuleMavenWeb.GameLive.Index do
      assign(socket,
        games: games,
        expansion_counts: expansion_counts,
+       source_counts: source_counts,
        confirm_clear: false,
        confirm_text: "",
        search: "",
@@ -269,9 +276,21 @@ defmodule RuleMavenWeb.GameLive.Index do
         Map.put(acc, game.id, count)
       end)
 
+    source_counts =
+      Enum.reduce(games, %{}, fn game, acc ->
+        count = length(Games.list_documents(game))
+        Map.put(acc, game.id, count)
+      end)
+
     {:noreply,
      socket
-     |> assign(games: games, expansion_counts: expansion_counts, refreshing: 0, refresh_total: 0)
+     |> assign(
+       games: games,
+       expansion_counts: expansion_counts,
+       source_counts: source_counts,
+       refreshing: 0,
+       refresh_total: 0
+     )
      |> put_flash(:info, "Refresh complete!")}
   end
 
@@ -403,7 +422,7 @@ defmodule RuleMavenWeb.GameLive.Index do
             <div class="flex-1 min-w-0" style="pointer-events:none">
               <h2 class="text-lg font-semibold">{game.name}</h2>
               <p class="text-sm text-gray-500">
-                {length(Games.list_rulebook_sources(game))} source(s)
+                {Map.get(@source_counts, game.id, 0)} source(s)
                 <%= if game.year_published do %>
                   &middot; {game.year_published}
                 <% end %>
