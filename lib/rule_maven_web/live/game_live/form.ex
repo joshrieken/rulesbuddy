@@ -1046,28 +1046,30 @@ defmodule RuleMavenWeb.GameLive.Form do
       </h1>
 
       <!-- Tabs -->
+      <%= if @game do %>
       <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem">
-        <button
-          type="button"
-          phx-click="switch_tab"
-          phx-value-tab="rulebook"
-          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-        >
-          Rulebook
+        <button type="button" phx-click="switch_tab" phx-value-tab="details"
+          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "details", do: "var(--blue)", else: "transparent"};color:#{if @tab == "details", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "details", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}>
+          Details
         </button>
-        <button
-          type="button"
-          phx-click="switch_tab"
-          phx-value-tab="cheatsheet"
-          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-        >
+        <button type="button" phx-click="switch_tab" phx-value-tab="rulebook"
+          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}>
+          Rulebooks
+        </button>
+        <button type="button" phx-click="switch_tab" phx-value-tab="cheatsheet"
+          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}>
           Cheatsheet
         </button>
+        <button type="button" phx-click="switch_tab" phx-value-tab="danger"
+          style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "danger", do: "var(--blue)", else: "transparent"};color:#{if @tab == "danger", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "danger", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}>
+          Danger
+        </button>
       </div>
+      <% end %>
 
       <!-- Rulebook panel -->
       <div
-        style={"display:#{if @tab == "rulebook", do: "block", else: "none"}"}
+        style={"display:#{if @tab in ["details", "rulebook", "danger"], do: "block", else: "none"}"}
         data-refresh={@cheat_refresh}
       >
         <div class="edit-layout" style="display:flex;gap:2rem;align-items:flex-start">
