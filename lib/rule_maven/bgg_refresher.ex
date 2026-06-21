@@ -20,7 +20,7 @@ defmodule RuleMaven.BggRefresher do
 
   def start(games) do
     case Process.whereis(@name) do
-      nil -> GenServer.start_link(__MODULE__, games, name: @name)
+      nil -> GenServer.start(__MODULE__, games, name: @name)
       _ -> {:error, :already_running}
     end
   end

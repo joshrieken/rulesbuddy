@@ -736,7 +736,7 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
-  font-size: 16px;
+  font-size: 28px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1074,9 +1074,9 @@ a:not([class]):hover {
 .text-xs { font-size: 0.8rem; }
 .text-sm { font-size: 0.9rem; }
 .text-base { font-size: 1rem; }
-.text-lg { font-size: 1.1rem; }
-.text-xl { font-size: 1.25rem; }
-.text-2xl { font-size: 1.5rem; }
+.text-lg { font-size: 1.15rem; }
+.text-xl { font-size: 1.3rem; }
+.text-2xl { font-size: 1.55rem; }
 
 h1, h2, h3 {
   font-family: var(--font-body);

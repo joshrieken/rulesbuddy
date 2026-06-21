@@ -26,13 +26,12 @@ defmodule RuleMavenWeb.GameLive.RefreshTest do
     assert render(view) =~ "No games with BGG IDs to refresh"
   end
 
-  test "shows progress bar and game name", %{conn: conn} do
+  test "shows no-refresh message when idle", %{conn: conn} do
     game_fixture(%{name: "RefreshTestGame", bgg_id: 99_999})
 
     {:ok, view, _html} = live(conn, "/games/refresh")
     html = render(view)
 
-    assert html =~ "RefreshTestGame"
-    assert html =~ "%"
+    assert html =~ "No refresh in progress"
   end
 end

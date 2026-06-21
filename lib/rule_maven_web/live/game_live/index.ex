@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.GameLive.Index do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.Games
+  alias RuleMaven.{Games, BggRefresher}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,6 +25,18 @@ defmodule RuleMavenWeb.GameLive.Index do
         Map.put(acc, game.id, count)
       end)
 
+    {refresh_total, refresh_current, refresh_complete} =
+      if BggRefresher.running?() do
+        BggRefresher.subscribe(self())
+
+        case BggRefresher.state() do
+          nil -> {0, 0, false}
+          s -> {s.total, s.current, s.complete}
+        end
+      else
+        {0, 0, false}
+      end
+
     {:ok,
      assign(socket,
        games: games,
@@ -38,7 +50,11 @@ defmodule RuleMavenWeb.GameLive.Index do
        per_page: 20,
        selected_idx: -1,
        display_count: 20,
-       expanded_games: %{}
+       expanded_games: %{},
+       refresh_total: refresh_total,
+       refresh_current: refresh_current,
+       refresh_complete: refresh_complete,
+       version: 0
      )}
   end
 
@@ -204,6 +220,46 @@ defmodule RuleMavenWeb.GameLive.Index do
      |> put_flash(:info, "Cleared #{count} game(s).")}
   end
 
+  @impl true
+  def handle_event("start_refresh", _params, socket) do
+    games =
+      if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+        Games.list_games()
+      else
+        Games.list_games_with_documents()
+      end
+      |> Enum.filter(& &1.bgg_id)
+      |> Enum.sort_by(&String.downcase(&1.name))
+
+    case BggRefresher.start(games) do
+      {:ok, _pid} ->
+        BggRefresher.subscribe(self())
+
+        {:noreply,
+         assign(socket,
+           refresh_total: length(games),
+           refresh_current: 0,
+           refresh_complete: false
+         )}
+
+      {:error, :already_running} ->
+        BggRefresher.subscribe(self())
+
+        case BggRefresher.state() do
+          nil ->
+            {:noreply, socket}
+
+          s ->
+            {:noreply,
+             assign(socket,
+               refresh_total: s.total,
+               refresh_current: s.current,
+               refresh_complete: s.complete
+             )}
+        end
+    end
+  end
+
   defp visible_games(assigns) do
     filtered = filtered_games(assigns.games, assigns.search)
     Enum.take(filtered, assigns.display_count)
@@ -226,6 +282,21 @@ defmodule RuleMavenWeb.GameLive.Index do
     Enum.filter(games, fn g ->
       String.contains?(String.downcase(g.name), search)
     end)
+  end
+
+  @impl true
+  def handle_info({:progress, _name, current, total}, socket) do
+    {:noreply, assign(socket, refresh_current: current, refresh_total: total)}
+  end
+
+  @impl true
+  def handle_info({:done, _name, _status}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:complete}, socket) do
+    {:noreply, assign(socket, refresh_complete: true)}
   end
 
   @impl true
@@ -261,12 +332,14 @@ defmodule RuleMavenWeb.GameLive.Index do
         <.button variant="secondary" navigate={~p"/games/import"}>Import from BGG</.button>
 
         <%= if @games != [] do %>
-          <.link
-            navigate={~p"/games/refresh"}
-            style="display:inline-block;background:var(--accent);color:white;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;text-decoration:none"
+          <button
+            type="button"
+            phx-click="start_refresh"
+            style="display:inline-block;background:var(--accent);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            disabled={@refresh_total > 0 and not @refresh_complete}
           >
-            Refresh All from BGG
-          </.link>
+            {if @refresh_total > 0 and not @refresh_complete, do: "Refreshing...", else: "Refresh All from BGG"}
+          </button>
 
           <%= if not @confirm_clear do %>
             <button
@@ -305,6 +378,19 @@ defmodule RuleMavenWeb.GameLive.Index do
           <% end %>
         <% end %>
       </div>
+
+      <%!-- BGG refresh progress bar --%>
+      <%= if @refresh_total > 0 and not @refresh_complete do %>
+        <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--accent);border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem" data-refresh={@version}>
+          <span style="font-size:0.75rem;font-weight:600;color:var(--accent);white-space:nowrap">BGG Refresh</span>
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style={"width:#{if @refresh_total > 0, do: trunc(@refresh_current / @refresh_total * 100), else: 0}%;height:100%;background:var(--accent);transition:width 0.3s"}>
+            </div>
+          </div>
+          <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">{@refresh_current}/{@refresh_total}</span>
+          <.link navigate={~p"/games/refresh"} style="font-size:0.7rem;color:var(--blue);white-space:nowrap">detail</.link>
+        </div>
+      <% end %>
 
       <% filtered = filtered_games(@games, @search) %>
       <% display_games = visible_games(assigns) %>

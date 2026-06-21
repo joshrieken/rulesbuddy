@@ -15,34 +15,31 @@ defmodule RuleMavenWeb.GameLive.Refresh do
       |> Enum.sort_by(&String.downcase(&1.name))
 
     total = length(games)
+    running = BggRefresher.running?()
 
-    {already, log} =
-      if BggRefresher.running?() do
-        BggRefresher.subscribe(self())
+    if running do
+      BggRefresher.subscribe(self())
+    end
 
+    {current, log, complete, error_count} =
+      if running do
         case BggRefresher.state() do
-          nil ->
-            {true, ["⟳ Reconnecting to refresh..."]}
-
-          s ->
-            {true, s.log |> Enum.take(20)}
+          nil -> {0, ["⟳ Reconnecting..."], false, 0}
+          s -> {s.current, s.log |> Enum.take(20), s.complete, s.error_count}
         end
       else
-        {false, []}
+        {0, [], false, 0}
       end
-
-    if games != [] and not already do
-      BggRefresher.start(games)
-    end
 
     {:ok,
      assign(socket,
        games: games,
+       running: running,
        total: total,
-       current: 0,
+       current: current,
        log: log,
-       complete: false,
-       error_count: 0,
+       complete: complete,
+       error_count: error_count,
        version: 0
      )}
   end
@@ -83,6 +80,17 @@ defmodule RuleMavenWeb.GameLive.Refresh do
       <%= if @total == 0 do %>
         <p style="color:var(--text-muted)">No games with BGG IDs to refresh.</p>
       <% else %>
+        <%= if !@running do %>
+          <div style="text-align:center;padding:2rem;background:var(--bg);border:1px solid var(--border);border-radius:0.75rem">
+            <p style="color:var(--text-muted);margin-bottom:0.75rem">No refresh in progress.</p>
+            <.link
+              navigate={~p"/"}
+              style="display:inline-block;background:var(--accent);color:#fff;padding:0.5rem 1.25rem;border-radius:0.5rem;font-size:0.85rem;font-weight:600;text-decoration:none"
+            >
+              ← Back to Games — click Refresh All
+            </.link>
+          </div>
+        <% else %>
         <div
           style="background:var(--bg);border:1px solid var(--border);border-radius:0.75rem;padding:1.5rem"
           data-refresh={@version}
@@ -90,10 +98,10 @@ defmodule RuleMavenWeb.GameLive.Refresh do
           <%= if !@complete do %>
             <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-muted)">
               <span>{@current} / {@total}</span>
-              <span>{trunc(@current / @total * 100)}%</span>
+              <span>{if @total > 0, do: trunc(@current / @total * 100), else: 0}%</span>
             </div>
             <div style="width:100%;height:6px;background:var(--border);border-radius:3px;margin-bottom:1rem;overflow:hidden">
-              <div style={"width:#{trunc(@current / @total * 100)}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s"}>
+              <div style={"width:#{if @total > 0, do: trunc(@current / @total * 100), else: 0}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s"}>
               </div>
             </div>
             <div style="max-height:16rem;overflow-y:auto;font-size:0.7rem;font-family:monospace;color:var(--text)">
@@ -118,6 +126,7 @@ defmodule RuleMavenWeb.GameLive.Refresh do
             </div>
           <% end %>
         </div>
+        <% end %>
       <% end %>
     </div>
     """
