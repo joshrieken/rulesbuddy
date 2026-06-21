@@ -1249,7 +1249,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             </div>
 
             <%!-- Download rulebook from URL --%>
-            <div class="border rounded-lg p-4">
+            <div class="border rounded-lg p-4" style="margin-top:1.25rem">
               <h2 class="text-lg font-semibold mb-3">Download rulebook from URL</h2>
               <div class="flex gap-2 mb-3">
                 <button type="button" phx-click="find_download" disabled={@downloading} style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Find &amp; Download</button>
@@ -1272,7 +1272,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   </div>
                 <% end %>
               <% end %>
-              <form phx-submit="download" class="space-y-2">
+              <form phx-submit="download" style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
                 <div><label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label><input type="text" name="url" value={@download_url} placeholder="https://example.com/rulebook.pdf" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
                 <div><label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label><input type="text" name="label" value={@download_label} placeholder="e.g. Core Rulebook" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
                 <button type="submit" disabled={@downloading} style="background:var(--accent);color:white;border:none;padding:0.5rem 1rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"><%= if @downloading, do: "Downloading...", else: "Download & Extract" %></button>
