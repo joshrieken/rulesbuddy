@@ -1163,14 +1163,14 @@ defmodule RuleMavenWeb.GameLive.Form do
           </div>
         <% end %>
 
-        <.form for={@game_changeset} id="game-form" phx-change="validate" phx-submit="save" class="space-y-6 mt-6" style="max-width:56rem">
+        <.form for={@game_changeset} id="game-form" phx-change="validate" phx-submit="save" class="mt-6" style="max-width:56rem">
           <%!-- Details tab --%>
           <div style={if @tab == "details", do: "display:block", else: "display:none"}>
-            <div>
+            <div style="margin-bottom:1.25rem">
               <label for="game_name" class="block text-sm font-medium mb-1">Game Name</label>
               <input type="text" name="game[name]" id="game_name" value={@game_changeset.data.name} class="w-full border rounded px-3 py-2" required />
             </div>
-            <div>
+            <div style="margin-bottom:1.25rem">
               <label for="game_bgg_id" class="block text-sm font-medium mb-1">BGG ID <span class="text-gray-400">(optional)</span></label>
               <input type="number" name="game[bgg_id]" id="game_bgg_id" value={@game_changeset.data.bgg_id} class="w-full border rounded px-3 py-2" />
             </div>
@@ -1185,7 +1185,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </div>
               <% end %>
               <% base_games = Games.list_base_games() |> Enum.reject(&(&1.id == @game.id)) %>
-              <div>
+              <div style="margin-bottom:1.25rem">
                 <label for="game_parent_game_id" class="block text-sm font-medium mb-1">Base Game <span class="text-gray-400">(optional — set if this is an expansion)</span></label>
                 <select name="game[parent_game_id]" id="game_parent_game_id" class="w-full border rounded px-3 py-2 text-sm">
                   <option value="">None (standalone game)</option>
@@ -1197,7 +1197,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             <% end %>
 
             <%= if @game && length(@expansions) > 0 do %>
-              <div>
+              <div style="margin-bottom:1.25rem">
                 <h3 class="text-sm font-semibold mb-1">Expansions of this game</h3>
                 <div class="space-y-1">
                   <%= for exp <- @expansions do %>
