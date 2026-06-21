@@ -1690,12 +1690,23 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   defp level_badge_style(level) do
     case level do
-      "ultra" -> "background:var(--bg-subtle);color:var(--text-muted)"
-      "compact" -> "background:var(--accent-subtle);color:var(--accent)"
-      "standard" -> "background:var(--bg-surface);color:var(--accent-dark);border:1px solid var(--accent);font-weight:700"
-      "detailed" -> "background:rgba(180,136,32,0.1);color:#d4a030;border:1px solid rgba(180,136,32,0.3)"
-      "full" -> "background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-strong)"
-      _ -> "background:var(--bg-subtle);color:var(--text-muted)"
+      "ultra" ->
+        "background:var(--bg-subtle);color:var(--text-muted)"
+
+      "compact" ->
+        "background:var(--accent-subtle);color:var(--accent)"
+
+      "standard" ->
+        "background:var(--bg-surface);color:var(--accent-dark);border:1px solid var(--accent);font-weight:700"
+
+      "detailed" ->
+        "background:rgba(180,136,32,0.1);color:#d4a030;border:1px solid rgba(180,136,32,0.3)"
+
+      "full" ->
+        "background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-strong)"
+
+      _ ->
+        "background:var(--bg-subtle);color:var(--text-muted)"
     end
   end
 end

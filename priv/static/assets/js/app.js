@@ -198,4 +198,20 @@ if ("serviceWorker" in navigator) {
       document.querySelectorAll("details[open]").forEach(el => el.removeAttribute("open"));
     }
   });
+
+  // Close <details> on Escape key
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.querySelectorAll("details[open]").forEach(el => el.removeAttribute("open"));
+    }
+  });
+
+  // Close <details> on click outside
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll("details[open]").forEach(el => {
+      if (!el.contains(e.target)) {
+        el.removeAttribute("open");
+      }
+    });
+  });
 }

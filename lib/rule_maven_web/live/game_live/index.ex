@@ -106,8 +106,16 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
-  def handle_event("go_to_game", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/games/#{id}")}
+  def handle_event("go_to_game", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    source_count = Map.get(socket.assigns.source_counts, id, 0)
+
+    dest =
+      if source_count == 0 and RuleMaven.Users.game_master?(socket.assigns.current_user),
+        do: ~p"/games/#{id}/edit",
+        else: ~p"/games/#{id}"
+
+    {:noreply, push_navigate(socket, to: dest)}
   end
 
   @impl true
@@ -135,7 +143,14 @@ defmodule RuleMavenWeb.GameLive.Index do
 
         if idx >= 0 && idx < length(visible) do
           game = Enum.at(visible, idx)
-          {:noreply, push_navigate(socket, to: ~p"/games/#{game.id}")}
+          source_count = Map.get(socket.assigns.source_counts, game.id, 0)
+
+          dest =
+            if source_count == 0 and RuleMaven.Users.game_master?(socket.assigns.current_user),
+              do: ~p"/games/#{game.id}/edit",
+              else: ~p"/games/#{game.id}"
+
+          {:noreply, push_navigate(socket, to: dest)}
         else
           {:noreply, socket}
         end
@@ -350,6 +365,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                 style="color:#ea580c;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer"
               >BGG</a>
               <.link
+                :if={Map.get(@source_counts, game.id, 0) > 0}
                 navigate={~p"/games/#{game.id}"}
                 class="text-blue-600 hover:underline text-sm font-medium"
               >Ask</.link>
@@ -427,6 +443,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     style="color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer"
                   >BGG</a>
                   <.link
+                    :if={Map.get(@source_counts, exp.id, 0) > 0}
                     navigate={~p"/games/#{exp.id}"}
                     class="text-blue-600 hover:underline text-sm font-medium"
                   >Ask</.link>

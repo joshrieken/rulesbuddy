@@ -75,28 +75,25 @@ defmodule RuleMavenWeb.GameLive.Import do
           import_count: 0
         )
 
-      send(self(), {:import_games, to_import, imported})
+      send(self(), {:import_games, to_import, imported, []})
       {:noreply, socket}
     end
   end
 
   @impl true
-  def handle_info({:import_games, [game | rest], imported}, socket) do
-    result =
+  def handle_info({:import_games, [game | rest], imported, created}, socket) do
+    {new_imported, new_created} =
       case Games.create_game(%{name: game.name, bgg_id: game.bgg_id}) do
         {:ok, db_game} ->
-          # Fetch detailed game info in background
-          Task.start(fn -> RuleMaven.BGG.enrich_game(db_game) end)
-          game.bgg_id
+          {imported ++ [game.bgg_id], [db_game | created]}
 
         _ ->
-          nil
+          {imported, created}
       end
 
-    new_imported = if result, do: imported ++ [result], else: imported
     count = socket.assigns.import_count + 1
 
-    send(self(), {:import_games, rest, new_imported})
+    send(self(), {:import_games, rest, new_imported, new_created})
 
     {:noreply,
      assign(socket,
@@ -106,7 +103,23 @@ defmodule RuleMavenWeb.GameLive.Import do
   end
 
   @impl true
-  def handle_info({:import_games, [], imported}, socket) do
+  def handle_info({:import_games, [], imported, created}, socket) do
+    if created != [] do
+      Task.start(fn ->
+        created
+        |> Task.async_stream(
+          fn game ->
+            :timer.sleep(2000)
+            BGG.enrich_game(game)
+          end,
+          max_concurrency: 2,
+          ordered: false,
+          timeout: 60_000
+        )
+        |> Stream.run()
+      end)
+    end
+
     {:noreply,
      assign(socket,
        importing: false,

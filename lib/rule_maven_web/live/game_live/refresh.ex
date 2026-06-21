@@ -16,19 +16,26 @@ defmodule RuleMavenWeb.GameLive.Refresh do
 
     if games != [] do
       pid = self()
+      total = length(games)
 
       Task.start(fn ->
-        Enum.with_index(games, 1)
-        |> Enum.each(fn {game, i} ->
-          send(pid, {:progress, game.name, i, length(games)})
+        games
+        |> Enum.with_index(1)
+        |> Task.async_stream(
+          fn {game, i} ->
+            send(pid, {:progress, game.name, i, total})
+            :timer.sleep(2000)
 
-          case BGG.enrich_game(game, force: true) do
-            {:ok, _} -> send(pid, {:done, game.name, :ok})
-            {:error, _} -> send(pid, {:done, game.name, :error})
-          end
-
-          :timer.sleep(3000)
-        end)
+            case BGG.enrich_game(game, force: true) do
+              {:ok, _} -> send(pid, {:done, game.name, :ok})
+              {:error, _} -> send(pid, {:done, game.name, :error})
+            end
+          end,
+          max_concurrency: 2,
+          ordered: false,
+          timeout: 60_000
+        )
+        |> Stream.run()
 
         send(pid, {:complete})
       end)
