@@ -1182,8 +1182,9 @@ defmodule RuleMavenWeb.GameLive.Form do
               </div>
 
               <%= if @game do %>
-                <%= if @game.parent_game_id do %>
-                  <% parent = Games.get_game!(@game.parent_game_id) %>
+                <% parent_id = @game_changeset.data.parent_game_id || @game.parent_game_id %>
+                <%= if parent_id do %>
+                  <% parent = Games.get_game!(parent_id) %>
                   <div style="margin-bottom:0.5rem">
                     <span style="font-size:0.75rem;color:var(--text-muted)">Expansion of</span>
                     <.link navigate={~p"/games/#{parent.id}/edit"} style="font-size:0.8rem;color:var(--blue);font-weight:600;margin-left:0.25rem">
