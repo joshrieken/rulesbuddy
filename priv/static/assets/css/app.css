@@ -778,21 +778,6 @@ body {
   border-color: var(--accent);
 }
 
-/* Buttons */
-button, .button, [type="submit"] {
-  border-radius: var(--radius-sm) !important;
-  transition: all 0.15s;
-  font-family: var(--font-body);
-  font-weight: 600;
-}
-button:hover, .button:hover, [type="submit"]:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px var(--shadow-hover);
-}
-button:active, .button:active, [type="submit"]:active {
-  transform: translateY(0);
-}
-
 /* Inputs */
 input, textarea, select {
   border-radius: var(--radius-sm) !important;
@@ -1198,7 +1183,7 @@ h1 span.subtitle {
 .justify-center { justify-content: center; }
 
 /* ===== Buttons ===== */
-button, .btn, input[type="submit"] {
+button, .btn, input[type="submit"], [type="button"] {
   cursor: pointer;
   font: inherit;
   font-family: var(--font-body);
@@ -1206,25 +1191,36 @@ button, .btn, input[type="submit"] {
   border: 1px solid var(--border-strong);
   background: var(--bg-surface);
   color: var(--text);
-  padding: 0.5rem 1.25rem;
-  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  line-height: 1.4;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
-button:hover, .btn:hover {
+button:hover, .btn:hover, [type="button"]:hover, [type="submit"]:hover {
   background: var(--bg);
   border-color: var(--text-muted);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px var(--shadow-hover);
 }
 
-button:active, .btn:active {
+button:active, .btn:active, [type="button"]:active, [type="submit"]:active {
   background: var(--border);
+  transform: translateY(0);
 }
 
-button:disabled, .btn:disabled {
+button:disabled, .btn:disabled, [type="button"]:disabled, [type="submit"]:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-primary {
