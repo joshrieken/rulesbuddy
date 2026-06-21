@@ -483,36 +483,20 @@ defmodule RuleMavenWeb.GameLive.Index do
                 navigate={~p"/games/#{game.id}/edit"}
                 style="background:var(--bg-subtle);color:var(--text-secondary);text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
               >Edit</.link>
-            </div>
-
-            <%= if RuleMaven.Users.game_master?(@current_user) do %>
-              <div class="flex-shrink-0">
+              <%= if RuleMaven.Users.game_master?(@current_user) do %>
                 <%= if @delete_id == game.id do %>
-                  <div class="flex items-center gap-1">
-                    <span class="text-xs" style="color:#dc2626">Delete?</span>
-                    <button
-                      type="button"
-                      phx-click="confirm_delete"
-                      phx-value-id={game.id}
-                      style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
-                    >Yes</button>
-                    <button
-                      type="button"
-                      phx-click="cancel_delete"
-                      style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
-                    >No</button>
-                  </div>
+                  <span class="text-xs" style="color:#dc2626;padding:0.2rem 0">Delete?</span>
+                  <button type="button" phx-click="confirm_delete" phx-value-id={game.id}
+                    style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem">Yes</button>
+                  <button type="button" phx-click="cancel_delete"
+                    style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem">No</button>
                 <% else %>
-                  <button
-                    type="button"
-                    phx-click="delete_game"
-                    phx-value-id={game.id}
+                  <button type="button" phx-click="delete_game" phx-value-id={game.id}
                     style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem"
-                    title="Delete game"
-                  >✕</button>
+                    title="Delete game">✕</button>
                 <% end %>
-              </div>
-            <% end %>
+              <% end %>
+            </div>
           </div>
 
           <%= if expanded && expansion_count > 0 do %>
