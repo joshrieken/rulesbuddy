@@ -1280,12 +1280,13 @@ textarea {
 }
 
 /* ===== Connection Status Overlay ===== */
-/* Show overlay when NOT connected (disconnected, error, or initial loading) */
-body:not(.phx-connected) > .app-shell {
+/* Only show overlay if we were connected before and now we're not.
+   Prevents flash on initial page load before WebSocket connects. */
+body.phx-was-connected:not(.phx-connected) > .app-shell {
   visibility: hidden;
 }
 
-body:not(.phx-connected)::before {
+body.phx-was-connected:not(.phx-connected)::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -1293,7 +1294,7 @@ body:not(.phx-connected)::before {
   background: rgba(0, 0, 0, 0.85);
 }
 
-body:not(.phx-connected)::after {
+body.phx-was-connected:not(.phx-connected)::after {
   content: "";
   position: fixed;
   top: 50%;
@@ -1309,7 +1310,7 @@ body:not(.phx-connected)::after {
 }
 
 /* Status text below spinner */
-body:not(.phx-connected) .phx-disconnected-text {
+body.phx-was-connected:not(.phx-connected) .phx-disconnected-text {
   display: block;
   position: fixed;
   top: calc(50% + 40px);
