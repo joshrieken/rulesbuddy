@@ -152,24 +152,6 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
   hooks: Hooks
 });
 
-// Connection overlay — show immediately on socket events
-function showOverlay() {
-  if (document.getElementById("conn-overlay")) return;
-  let el = document.createElement("div");
-  el.id = "conn-overlay";
-  el.innerHTML = '<div class="conn-spinner"></div><p class="conn-text">Lost connection. Retrying...</p>';
-  el.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem";
-  document.body.appendChild(el);
-}
-function hideOverlay() {
-  let el = document.getElementById("conn-overlay");
-  if (el) el.remove();
-}
-
-window.addEventListener("phx:close", showOverlay);
-window.addEventListener("phx:error", showOverlay);
-window.addEventListener("phx:connected", hideOverlay);
-
 // Only connect the LiveSocket when there are LiveView elements on the page.
 // Connecting unconditionally on every page (e.g. /login) creates a WebSocket
 // whose connect_info session is captured at connect-time. When the browser

@@ -1280,20 +1280,12 @@ textarea {
 }
 
 /* ===== Connection Status Overlay ===== */
-body.phx-disconnected > *,
-body.phx-loading > * {
+/* Show overlay when NOT connected (disconnected, error, or initial loading) */
+body:not(.phx-connected) > .app-shell {
   visibility: hidden;
 }
 
-/* Override: keep status text visible */
-body.phx-disconnected .phx-status-text,
-body.phx-loading .phx-status-text {
-  visibility: visible !important;
-}
-
-/* Fullscreen overlay via body pseudo-element */
-body.phx-disconnected::before,
-body.phx-loading::before {
+body:not(.phx-connected)::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -1301,9 +1293,7 @@ body.phx-loading::before {
   background: rgba(0, 0, 0, 0.85);
 }
 
-/* Spinner */
-body.phx-disconnected::after,
-body.phx-loading::after {
+body:not(.phx-connected)::after {
   content: "";
   position: fixed;
   top: 50%;
@@ -1318,8 +1308,9 @@ body.phx-loading::after {
   animation: phx-spin 0.8s linear infinite;
 }
 
-/* Status text messages */
-.phx-status-text {
+/* Status text below spinner */
+body:not(.phx-connected) .phx-disconnected-text {
+  display: block;
   position: fixed;
   top: calc(50% + 40px);
   left: 50%;
@@ -1330,11 +1321,10 @@ body.phx-loading::after {
   font-weight: 500;
   font-family: var(--font-body);
   text-align: center;
-  display: none;
 }
-body.phx-disconnected .phx-disconnected-text,
-body.phx-loading .phx-loading-text {
-  display: block;
+
+.phx-disconnected-text {
+  display: none;
 }
 
 @keyframes phx-spin {
@@ -1346,12 +1336,11 @@ body.phx-connected::before,
 body.phx-connected::after {
   display: none !important;
 }
-body.phx-connected > * {
+body.phx-connected > .app-shell {
   visibility: visible !important;
 }
-  body.phx-connected .phx-status-text {
-    display: none !important;
-  }
+body.phx-connected .phx-disconnected-text {
+  display: none !important;
 }
 
 /* ===== JS-injected connection overlay ===== */
