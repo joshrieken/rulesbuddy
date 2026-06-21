@@ -1101,6 +1101,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             <% end %>
 
             <!-- Search BGG to auto-fill -->
+            <%= if is_nil(@game) do %>
             <div class="border rounded-lg p-3 mb-4">
               <label class="block text-xs font-medium mb-1 text-gray-500">
                 Find on BGG to auto-fill
@@ -1148,6 +1149,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </div>
               <% end %>
             </div>
+            <% end %>
 
             <.form
               for={@game_changeset}
