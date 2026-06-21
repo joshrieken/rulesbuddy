@@ -5,8 +5,10 @@ defmodule RuleMavenWeb.GameLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    is_admin = RuleMaven.Users.game_master?(socket.assigns.current_user)
+
     games =
-      if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+      if is_admin do
         Games.list_base_games()
       else
         Games.list_games_with_documents()
@@ -15,7 +17,8 @@ defmodule RuleMavenWeb.GameLive.Index do
     # Preload expansion counts and source counts for rendering
     expansion_counts =
       Enum.reduce(games, %{}, fn game, acc ->
-        count = length(Games.expansions_with_documents(game))
+        exps = if is_admin, do: Games.expansions_for(game), else: Games.expansions_with_documents(game)
+        count = length(exps)
         Map.put(acc, game.id, count)
       end)
 
@@ -509,7 +512,7 @@ defmodule RuleMavenWeb.GameLive.Index do
           </div>
 
           <%= if expanded && expansion_count > 0 do %>
-            <% expansions = Games.expansions_with_documents(game) %>
+            <% expansions = if RuleMaven.Users.game_master?(@current_user), do: Games.expansions_for(game), else: Games.expansions_with_documents(game) %>
             <%= for exp <- expansions do %>
               <div
                 id={"exp-card-#{game.id}-#{exp.id}"}
