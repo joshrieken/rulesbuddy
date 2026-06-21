@@ -25,6 +25,17 @@ defmodule RuleMaven.BggRefresher do
     end
   end
 
+  def restart(games) do
+    case Process.whereis(@name) do
+      nil ->
+        GenServer.start(__MODULE__, games, name: @name)
+
+      pid ->
+        GenServer.stop(pid)
+        GenServer.start(__MODULE__, games, name: @name)
+    end
+  end
+
   def subscribe(pid) do
     case Process.whereis(@name) do
       nil -> :not_running
@@ -53,11 +64,13 @@ defmodule RuleMaven.BggRefresher do
       current: 0,
       log: [],
       complete: false,
+      errored: false,
       error_count: 0,
       subscribers: []
     }
 
     {:ok, task} = Task.start(fn -> run_refresh(games) end)
+    Process.monitor(task)
 
     {:ok, Map.put(state, :task_pid, task)}
   end
@@ -91,28 +104,53 @@ defmodule RuleMaven.BggRefresher do
     {:noreply, %{state | complete: true}}
   end
 
+  def handle_cast({:error, reason}, state) do
+    log = ["  ✗ ERROR: #{reason}" | state.log]
+    broadcast(state.subscribers, {:refresh_error, reason})
+    {:noreply, %{state | log: log, errored: true}}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    unless state.complete do
+      log = ["  ✗ Refresh task died unexpectedly" | state.log]
+      broadcast(state.subscribers, {:refresh_error, "task died"})
+      {:noreply, %{state | log: log, errored: true}}
+    else
+      {:noreply, state}
+    end
+  end
+
   defp run_refresh(games) do
     total = length(games)
 
-    games
-    |> Enum.with_index(1)
-    |> Task.async_stream(
-      fn {game, i} ->
-        __MODULE__.progress(game.name, i, total)
-        :timer.sleep(2000)
+    try do
+      games
+      |> Enum.with_index(1)
+      |> Task.async_stream(
+        fn {game, i} ->
+          __MODULE__.progress(game.name, i, total)
+          :timer.sleep(2000)
 
-        case RuleMaven.BGG.enrich_game(game, force: true) do
-          {:ok, _} -> __MODULE__.done(game.name, :ok)
-          {:error, _} -> __MODULE__.done(game.name, :error)
-        end
-      end,
-      max_concurrency: 2,
-      ordered: false,
-      timeout: 60_000
-    )
-    |> Stream.run()
+          case RuleMaven.BGG.enrich_game(game, force: true) do
+            {:ok, _} -> __MODULE__.done(game.name, :ok)
+            {:error, _} -> __MODULE__.done(game.name, :error)
+          end
+        end,
+        max_concurrency: 2,
+        ordered: false,
+        timeout: 120_000,
+        on_timeout: :kill_task
+      )
+      |> Stream.run()
 
-    __MODULE__.complete()
+      __MODULE__.complete()
+    rescue
+      e ->
+        require Logger
+        Logger.error("BGG refresh task crashed: #{inspect(e)}")
+        GenServer.cast(@name, {:error, Exception.message(e)})
+    end
   end
 
   defp broadcast(subscribers, msg) do

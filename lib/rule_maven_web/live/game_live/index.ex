@@ -25,16 +25,16 @@ defmodule RuleMavenWeb.GameLive.Index do
         Map.put(acc, game.id, count)
       end)
 
-    {refresh_total, refresh_current, refresh_complete} =
+    {refresh_total, refresh_current, refresh_complete, refresh_errored} =
       if BggRefresher.running?() do
         BggRefresher.subscribe(self())
 
         case BggRefresher.state() do
-          nil -> {0, 0, false}
-          s -> {s.total, s.current, s.complete}
+          nil -> {0, 0, false, false}
+          s -> {s.total, s.current, s.complete, Map.get(s, :errored, false)}
         end
       else
-        {0, 0, false}
+        {0, 0, false, false}
       end
 
     {:ok,
@@ -54,6 +54,7 @@ defmodule RuleMavenWeb.GameLive.Index do
        refresh_total: refresh_total,
        refresh_current: refresh_current,
        refresh_complete: refresh_complete,
+       refresh_errored: refresh_errored,
        version: 0
      )}
   end
@@ -231,7 +232,14 @@ defmodule RuleMavenWeb.GameLive.Index do
       |> Enum.filter(& &1.bgg_id)
       |> Enum.sort_by(&String.downcase(&1.name))
 
-    case BggRefresher.start(games) do
+    result =
+      if socket.assigns.refresh_errored do
+        BggRefresher.restart(games)
+      else
+        BggRefresher.start(games)
+      end
+
+    case result do
       {:ok, _pid} ->
         BggRefresher.subscribe(self())
 
@@ -239,7 +247,8 @@ defmodule RuleMavenWeb.GameLive.Index do
          assign(socket,
            refresh_total: length(games),
            refresh_current: 0,
-           refresh_complete: false
+           refresh_complete: false,
+           refresh_errored: false
          )}
 
       {:error, :already_running} ->
@@ -297,6 +306,11 @@ defmodule RuleMavenWeb.GameLive.Index do
   @impl true
   def handle_info({:complete}, socket) do
     {:noreply, assign(socket, refresh_complete: true)}
+  end
+
+  @impl true
+  def handle_info({:refresh_error, _reason}, socket) do
+    {:noreply, assign(socket, refresh_errored: true)}
   end
 
   @impl true
@@ -381,10 +395,12 @@ defmodule RuleMavenWeb.GameLive.Index do
 
       <%!-- BGG refresh progress bar --%>
       <%= if @refresh_total > 0 and not @refresh_complete do %>
-        <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--accent);border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem" data-refresh={@version}>
-          <span style="font-size:0.75rem;font-weight:600;color:var(--accent);white-space:nowrap">BGG Refresh</span>
-          <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-            <div style={"width:#{if @refresh_total > 0, do: trunc(@refresh_current / @refresh_total * 100), else: 0}%;height:100%;background:var(--accent);transition:width 0.3s"}>
+        <div style={"margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid #{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"} data-refresh={@version}>
+          <span style={"font-size:0.75rem;font-weight:600;color:#{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};white-space:nowrap"}>
+            {if @refresh_errored, do: "BGG Refresh Failed", else: "BGG Refresh"}
+          </span>
+          <div style="flex:1;min-width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style={"width:#{if @refresh_total > 0, do: trunc(@refresh_current / @refresh_total * 100), else: 0}%;height:100%;background:#{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};transition:width 0.3s"}>
             </div>
           </div>
           <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">{@refresh_current}/{@refresh_total}</span>
