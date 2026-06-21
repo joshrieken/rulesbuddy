@@ -366,7 +366,7 @@ defmodule RuleMavenWeb.AdminLive do
               <%= for {col, type} <- @columns, col != @pk_col || @mode == :edit do %>
                 <% disabled = col == @pk_col %>
                 <div>
-                  <label style="display:block;font-size:0.65rem;font-weight:600;color:var(--text-muted);margin-bottom:0.15rem">
+                  <label style="display:block;font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:0.15rem">
                     {col} <span style="font-weight:400;opacity:0.6">({type})</span>
                   </label>
                   <%= if type == "text" or String.contains?(type, "char") && String.length(Map.get(@form_data, col, "") |> to_string) > 30 do %>
@@ -409,7 +409,7 @@ defmodule RuleMavenWeb.AdminLive do
         <%!-- Table view --%>
         <%= if @view_mode == :table do %>
           <div style="overflow-x:auto;border:1px solid var(--border);border-radius:0.5rem">
-            <table style="width:100%;border-collapse:collapse;font-size:0.68rem;table-layout:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:0.75rem;table-layout:auto">
               <thead>
                 <tr style="background:var(--bg-subtle);text-align:left">
                   <%= for {col, type} <- @columns do %>
@@ -443,27 +443,27 @@ defmodule RuleMavenWeb.AdminLive do
                           type="button"
                           phx-click="edit_row"
                           phx-value-id={row_id}
-                          style="color:var(--text-secondary);background:none;border:none;font-size:0.65rem;cursor:pointer"
+                          style="color:var(--text-secondary);background:none;border:none;font-size:0.72rem;cursor:pointer"
                         >Edit</button>
                         <%= if @delete_id == row_id do %>
-                          <span style="color:#dc2626;font-size:0.65rem">Delete?</span>
+                          <span style="color:#dc2626;font-size:0.72rem">Delete?</span>
                           <button
                             type="button"
                             phx-click="delete_row"
                             phx-value-id={row_id}
-                            style="color:#dc2626;background:none;border:none;font-size:0.65rem;font-weight:600;cursor:pointer"
+                            style="color:#dc2626;background:none;border:none;font-size:0.72rem;font-weight:600;cursor:pointer"
                           >Yes</button>
                           <button
                             type="button"
                             phx-click="cancel_delete"
-                            style="color:var(--text-muted);background:none;border:none;font-size:0.65rem;cursor:pointer"
+                            style="color:var(--text-muted);background:none;border:none;font-size:0.72rem;cursor:pointer"
                           >No</button>
                         <% else %>
                           <button
                             type="button"
                             phx-click="confirm_delete"
                             phx-value-id={row_id}
-                            style="color:var(--text-muted);background:none;border:none;font-size:0.65rem;cursor:pointer"
+                            style="color:var(--text-muted);background:none;border:none;font-size:0.72rem;cursor:pointer"
                             title="Delete"
                           >✕</button>
                         <% end %>
@@ -501,27 +501,27 @@ defmodule RuleMavenWeb.AdminLive do
                     type="button"
                     phx-click="edit_row"
                     phx-value-id={row_id}
-                    style="color:var(--blue);background:none;border:none;font-size:0.68rem;cursor:pointer;font-weight:600"
+                    style="color:var(--blue);background:none;border:none;font-size:0.75rem;cursor:pointer;font-weight:600"
                   >Edit</button>
                   <%= if @delete_id == row_id do %>
-                    <span style="color:#dc2626;font-size:0.68rem">Delete?</span>
+                    <span style="color:#dc2626;font-size:0.75rem">Delete?</span>
                     <button
                       type="button"
                       phx-click="delete_row"
                       phx-value-id={row_id}
-                      style="color:#dc2626;background:none;border:none;font-size:0.68rem;font-weight:600;cursor:pointer"
+                      style="color:#dc2626;background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer"
                     >Yes</button>
                     <button
                       type="button"
                       phx-click="cancel_delete"
-                      style="color:var(--text-muted);background:none;border:none;font-size:0.68rem;cursor:pointer"
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.75rem;cursor:pointer"
                     >No</button>
                   <% else %>
                     <button
                       type="button"
                       phx-click="confirm_delete"
                       phx-value-id={row_id}
-                      style="color:var(--text-muted);background:none;border:none;font-size:0.68rem;cursor:pointer"
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.75rem;cursor:pointer"
                     >✕</button>
                   <% end %>
                 </div>
