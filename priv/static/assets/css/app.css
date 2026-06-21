@@ -73,12 +73,9 @@
   --header-bg-end: #1a0e05;
   --header-border: #d4a030;
   --focus-ring: rgba(212, 160, 48, 0.25);
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
 }
 
-/* Midnight (system fallback) */
+/* Midnight system fallback */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #1a1410;
@@ -109,279 +106,304 @@
   }
 }
 
-/* Lavender (explicit) */
+/* Lavender — soft approachable daylight */
 [data-theme="light"] {
   color-scheme: light;
+  --bg: #faf8f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f3f0fa;
+  --bg-danger: #fef2f2;
+  --text: #2d2a3a;
+  --text-secondary: #6b6880;
+  --text-muted: #9b98b0;
+  --text-heading: #1e1b2e;
+  --border: #e2dfe8;
+  --border-strong: #c4c0d0;
+  --accent: #6c5ce7;
+  --accent-dark: #5a4bd1;
+  --accent-light: #a89df8;
+  --accent-subtle: #f3f0fa;
+  --yellow: #c8960f;
+  --red: #d64040;
+  --red-bg: #fef2f2;
+  --green: #3a8a50;
+  --blue: #4a70c0;
+  --shadow: rgba(0, 0, 0, 0.05);
+  --shadow-hover: rgba(108, 92, 231, 0.12);
+  --header-bg-start: #5a4bd1;
+  --header-bg-end: #3a2fa0;
+  --header-border: #c8960f;
+  --focus-ring: rgba(108, 92, 231, 0.2);
 }
 
-/* ===== Neon — green glow, cyberpunk ===== */
+/* Neon — cyberpunk green glow */
 [data-theme="matrix"] {
-  --bg: #121A12;
-  --bg-surface: #1A241A;
-  --bg-subtle: #1E2A1E;
-  --bg-danger: #2E1A1A;
-  --text: #C8F0C8;
-  --text-secondary: #90C890;
-  --text-muted: #609860;
-  --text-heading: #C8F0C8;
-  --border: #1E3A1E;
-  --border-strong: #2E5A2E;
-  --accent: #009929;
-  --accent-dark: #006619;
-  --accent-light: #40C860;
-  --accent-subtle: #142314;
-  --yellow: #E0C040;
-  --red: #E06060;
-  --red-bg: #2E1A1A;
-  --green: #50D070;
-  --blue: #40A0C0;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --shadow-hover: rgba(0, 153, 41, 0.2);
-  --header-bg-start: #004D20;
-  --header-bg-end: #002A10;
-  --header-border: #009929;
-  --focus-ring: rgba(0, 153, 41, 0.25);
   color-scheme: dark;
+  --bg: #0d1117;
+  --bg-surface: #131820;
+  --bg-subtle: #182218;
+  --bg-danger: #1c1515;
+  --text: #b8d8b8;
+  --text-secondary: #709070;
+  --text-muted: #486048;
+  --text-heading: #c8f0c8;
+  --border: #1c3a1c;
+  --border-strong: #2a5a2a;
+  --accent: #00cc44;
+  --accent-dark: #009933;
+  --accent-light: #33ff66;
+  --accent-subtle: #182218;
+  --yellow: #88cc00;
+  --red: #ff4040;
+  --red-bg: #1c1515;
+  --green: #00cc44;
+  --blue: #4488cc;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(0, 204, 68, 0.15);
+  --header-bg-start: #002200;
+  --header-bg-end: #001100;
+  --header-border: #00cc44;
+  --focus-ring: rgba(0, 204, 68, 0.2);
 }
 
-/* ===== Parchment — warm paper, RPG tome ===== */
+/* Parchment — warm medieval scroll */
 [data-theme="fantasy"] {
-  --bg: #FFF8F0;
-  --bg-surface: #FFFFFF;
-  --bg-subtle: #FDF0E0;
-  --bg-danger: #FFF0F0;
-  --text: #2E1A0A;
-  --text-secondary: #705040;
-  --text-muted: #A08070;
-  --text-heading: #2E1A0A;
-  --border: #E0D0C0;
-  --border-strong: #C0A890;
-  --accent: #8B4513;
-  --accent-dark: #5C2E0A;
-  --accent-light: #B87440;
-  --accent-subtle: #FDF0E0;
-  --yellow: #D4A017;
-  --red: #C83030;
-  --red-bg: #FFF0F0;
-  --green: #6B8E23;
-  --blue: #4A6FA5;
-  --shadow: rgba(0, 0, 0, 0.06);
-  --shadow-hover: rgba(139, 69, 19, 0.12);
-  --header-bg-start: #5C2E0A;
-  --header-bg-end: #3A1A04;
-  --header-border: #D4A017;
-  --focus-ring: rgba(139, 69, 19, 0.15);
   color-scheme: light;
+  --bg: #f5ecd7;
+  --bg-surface: #fdf6e8;
+  --bg-subtle: #efe0c8;
+  --bg-danger: #f8e8e0;
+  --text: #3a3020;
+  --text-secondary: #6b5c40;
+  --text-muted: #9b8c70;
+  --text-heading: #2a2010;
+  --border: #d4c8a8;
+  --border-strong: #a89870;
+  --accent: #8b5e3c;
+  --accent-dark: #6b4030;
+  --accent-light: #b88060;
+  --accent-subtle: #efe0c8;
+  --yellow: #b8960f;
+  --red: #a04030;
+  --red-bg: #f8e8e0;
+  --green: #4a7030;
+  --blue: #406090;
+  --shadow: rgba(0, 0, 0, 0.08);
+  --shadow-hover: rgba(139, 94, 60, 0.12);
+  --header-bg-start: #6b4030;
+  --header-bg-end: #3a2010;
+  --header-border: #b8960f;
+  --focus-ring: rgba(139, 94, 60, 0.2);
 }
 
-/* ===== Nebula — cosmic, starfields ===== */
+/* Nebula — deep space cosmic */
 [data-theme="scifi"] {
-  --bg: #080E1A;
-  --bg-surface: #0E1A2E;
-  --bg-subtle: #141E32;
-  --bg-danger: #2E1A1A;
-  --text: #C0D8F0;
-  --text-secondary: #80A0C8;
-  --text-muted: #587090;
-  --text-heading: #C0D8F0;
-  --border: #1A2E4A;
-  --border-strong: #2A4060;
-  --accent: #0099CC;
-  --accent-dark: #006688;
-  --accent-light: #40B8E8;
-  --accent-subtle: #141E32;
-  --yellow: #FFD060;
-  --red: #F06060;
-  --red-bg: #2E1A1A;
-  --green: #40D0A0;
-  --blue: #0099CC;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --shadow-hover: rgba(0, 153, 204, 0.2);
-  --header-bg-start: #003880;
-  --header-bg-end: #002050;
-  --header-border: #0099CC;
-  --focus-ring: rgba(0, 153, 204, 0.25);
   color-scheme: dark;
+  --bg: #0a0e1a;
+  --bg-surface: #101830;
+  --bg-subtle: #162038;
+  --bg-danger: #1a1420;
+  --text: #c0c8e0;
+  --text-secondary: #8090b8;
+  --text-muted: #586898;
+  --text-heading: #d8e0f8;
+  --border: #1c2a4a;
+  --border-strong: #2c4070;
+  --accent: #40c0e0;
+  --accent-dark: #2090b0;
+  --accent-light: #80e0f8;
+  --accent-subtle: #162038;
+  --yellow: #e0c040;
+  --red: #e06060;
+  --red-bg: #1a1420;
+  --green: #40d070;
+  --blue: #4088d0;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(64, 192, 224, 0.15);
+  --header-bg-start: #101840;
+  --header-bg-end: #060818;
+  --header-border: #40c0e0;
+  --focus-ring: rgba(64, 192, 224, 0.2);
 }
 
-/* ===== Crypt — blood red, haunted ===== */
+/* Crypt — dark gothic cathedral */
 [data-theme="scary"] {
-  --bg: #120808;
-  --bg-surface: #1C0E0E;
-  --bg-subtle: #241414;
-  --bg-danger: #2E1010;
-  --text: #E8C8C8;
-  --text-secondary: #C89090;
-  --text-muted: #906868;
-  --text-heading: #E8C8C8;
-  --border: #2E1818;
-  --border-strong: #442828;
-  --accent: #D43030;
-  --accent-dark: #A81818;
-  --accent-light: #E86060;
-  --accent-subtle: #221212;
-  --yellow: #E08040;
-  --red: #D43030;
-  --red-bg: #2E1010;
-  --green: #B05050;
-  --blue: #906880;
-  --shadow: rgba(0, 0, 0, 0.4);
-  --shadow-hover: rgba(200, 40, 40, 0.2);
-  --header-bg-start: #0A0202;
-  --header-bg-end: #000000;
-  --header-border: #D43030;
-  --focus-ring: rgba(200, 40, 40, 0.25);
   color-scheme: dark;
+  --bg: #120a0a;
+  --bg-surface: #1c1212;
+  --bg-subtle: #241818;
+  --bg-danger: #2e1818;
+  --text: #d0b8b8;
+  --text-secondary: #a08080;
+  --text-muted: #705858;
+  --text-heading: #e0c0c0;
+  --border: #3a2020;
+  --border-strong: #5a3030;
+  --accent: #c84040;
+  --accent-dark: #a03030;
+  --accent-light: #e06060;
+  --accent-subtle: #241818;
+  --yellow: #c8a030;
+  --red: #c84040;
+  --red-bg: #2e1818;
+  --green: #4a8060;
+  --blue: #6070a0;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --shadow-hover: rgba(200, 64, 64, 0.15);
+  --header-bg-start: #2a1010;
+  --header-bg-end: #0e0404;
+  --header-border: #c84040;
+  --focus-ring: rgba(200, 64, 64, 0.2);
 }
 
-/* ===== Golden Hour — warm sunny glow ===== */
+/* Golden Hour — warm sunny cheer */
 [data-theme="happy"] {
-  --bg: #FFF8E0;
-  --bg-surface: #FFFFFF;
-  --bg-subtle: #FFF0C8;
-  --bg-danger: #FFF0F0;
-  --text: #2E2A1A;
-  --text-secondary: #706840;
-  --text-muted: #A09870;
-  --text-heading: #2E2A1A;
-  --border: #E8E0C8;
-  --border-strong: #D0C8A0;
-  --accent: #D07000;
-  --accent-dark: #A85800;
-  --accent-light: #E89840;
-  --accent-subtle: #FFF0C8;
-  --yellow: #FFD700;
-  --red: #E05050;
-  --red-bg: #FFF0F0;
-  --green: #50A040;
-  --blue: #5090D0;
-  --shadow: rgba(0, 0, 0, 0.06);
-  --shadow-hover: rgba(208, 112, 0, 0.12);
-  --header-bg-start: #A85800;
-  --header-bg-end: #703800;
-  --header-border: #FFD700;
-  --focus-ring: rgba(208, 112, 0, 0.15);
   color-scheme: light;
+  --bg: #fef9f0;
+  --bg-surface: #ffffff;
+  --bg-subtle: #fff4e0;
+  --bg-danger: #fff0e8;
+  --text: #3a2a10;
+  --text-secondary: #6b5020;
+  --text-muted: #9b8040;
+  --text-heading: #2a1a05;
+  --border: #e8d8b0;
+  --border-strong: #c8b080;
+  --accent: #e09020;
+  --accent-dark: #c07010;
+  --accent-light: #f0b050;
+  --accent-subtle: #fff4e0;
+  --yellow: #d8a020;
+  --red: #d05040;
+  --red-bg: #fff0e8;
+  --green: #509040;
+  --blue: #4070b0;
+  --shadow: rgba(0, 0, 0, 0.06);
+  --shadow-hover: rgba(224, 144, 32, 0.12);
+  --header-bg-start: #e09020;
+  --header-bg-end: #b06810;
+  --header-border: #f0c060;
+  --focus-ring: rgba(224, 144, 32, 0.2);
 }
 
-/* ===== Canopy — forest floor, mossy light ===== */
+/* Canopy — deep forest serenity */
 [data-theme="forest"] {
-  --bg: #0D150D;
-  --bg-surface: #162016;
-  --bg-subtle: #1B2A1B;
-  --bg-danger: #2E1A1A;
-  --text: #D4E0C8;
-  --text-secondary: #8AA080;
-  --text-muted: #5A7050;
-  --text-heading: #E0F0D0;
-  --border: #1E301E;
-  --border-strong: #2E4A2E;
-  --accent: #5DA848;
-  --accent-dark: #3D8030;
-  --accent-light: #80D068;
-  --accent-subtle: #1B2A1B;
-  --yellow: #C8A840;
-  --red: #D06050;
-  --red-bg: #2E1A1A;
-  --green: #5DA848;
-  --blue: #5080A0;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --shadow-hover: rgba(93, 168, 72, 0.2);
-  --header-bg-start: #1A3A1A;
-  --header-bg-end: #0D200D;
-  --header-border: #5DA848;
-  --focus-ring: rgba(93, 168, 72, 0.25);
   color-scheme: dark;
+  --bg: #0e1a10;
+  --bg-surface: #162418;
+  --bg-subtle: #1a2c1c;
+  --bg-danger: #1c1814;
+  --text: #b8d0b8;
+  --text-secondary: #80a880;
+  --text-muted: #507858;
+  --text-heading: #c8e0c8;
+  --border: #1c3820;
+  --border-strong: #2a5832;
+  --accent: #50b860;
+  --accent-dark: #3a8a48;
+  --accent-light: #80d890;
+  --accent-subtle: #1a2c1c;
+  --yellow: #a0c040;
+  --red: #c05050;
+  --red-bg: #1c1814;
+  --green: #50b860;
+  --blue: #5088c0;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(80, 184, 96, 0.15);
+  --header-bg-start: #102810;
+  --header-bg-end: #081408;
+  --header-border: #50b860;
+  --focus-ring: rgba(80, 184, 96, 0.2);
 }
 
-/* ===== Abyss — deep sea, dark teal ===== */
+/* Abyss — deep ocean depths */
 [data-theme="ocean"] {
-  --bg: #0A0E1A;
-  --bg-surface: #121830;
-  --bg-subtle: #182240;
-  --bg-danger: #1E1E2E;
-  --text: #D0E4F0;
-  --text-secondary: #88A8C0;
-  --text-muted: #587080;
-  --text-heading: #D0E4F0;
-  --border: #1A2848;
-  --border-strong: #284068;
-  --accent: #2090D0;
-  --accent-dark: #1070A8;
-  --accent-light: #60B8E8;
-  --accent-subtle: #182240;
-  --yellow: #D0A840;
-  --red: #D05050;
-  --red-bg: #1E1E2E;
-  --green: #40A080;
-  --blue: #2090D0;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --shadow-hover: rgba(32, 144, 208, 0.2);
-  --header-bg-start: #0A2048;
-  --header-bg-end: #061030;
-  --header-border: #2090D0;
-  --focus-ring: rgba(32, 144, 208, 0.25);
   color-scheme: dark;
+  --bg: #0a141e;
+  --bg-surface: #101c2a;
+  --bg-subtle: #142432;
+  --bg-danger: #181c20;
+  --text: #b0c8e0;
+  --text-secondary: #7098b8;
+  --text-muted: #487090;
+  --text-heading: #c0d8f0;
+  --border: #182a40;
+  --border-strong: #284868;
+  --accent: #3090d0;
+  --accent-dark: #2068a0;
+  --accent-light: #60b8f0;
+  --accent-subtle: #142432;
+  --yellow: #b0c040;
+  --red: #d06060;
+  --red-bg: #181c20;
+  --green: #409860;
+  --blue: #3090d0;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(48, 144, 208, 0.15);
+  --header-bg-start: #0c2038;
+  --header-bg-end: #040c18;
+  --header-border: #3090d0;
+  --focus-ring: rgba(48, 144, 208, 0.2);
 }
 
-/* ===== Dusk — twilight, ember skies ===== */
+/* Dusk — warm sunset sky */
 [data-theme="sunset"] {
-  --bg: #1A0E1A;
-  --bg-surface: #281A28;
-  --bg-subtle: #342034;
-  --bg-danger: #2E1A1E;
-  --text: #E8D0D8;
-  --text-secondary: #C090A8;
-  --text-muted: #886878;
-  --text-heading: #E8D0D8;
-  --border: #3A2038;
-  --border-strong: #503050;
-  --accent: #C85030;
-  --accent-dark: #A03020;
-  --accent-light: #E07850;
-  --accent-subtle: #342034;
-  --yellow: #E0A040;
-  --red: #E04040;
-  --red-bg: #2E1A1E;
-  --green: #A08050;
-  --blue: #A060C0;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --shadow-hover: rgba(200, 80, 48, 0.2);
-  --header-bg-start: #4A2030;
-  --header-bg-end: #2A1020;
-  --header-border: #E08850;
-  --focus-ring: rgba(200, 80, 48, 0.25);
   color-scheme: dark;
+  --bg: #1a1420;
+  --bg-surface: #241c2a;
+  --bg-subtle: #2a2032;
+  --bg-danger: #2a1c20;
+  --text: #d8c0d0;
+  --text-secondary: #a880a0;
+  --text-muted: #786070;
+  --text-heading: #e8d0e0;
+  --border: #3a2840;
+  --border-strong: #5a3860;
+  --accent: #d060a0;
+  --accent-dark: #b04080;
+  --accent-light: #e890c0;
+  --accent-subtle: #2a2032;
+  --yellow: #d8a840;
+  --red: #d05060;
+  --red-bg: #2a1c20;
+  --green: #50a070;
+  --blue: #6080c0;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(208, 96, 160, 0.15);
+  --header-bg-start: #381830;
+  --header-bg-end: #1a0c18;
+  --header-border: #d060a0;
+  --focus-ring: rgba(208, 96, 160, 0.2);
 }
 
-/* ===== Cassette — beige/teal, 80s terminal ===== */
+/* Cassette — 80s synthwave neon */
 [data-theme="retro"] {
-  --bg: #F5ECD8;
-  --bg-surface: #FFF8EC;
-  --bg-subtle: #EDE0C8;
-  --bg-danger: #FFF0F0;
-  --text: #2A2218;
-  --text-secondary: #706050;
-  --text-muted: #A09080;
-  --text-heading: #2A2218;
-  --border: #E0D0C0;
-  --border-strong: #C0A890;
-  --accent: #208A7A;
-  --accent-dark: #1A6A5A;
-  --accent-light: #50B0A0;
-  --accent-subtle: #EDE0C8;
-  --yellow: #D4A848;
-  --red: #C86040;
-  --red-bg: #FFF0F0;
-  --green: #6A9050;
-  --blue: #6070A0;
-  --shadow: rgba(0, 0, 0, 0.06);
-  --shadow-hover: rgba(32, 138, 122, 0.12);
-  --header-bg-start: #1A6A5A;
-  --header-bg-end: #0E4038;
-  --header-border: #D4A848;
-  --focus-ring: rgba(32, 138, 122, 0.15);
-  color-scheme: light;
+  color-scheme: dark;
+  --bg: #100a20;
+  --bg-surface: #1a1430;
+  --bg-subtle: #221838;
+  --bg-danger: #201828;
+  --text: #c8b8e8;
+  --text-secondary: #9880c0;
+  --text-muted: #685890;
+  --text-heading: #d8d0f8;
+  --border: #241840;
+  --border-strong: #3a2870;
+  --accent: #e040c0;
+  --accent-dark: #b03090;
+  --accent-light: #f080e0;
+  --accent-subtle: #221838;
+  --yellow: #f0c040;
+  --red: #f04060;
+  --red-bg: #201828;
+  --green: #40d080;
+  --blue: #4080f0;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-hover: rgba(224, 64, 192, 0.2);
+  --header-bg-start: #281040;
+  --header-bg-end: #100820;
+  --header-border: #e040c0;
+  --focus-ring: rgba(224, 64, 192, 0.2);
 }
 
 /* ============================
@@ -413,7 +435,8 @@ body {
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.6;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -540,13 +563,13 @@ a:not([class]):hover {
 }
 
 .header-icon {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   line-height: 1;
 }
 
 .header-title {
   font-family: var(--font-display);
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: #FFFFFF;
   letter-spacing: -0.02em;
@@ -763,12 +786,12 @@ a:not([class]):hover {
 }
 
 /* ===== Typography ===== */
-.text-xs { font-size: 0.75rem; }
-.text-sm { font-size: 0.85rem; }
+.text-xs { font-size: 0.8rem; }
+.text-sm { font-size: 0.9rem; }
 .text-base { font-size: 1rem; }
-.text-lg { font-size: 1.05rem; }
-.text-xl { font-size: 1.15rem; }
-.text-2xl { font-size: 1.3rem; }
+.text-lg { font-size: 1.1rem; }
+.text-xl { font-size: 1.25rem; }
+.text-2xl { font-size: 1.5rem; }
 
 h1, h2, h3 {
   font-family: var(--font-body);
