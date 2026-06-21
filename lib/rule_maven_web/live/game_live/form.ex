@@ -1272,9 +1272,9 @@ defmodule RuleMavenWeb.GameLive.Form do
                   </div>
                 <% end %>
               <% end %>
-              <form phx-submit="download" style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
-                <div><label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label><input type="text" name="url" value={@download_url} placeholder="https://example.com/rulebook.pdf" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
-                <div><label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label><input type="text" name="label" value={@download_label} placeholder="e.g. Core Rulebook" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
+              <form phx-submit="download" style="margin-top:0.75rem">
+                <div style="margin-bottom:0.75rem"><label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label><input type="text" name="url" value={@download_url} placeholder="https://example.com/rulebook.pdf" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
+                <div style="margin-bottom:0.75rem"><label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label><input type="text" name="label" value={@download_label} placeholder="e.g. Core Rulebook" class="w-full border rounded px-3 py-2 text-sm" disabled={@downloading} /></div>
                 <button type="submit" disabled={@downloading} style="background:var(--accent);color:white;border:none;padding:0.5rem 1rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"><%= if @downloading, do: "Downloading...", else: "Download & Extract" %></button>
               </form>
               <%= if @download_ok do %><p class="text-sm mt-2" style="color:#166534">Downloaded! <.link href={"/#{@download_ok}"} target="_blank" class="underline font-semibold">View PDF</.link> or go to the <.link navigate={~p"/games/#{@game.id}"} class="underline font-semibold">Ask page</.link>.</p><% end %>
