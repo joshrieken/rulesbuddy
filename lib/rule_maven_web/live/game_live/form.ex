@@ -1,7 +1,9 @@
 defmodule RuleMavenWeb.GameLive.Form do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Games, RulebookDownloader, Settings, CheatSheet}
+  alias RuleMaven.{Games, Repo, RulebookDownloader, Settings, CheatSheet}
+  import Ecto.Query
+  alias RuleMaven.Games.Document
 
   @max_pdfs 10
 
@@ -22,6 +24,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         bgg_results: [],
         search_error: nil,
         confirm_clear: false,
+        confirm_clear_sources: false,
         confirm_delete_cheat: false,
         question_count: 0,
         generating: false,
@@ -192,6 +195,24 @@ defmodule RuleMavenWeb.GameLive.Form do
      socket
      |> assign(confirm_clear: false, question_count: 0)
      |> put_flash(:info, "Cleared #{count} question(s) for #{game.name}.")}
+  end
+
+  def handle_event("confirm_clear_sources", _params, socket) do
+    {:noreply, assign(socket, confirm_clear_sources: true)}
+  end
+
+  def handle_event("cancel_clear_sources", _params, socket) do
+    {:noreply, assign(socket, confirm_clear_sources: false)}
+  end
+
+  def handle_event("clear_sources", _params, socket) do
+    game = socket.assigns.game
+    {count, _} = Repo.delete_all(from d in Document, where: d.game_id == ^game.id)
+
+    {:noreply,
+     socket
+     |> assign(confirm_clear_sources: false, source_entries: [])
+     |> put_flash(:info, "Cleared #{count} rulebook source(s) for #{game.name}.")}
   end
 
   @impl true
@@ -1244,21 +1265,45 @@ defmodule RuleMavenWeb.GameLive.Form do
 
           <%!-- Danger tab --%>
           <div style={if @tab == "danger", do: "display:block", else: "display:none"}>
-            <%= if @question_count > 0 do %>
-              <div class="border border-red-200 rounded-lg p-4">
-                <h2 class="text-sm font-semibold mb-2" style="color:#dc2626">Danger Zone</h2>
-                <%= if not @confirm_clear do %>
-                  <p class="text-xs text-gray-500 mb-2">Clear all questions and answers logged for this game.</p>
-                  <button type="button" phx-click="confirm_clear" style="background:#dc2626;color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Clear All Questions</button>
-                <% else %>
-                  <p class="text-sm font-medium mb-2" style="color:#dc2626">Are you sure? This cannot be undone.</p>
-                  <div class="flex gap-2">
-                    <button type="button" phx-click="clear_questions" style="background:#dc2626;color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Yes, clear all</button>
-                    <button type="button" phx-click="cancel_clear" style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Cancel</button>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
+            <div class="border border-red-200 rounded-lg p-4" style="display:flex;flex-direction:column;gap:1rem">
+              <h2 class="text-sm font-semibold mb-1" style="color:#dc2626">Danger Zone</h2>
+
+              <%!-- Clear questions --%>
+              <%= if @question_count > 0 do %>
+                <div style="padding-bottom:0.75rem;border-bottom:1px solid var(--border-subtle)">
+                  <p class="text-xs text-gray-500 mb-2">Clear all {@question_count} questions and answers for this game.</p>
+                  <%= if not @confirm_clear do %>
+                    <button type="button" phx-click="confirm_clear" style="background:#dc2626;color:white;border:none;padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Clear All Questions</button>
+                  <% else %>
+                    <p class="text-xs font-medium mb-2" style="color:#dc2626">Are you sure? This cannot be undone.</p>
+                    <div class="flex gap-2">
+                      <button type="button" phx-click="clear_questions" style="background:#dc2626;color:white;border:none;padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Yes, clear all</button>
+                      <button type="button" phx-click="cancel_clear" style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Cancel</button>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <%!-- Clear rulebook sources --%>
+              <%= if length(@source_entries) > 0 do %>
+                <div>
+                  <p class="text-xs text-gray-500 mb-2">Remove all {length(@source_entries)} rulebook source(s) for this game.</p>
+                  <%= if not @confirm_clear_sources do %>
+                    <button type="button" phx-click="confirm_clear_sources" style="background:#dc2626;color:white;border:none;padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Clear All Rulebook Sources</button>
+                  <% else %>
+                    <p class="text-xs font-medium mb-2" style="color:#dc2626">Are you sure? This cannot be undone.</p>
+                    <div class="flex gap-2">
+                      <button type="button" phx-click="clear_sources" style="background:#dc2626;color:white;border:none;padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Yes, clear all</button>
+                      <button type="button" phx-click="cancel_clear_sources" style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.3rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer">Cancel</button>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <%= if @question_count == 0 and length(@source_entries) == 0 do %>
+                <p class="text-xs text-gray-400">Nothing to clear — no questions or rulebook sources yet.</p>
+              <% end %>
+            </div>
           </div>
 
           <div :if={@tab in ["details", "rulebook"]} class="flex gap-3" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)">
