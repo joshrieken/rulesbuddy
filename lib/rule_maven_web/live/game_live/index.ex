@@ -451,14 +451,14 @@ defmodule RuleMavenWeb.GameLive.Index do
                 <% end %>
               </p>
             </div>
-            <div class="flex gap-2 flex-shrink-0 game-actions items-center">
+            <div class="flex gap-1.5 flex-shrink-0 game-actions items-center">
               <%= if expansion_count > 0 do %>
                 <button
                   type="button"
                   phx-click="toggle_expansions"
                   phx-value-id={game.id}
-                  style="color:var(--blue);background:none;border:none;font-size:0.8rem;font-weight:600;cursor:pointer;padding:0.1rem 0.3rem"
-                >{if expanded, do: "▲", else: "▼"}</button>
+                  style="background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;line-height:1.2"
+                >{if expanded, do: "▲", else: "▼"} {expansion_count}</button>
               <% end %>
               <a
                 :if={game.bgg_id}
@@ -467,17 +467,17 @@ defmodule RuleMavenWeb.GameLive.Index do
                 target="_blank"
                 rel="noopener"
                 phx-hook="ExternalLink"
-                style="color:#ea580c;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer"
+                style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
               >BGG</a>
               <.link
                 :if={Map.get(@source_counts, game.id, 0) > 0}
                 navigate={~p"/games/#{game.id}"}
-                class="text-blue-600 hover:underline text-sm font-medium"
+                style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
               >Ask</.link>
               <.link
                 :if={RuleMaven.Users.game_master?(@current_user)}
                 navigate={~p"/games/#{game.id}/edit"}
-                class="text-gray-600 hover:underline text-sm"
+                style="background:var(--bg-subtle);color:var(--text-secondary);text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
               >Edit</.link>
             </div>
 
@@ -490,12 +490,12 @@ defmodule RuleMavenWeb.GameLive.Index do
                       type="button"
                       phx-click="confirm_delete"
                       phx-value-id={game.id}
-                      style="color:#dc2626;background:none;border:none;font-size:0.75rem;font-weight:600;cursor:pointer"
+                      style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
                     >Yes</button>
                     <button
                       type="button"
                       phx-click="cancel_delete"
-                      style="color:var(--text-secondary);background:none;border:none;font-size:0.75rem;cursor:pointer"
+                      style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
                     >No</button>
                   </div>
                 <% else %>
@@ -503,7 +503,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     type="button"
                     phx-click="delete_game"
                     phx-value-id={game.id}
-                    style="color:var(--text-muted);background:none;border:none;font-size:0.75rem;cursor:pointer;padding:0.25rem"
+                    style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem"
                     title="Delete game"
                   >✕</button>
                 <% end %>
@@ -537,7 +537,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     <% end %>
                   </p>
                 </div>
-                <div class="flex gap-2 flex-shrink-0 game-actions items-center">
+                <div class="flex gap-1.5 flex-shrink-0 game-actions items-center">
                   <a
                     :if={exp.bgg_id}
                     id={"bgg-link-exp-#{exp.id}"}
@@ -545,12 +545,12 @@ defmodule RuleMavenWeb.GameLive.Index do
                     target="_blank"
                     rel="noopener"
                     phx-hook="ExternalLink"
-                    style="color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer"
+                    style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.15rem 0.4rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
                   >BGG</a>
                   <.link
                     :if={Map.get(@source_counts, exp.id, 0) > 0}
                     navigate={~p"/games/#{exp.id}"}
-                    class="text-blue-600 hover:underline text-sm font-medium"
+                    style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.45rem;border-radius:0.3rem;line-height:1.2"
                   >Ask</.link>
                 </div>
               </div>
