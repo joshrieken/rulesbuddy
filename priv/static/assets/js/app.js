@@ -152,12 +152,15 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
   hooks: Hooks
 });
 
-// Track whether we've ever connected.
-// On first connect, add a class so CSS only shows the disconnect overlay
-// after we've been connected at least once.
-window.addEventListener("phx:page-loading-stop", () => {
-  document.body.classList.add("phx-was-connected");
+// Track first successful WebSocket connection.
+// Only after phx-connected appears on body do we allow the disconnect overlay.
+let observer = new MutationObserver(() => {
+  if (document.body.classList.contains("phx-connected")) {
+    document.body.classList.add("phx-was-connected");
+    observer.disconnect();
+  }
 });
+observer.observe(document.body, {attributes: true, attributeFilter: ["class"]});
 
 // Only connect the LiveSocket when there are LiveView elements on the page.
 // Connecting unconditionally on every page (e.g. /login) creates a WebSocket
