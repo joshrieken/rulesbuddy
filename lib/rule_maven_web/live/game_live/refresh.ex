@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.GameLive.Refresh do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Games, BGG}
+  alias RuleMaven.{Games, BggRefresher}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -14,42 +14,33 @@ defmodule RuleMavenWeb.GameLive.Refresh do
       |> Enum.filter(& &1.bgg_id)
       |> Enum.sort_by(&String.downcase(&1.name))
 
-    if games != [] do
-      pid = self()
-      total = length(games)
+    total = length(games)
 
-      {:ok, task} =
-        Task.start(fn ->
-          games
-          |> Enum.with_index(1)
-          |> Task.async_stream(
-            fn {game, i} ->
-              send(pid, {:progress, game.name, i, total})
-              :timer.sleep(2000)
+    {already, log} =
+      if BggRefresher.running?() do
+        BggRefresher.subscribe(self())
 
-              case BGG.enrich_game(game, force: true) do
-                {:ok, _} -> send(pid, {:done, game.name, :ok})
-                {:error, _} -> send(pid, {:done, game.name, :error})
-              end
-            end,
-            max_concurrency: 2,
-            ordered: false,
-            timeout: 60_000
-          )
-          |> Stream.run()
+        case BggRefresher.state() do
+          nil ->
+            {true, ["⟳ Reconnecting to refresh..."]}
 
-          send(pid, {:complete})
-        end)
+          s ->
+            {true, s.log |> Enum.take(20)}
+        end
+      else
+        {false, []}
+      end
 
-      Process.monitor(task)
+    if games != [] and not already do
+      BggRefresher.start(games)
     end
 
     {:ok,
      assign(socket,
        games: games,
-       total: length(games),
+       total: total,
        current: 0,
-       log: [],
+       log: log,
        complete: false,
        error_count: 0,
        version: 0
