@@ -46,13 +46,15 @@
             <span class="header-title">Rule Maven</span>
           </a>
 
-          <button class="hamburger" id="hamburger-btn" aria-label="Menu">
-            <span></span><span></span><span></span>
-          </button>
-
           <% me =
             assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
               (assigns[:conn] && RuleMavenWeb.Layouts.current_user(assigns[:conn])) %>
+
+          <%= if me && RuleMaven.Users.game_master?(me) do %>
+            <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+              <span></span><span></span><span></span>
+            </button>
+          <% end %>
 
           <!-- Desktop nav -->
           <nav class="header-nav" id="header-nav">
