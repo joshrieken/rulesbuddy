@@ -1004,6 +1004,7 @@ a:not([class]):hover {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .theme-select {
