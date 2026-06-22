@@ -157,4 +157,58 @@ defmodule RuleMaven.UsersTest do
       assert pw1 != pw2
     end
   end
+
+  describe "profile update" do
+    setup do
+      {:ok, user} =
+        Users.create_user(%{
+          username: "profile_test",
+          email: "profile@test.com",
+          password: "testpass1234"
+        })
+
+      %{user: user}
+    end
+
+    test "update_profile/2 changes username and email", %{user: user} do
+      {:ok, updated} = Users.update_profile(user, %{username: "new_name", email: "new@test.com"})
+      assert updated.username == "new_name"
+      assert updated.email == "new@test.com"
+    end
+
+    test "update_profile/2 rejects duplicate username", %{user: user} do
+      {:ok, other} =
+        Users.create_user(%{
+          username: "other_user",
+          email: "other@test.com",
+          password: "testpass1234"
+        })
+
+      {:error, changeset} = Users.update_profile(user, %{username: other.username})
+      assert changeset.errors[:username]
+    end
+
+    test "update_profile/2 rejects invalid email", %{user: user} do
+      {:error, changeset} = Users.update_profile(user, %{email: ""})
+      assert changeset.errors[:email]
+    end
+
+    test "change_password/3 succeeds with correct current password", %{user: user} do
+      {:ok, updated} = Users.change_password(user, "testpass1234", "newpass5678")
+      assert updated
+
+      {:ok, authed} = Users.authenticate("profile_test", "newpass5678")
+      assert authed.id == user.id
+    end
+
+    test "change_password/3 fails with wrong current password", %{user: user} do
+      {:error, reason} = Users.change_password(user, "wrongpassword", "newpass5678")
+      assert reason =~ "incorrect"
+    end
+
+    test "change_password/3 fails with too-short new password", %{user: user} do
+      {:error, reason} = Users.change_password(user, "testpass1234", "ab")
+      assert reason =~ "4 characters"
+    end
+  end
 end

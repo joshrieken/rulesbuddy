@@ -95,9 +95,15 @@
 
             <%= cond do %>
               <% me -> %>
-                <.link href={~p"/settings"} class="nav-link nav-link-dim" aria-label="Settings">⚙</.link>
-                <span class="header-user"><%= me.username %></span>
-                <.link href={~p"/logout"} class="nav-link">Log out</.link>
+                <details class="user-dropdown">
+                  <summary class="user-dropdown-toggle">
+                    <span class="header-user">{me.username}</span>
+                  </summary>
+                  <div class="user-dropdown-menu">
+                    <.link href={~p"/settings"} class="user-dropdown-link">Settings</.link>
+                    <.link href={~p"/logout"} class="user-dropdown-link">Log out</.link>
+                  </div>
+                </details>
               <% true -> %>
                 <.link href={~p"/login"} class="nav-link">Log in</.link>
             <% end %>

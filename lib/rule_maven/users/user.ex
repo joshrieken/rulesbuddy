@@ -17,7 +17,7 @@ defmodule RuleMaven.Users.User do
 
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:username, :email, :role])
+    |> cast(attrs, [:username, :email, :role, :password_hash])
     |> validate_required([:username, :email, :role])
     |> validate_inclusion(:role, @all_roles)
     |> validate_length(:username, max: 80)
@@ -33,6 +33,16 @@ defmodule RuleMaven.Users.User do
     |> validate_required([:password])
     |> validate_length(:password, min: 4, max: 128)
     |> put_password_hash()
+  end
+
+  def profile_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:username, :email])
+    |> validate_required([:username, :email])
+    |> validate_length(:username, max: 80)
+    |> validate_length(:email, max: 160)
+    |> unique_constraint(:username)
+    |> unique_constraint(:email)
   end
 
   def game_master?(%{role: role}), do: role in @admin_roles

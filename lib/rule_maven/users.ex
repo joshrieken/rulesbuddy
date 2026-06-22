@@ -71,6 +71,35 @@ defmodule RuleMaven.Users do
 
   def game_master?(user), do: User.game_master?(user)
 
+  @doc """
+  Updates a user's profile (username, email). Validates uniqueness and required fields.
+  """
+  def update_profile(%User{} = user, attrs) do
+    user
+    |> User.profile_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Changes a user's password. Requires current password verification.
+  Returns {:ok, user} or {:error, reason}.
+  """
+  def change_password(%User{} = user, current_password, new_password) do
+    unless Bcrypt.verify_pass(current_password, user.password_hash) do
+      {:error, "Current password is incorrect."}
+    else
+      if String.length(new_password) < 4 do
+        {:error, "New password must be at least 4 characters."}
+      else
+        password_hash = Bcrypt.hash_pwd_salt(new_password)
+
+        user
+        |> User.changeset(%{password_hash: password_hash})
+        |> Repo.update()
+      end
+    end
+  end
+
   defp generate_temp_password do
     :crypto.strong_rand_bytes(10) |> Base.encode32(padding: false)
   end
