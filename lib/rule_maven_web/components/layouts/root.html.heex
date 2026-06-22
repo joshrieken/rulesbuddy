@@ -47,6 +47,33 @@
           </a>
           <span class="header-tagline">board game concierge</span>
 
+          <div class="header-controls">
+            <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;margin-right:0.2rem">Theme</span>
+            <select class="theme-select" id="theme-select" aria-label="Choose theme">
+              <option value="ocean">Abyss</option>
+              <option value="arcade">Arcade</option>
+              <option value="brass">Brass</option>
+              <option value="forest">Canopy</option>
+              <option value="retro">Cassette</option>
+              <option value="coral">Coral</option>
+              <option value="scary">Crypt</option>
+              <option value="sunset">Dusk</option>
+              <option value="ember">Ember</option>
+              <option value="frost">Frost</option>
+              <option value="happy">Golden Hour</option>
+              <option value="honey">Honey</option>
+              <option value="light">Lavender</option>
+              <option value="marble">Marble</option>
+              <option value="meadow">Meadow</option>
+              <option value="dark">Midnight</option>
+              <option value="scifi">Nebula</option>
+              <option value="matrix">Neon</option>
+              <option value="fantasy">Parchment</option>
+              <option value="twilight">Twilight</option>
+              <option value="void">Void</option>
+            </select>
+          </div>
+
           <div class="header-auth">
             <% me =
               assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
@@ -86,33 +113,6 @@
               <% true -> %>
                 <.link href={~p"/login"} class="header-auth-link">Log in</.link>
             <% end %>
-          </div>
-
-          <div class="header-controls">
-            <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;margin-right:0.2rem">Theme</span>
-            <select class="theme-select" id="theme-select" aria-label="Choose theme">
-              <option value="ocean">Abyss</option>
-              <option value="arcade">Arcade</option>
-              <option value="brass">Brass</option>
-              <option value="forest">Canopy</option>
-              <option value="retro">Cassette</option>
-              <option value="coral">Coral</option>
-              <option value="scary">Crypt</option>
-              <option value="sunset">Dusk</option>
-              <option value="ember">Ember</option>
-              <option value="frost">Frost</option>
-              <option value="happy">Golden Hour</option>
-              <option value="honey">Honey</option>
-              <option value="light">Lavender</option>
-              <option value="marble">Marble</option>
-              <option value="meadow">Meadow</option>
-              <option value="dark">Midnight</option>
-              <option value="scifi">Nebula</option>
-              <option value="matrix">Neon</option>
-              <option value="fantasy">Parchment</option>
-              <option value="twilight">Twilight</option>
-              <option value="void">Void</option>
-            </select>
           </div>
         </div>
       </header>
