@@ -28,6 +28,7 @@ defmodule RuleMavenWeb.Router do
 
     live_session :default, session: {RuleMavenWeb.UserLiveAuth, :get_session, []} do
       live "/", GameLive.Index, :index
+      live "/register", RegistrationLive, :index
       live "/games/new", GameLive.Form, :new
       live "/games/import", GameLive.Import, :index
       live "/games/refresh", GameLive.Refresh, :index
