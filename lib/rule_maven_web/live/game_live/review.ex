@@ -15,6 +15,7 @@ defmodule RuleMavenWeb.GameLive.Review do
          game: game,
          documents: Games.list_documents(game),
          faqs: Faq.list_faqs(game),
+         candidates: Faq.list_pending_candidates(game),
          page_title: "Review — #{game.name}"
        )}
     else
@@ -47,6 +48,34 @@ defmodule RuleMavenWeb.GameLive.Review do
 
     faqs = Faq.list_faqs(socket.assigns.game)
     {:noreply, assign(socket, faqs: faqs)}
+  end
+
+  @impl true
+  def handle_event("approve_candidate", %{"id" => id_str}, socket) do
+    candidate = Faq.get_candidate!(String.to_integer(id_str))
+
+    case Faq.approve_candidate(candidate) do
+      {:ok, _faq_entry} ->
+        candidates = Faq.list_pending_candidates(socket.assigns.game)
+        faqs = Faq.list_faqs(socket.assigns.game)
+
+        {:noreply,
+         socket
+         |> assign(candidates: candidates, faqs: faqs)
+         |> put_flash(:info, "FAQ candidate approved and published.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to approve FAQ candidate.")}
+    end
+  end
+
+  @impl true
+  def handle_event("reject_candidate", %{"id" => id_str}, socket) do
+    candidate = Faq.get_candidate!(String.to_integer(id_str))
+    Faq.reject_candidate(candidate)
+
+    candidates = Faq.list_pending_candidates(socket.assigns.game)
+    {:noreply, assign(socket, candidates: candidates)}
   end
 
   @impl true
@@ -143,6 +172,56 @@ defmodule RuleMavenWeb.GameLive.Review do
         <% end %>
         <div :if={@faqs == []} class="text-sm" style="color:var(--text-muted)">
           No FAQ entries yet. They will appear as questions are asked and clustered.
+        </div>
+      </div>
+
+      <!-- FAQ Candidates (Review Queue) -->
+      <h2 class="text-lg font-semibold mt-6 mb-3">
+        FAQ Candidates
+        <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400">(pending review)</span>
+      </h2>
+      <div style="display:flex;flex-direction:column;gap:0.75rem">
+        <%= for candidate <- @candidates do %>
+          <div style="padding:0.75rem;border:1px solid var(--border);border-radius:0.5rem;background:var(--bg-surface)">
+            <div style="margin-bottom:0.5rem">
+              <span class="font-semibold text-sm">Q: {candidate.question_text}</span>
+            </div>
+            <%= if candidate.sample_answer_text do %>
+              <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.3rem">
+                A: {String.slice(candidate.sample_answer_text, 0, 200)}
+              </div>
+            <% end %>
+            <%= if candidate.sample_citation do %>
+              <div style="font-size:0.75rem;color:var(--text);font-style:italic;margin-bottom:0.3rem">
+                "{String.slice(candidate.sample_citation, 0, 150)}"
+              </div>
+            <% end %>
+            <div class="flex items-center justify-between" style="margin-top:0.5rem">
+              <div style="font-size:0.7rem;color:var(--text-muted)">
+                <span style="color:#ef4444">👎 {candidate.thumbs_down_count}</span>
+                <span style="margin-left:0.5rem">asked {candidate.total_asked_count}x</span>
+              </div>
+              <div class="flex gap-1" style="flex-shrink:0">
+                <button
+                  phx-click="approve_candidate"
+                  phx-value-id={candidate.id}
+                  style="background:var(--accent);color:white;border:none;padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.75rem;cursor:pointer"
+                >
+                  Approve
+                </button>
+                <button
+                  phx-click="reject_candidate"
+                  phx-value-id={candidate.id}
+                  style="background:#ef4444;color:white;border:none;padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.75rem;cursor:pointer"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        <% end %>
+        <div :if={@candidates == []} class="text-sm" style="color:var(--text-muted)">
+          No FAQ candidates pending review. They will appear as questions receive thumbs-down feedback.
         </div>
       </div>
     </div>

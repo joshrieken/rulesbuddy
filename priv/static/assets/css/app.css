@@ -1783,5 +1783,13 @@ body:has([data-phx-main].phx-connected)::after {
   font-size: 1rem;
   font-weight: 500;
   font-family: var(--font-body);
-  margin: 0;
+   margin: 0;
 }
+
+/* ===== Markdown answer spacing ===== */
+.md-answer p { margin: 0.2rem 0; }
+.md-answer li > p { margin: 0.1rem 0; }
+.md-answer ol > li { margin: 1.5rem 0; }
+.md-answer ul > li { margin: 0.15rem 0; }
+.md-answer ol, .md-answer ul { margin: 0.15rem 0; padding-left: 1.3rem; }
+.md-answer strong { font-size: 0.9rem; }

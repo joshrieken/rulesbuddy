@@ -133,6 +133,34 @@ Hooks.GameListScroll = {
   }
 };
 
+Hooks.ClipboardCopy = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      const text = this.el.getAttribute("data-clipboard-text");
+      if (!text) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+          const origHTML = this.el.innerHTML;
+          this.el.innerHTML = "✓ Copied";
+          setTimeout(() => { this.el.innerHTML = origHTML; }, 1500);
+        });
+      } else {
+        // Fallback for older browsers / non-HTTPS
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        const origHTML = this.el.innerHTML;
+        this.el.innerHTML = "✓ Copied";
+        setTimeout(() => { this.el.innerHTML = origHTML; }, 1500);
+      }
+    });
+  }
+};
+
 Hooks.InfiniteScroll = {
   mounted() {
     this.observer = new IntersectionObserver(([entry]) => {

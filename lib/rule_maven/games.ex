@@ -293,15 +293,33 @@ defmodule RuleMaven.Games do
       |> split_into_chunks(500)
       |> Enum.with_index()
 
-    # Insert all chunks (embeddings generated async via Oban)
-    Enum.each(chunks, fn {text, idx} ->
-      %Chunk{}
-      |> Chunk.changeset(%{
-        document_id: doc.id,
-        chunk_index: idx,
-        content: text
-      })
-      |> Repo.insert!()
+    # Detect section labels and cross-references per chunk
+    chunks_with_meta =
+      chunks
+      |> Enum.map(fn {text, idx} ->
+        section = detect_section_label(text)
+        refs = detect_cross_references(text)
+        {text, idx, section, refs}
+      end)
+
+    # Insert all chunks with metadata
+    Enum.each(chunks_with_meta, fn {text, idx, section, refs} ->
+      case %Chunk{}
+           |> Chunk.changeset(%{
+             document_id: doc.id,
+             chunk_index: idx,
+             content: text,
+             section_label: section,
+             references_section: refs
+           })
+           |> Repo.insert() do
+        {:ok, _} ->
+          :ok
+
+        {:error, changeset} ->
+          require Logger
+          Logger.error("Failed to insert chunk #{idx}: #{inspect(changeset.errors)}")
+      end
     end)
 
     # Enqueue embedding generation as Oban job (skip in test)
@@ -338,7 +356,12 @@ defmodule RuleMaven.Games do
                   ^Pgvector.new(question_vec)
                 ),
               limit: ^limit,
-              select: %{content: c.content}
+              select: %{
+                id: c.id,
+                content: c.content,
+                section_label: c.section_label,
+                references_section: c.references_section
+              }
           )
 
         if chunks == [] do
@@ -352,7 +375,9 @@ defmodule RuleMaven.Games do
 
           Enum.map(texts, &{nil, &1})
         else
-          Enum.map(chunks, &{nil, &1.content})
+          chunks
+          |> pull_referenced_chunks(game_ids)
+          |> Enum.map(&{nil, &1.content})
         end
 
       {:error, _} ->
@@ -368,7 +393,12 @@ defmodule RuleMaven.Games do
           join: d in Document,
           on: c.document_id == d.id,
           where: d.game_id in ^game_ids and d.status == "published",
-          select: %{content: c.content}
+          select: %{
+            id: c.id,
+            content: c.content,
+            section_label: c.section_label,
+            references_section: c.references_section
+          }
       )
 
     if chunks == [] do
@@ -383,27 +413,27 @@ defmodule RuleMaven.Games do
     else
       question_words = tokenize(question)
 
-      chunks
-      |> Enum.map(fn chunk ->
-        score = relevance_score(chunk.content, question_words)
-        {score, chunk.content}
-      end)
-      |> Enum.sort_by(&elem(&1, 0), :desc)
-      |> Enum.take(limit)
-      |> Enum.reject(fn {score, _} -> score == 0 end)
-      |> case do
-        [] ->
-          texts =
-            Enum.map(game_ids, fn gid ->
-              game = Repo.get!(Game, gid)
-              document_full_text(game)
-            end)
-            |> Enum.reject(&(&1 == ""))
+      scored =
+        chunks
+        |> Enum.map(fn chunk ->
+          score = relevance_score(chunk.content, question_words)
+          {score, chunk}
+        end)
+        |> Enum.sort_by(&elem(&1, 0), :desc)
+        |> Enum.take(limit)
 
-          Enum.map(texts, &{nil, &1})
+      if Enum.all?(scored, fn {score, _} -> score == 0 end) do
+        texts =
+          Enum.map(game_ids, fn gid ->
+            game = Repo.get!(Game, gid)
+            document_full_text(game)
+          end)
+          |> Enum.reject(&(&1 == ""))
 
-        results ->
-          results
+        Enum.map(texts, &{nil, &1})
+      else
+        top_chunks = Enum.map(scored, fn {_, c} -> c end)
+        top_chunks |> pull_referenced_chunks(game_ids) |> Enum.map(&{nil, &1.content})
       end
     end
   end
@@ -456,5 +486,75 @@ defmodule RuleMaven.Games do
          else: 0
 
     overlap + phrase_bonus
+  end
+
+  # ── Cross-reference detection ──
+
+  # Regex patterns for cross-references like "see Section 4.3", "see rule 7.2", "see 4.1"
+  @ref_pattern ~r{(?:see|refer to|reference to|per|according to)\s+(?:Section\s+|Rule\s+|§\s*)?(\d+(?:\.\d+)*)}i
+
+  defp detect_cross_references(text) do
+    @ref_pattern
+    |> Regex.scan(text)
+    |> Enum.map(fn [_, ref] -> ref end)
+    |> Enum.uniq()
+  end
+
+  # Section label patterns: "SECTION 4: Title", "4.1 Title:", "Section 7: Full Combat Rules", etc.
+  @section_pattern_head ~r/(?:SECTION|Section|Chapter)\s+(\d+(?:\.\d+)*)/i
+  @section_pattern_inline ~r/^(\d+(?:\.\d+))\s/m
+
+  defp detect_section_label(text) do
+    case Regex.run(@section_pattern_head, text) do
+      [_, num] -> num
+      nil -> detect_inline_section(text)
+    end
+  end
+
+  defp detect_inline_section(text) do
+    case Regex.run(@section_pattern_inline, text) do
+      [_, num] -> num
+      nil -> nil
+    end
+  end
+
+  defp pull_referenced_chunks(initial_chunks, game_ids) do
+    # Collect all unique section labels referenced by retrieved chunks
+    referenced_labels =
+      initial_chunks
+      |> Enum.flat_map(&(&1.references_section || []))
+      |> Enum.uniq()
+      |> Enum.reject(&is_nil/1)
+
+    if referenced_labels == [] do
+      initial_chunks
+    else
+      # Fetch chunks that belong to referenced sections
+      referenced_chunks =
+        Repo.all(
+          from c in Chunk,
+            join: d in Document,
+            on: c.document_id == d.id,
+            where:
+              d.game_id in ^game_ids and d.status == "published" and
+                c.section_label in ^referenced_labels,
+            select: %{
+              id: c.id,
+              content: c.content,
+              section_label: c.section_label,
+              references_section: c.references_section
+            }
+        )
+
+      # Deduplicate by content (avoid adding same chunk twice)
+      existing_contents = MapSet.new(initial_chunks, & &1.content)
+
+      extra =
+        Enum.reject(referenced_chunks, fn c ->
+          MapSet.member?(existing_contents, c.content)
+        end)
+
+      initial_chunks ++ extra
+    end
   end
 end

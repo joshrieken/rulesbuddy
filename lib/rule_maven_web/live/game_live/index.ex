@@ -17,7 +17,9 @@ defmodule RuleMavenWeb.GameLive.Index do
     # Preload expansion counts and source counts for rendering
     expansion_counts =
       Enum.reduce(games, %{}, fn game, acc ->
-        exps = if is_admin, do: Games.expansions_for(game), else: Games.expansions_with_documents(game)
+        exps =
+          if is_admin, do: Games.expansions_for(game), else: Games.expansions_with_documents(game)
+
         count = length(exps)
         Map.put(acc, game.id, count)
       end)
@@ -355,7 +357,9 @@ defmodule RuleMavenWeb.GameLive.Index do
             style="display:inline-block;background:var(--accent);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
             disabled={@refresh_total > 0 and not @refresh_complete}
           >
-            {if @refresh_total > 0 and not @refresh_complete, do: "Refreshing...", else: "Refresh All from BGG"}
+            {if @refresh_total > 0 and not @refresh_complete,
+              do: "Refreshing...",
+              else: "Refresh All from BGG"}
           </button>
 
           <%= if not @confirm_clear do %>
@@ -398,7 +402,10 @@ defmodule RuleMavenWeb.GameLive.Index do
 
       <%!-- BGG refresh progress bar --%>
       <%= if @refresh_total > 0 and not @refresh_complete do %>
-        <div style={"margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid #{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"} data-refresh={@version}>
+        <div
+          style={"margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid #{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"}
+          data-refresh={@version}
+        >
           <span style={"font-size:0.75rem;font-weight:600;color:#{if @refresh_errored, do: "#dc2626", else: "var(--accent)"};white-space:nowrap"}>
             {if @refresh_errored, do: "BGG Refresh Failed", else: "BGG Refresh"}
           </span>
@@ -407,7 +414,10 @@ defmodule RuleMavenWeb.GameLive.Index do
             </div>
           </div>
           <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">{@refresh_current}/{@refresh_total}</span>
-          <.link navigate={~p"/games/refresh"} style="font-size:0.7rem;color:var(--blue);white-space:nowrap">detail</.link>
+          <.link
+            navigate={~p"/games/refresh"}
+            style="font-size:0.7rem;color:var(--blue);white-space:nowrap"
+          >detail</.link>
         </div>
       <% end %>
 
@@ -486,21 +496,35 @@ defmodule RuleMavenWeb.GameLive.Index do
               <%= if RuleMaven.Users.game_master?(@current_user) do %>
                 <%= if @delete_id == game.id do %>
                   <span class="text-xs" style="color:#dc2626;padding:0.2rem 0">Delete?</span>
-                  <button type="button" phx-click="confirm_delete" phx-value-id={game.id}
-                    style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem">Yes</button>
-                  <button type="button" phx-click="cancel_delete"
-                    style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem">No</button>
+                  <button
+                    type="button"
+                    phx-click="confirm_delete"
+                    phx-value-id={game.id}
+                    style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
+                  >Yes</button>
+                  <button
+                    type="button"
+                    phx-click="cancel_delete"
+                    style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
+                  >No</button>
                 <% else %>
-                  <button type="button" phx-click="delete_game" phx-value-id={game.id}
+                  <button
+                    type="button"
+                    phx-click="delete_game"
+                    phx-value-id={game.id}
                     style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem"
-                    title="Delete game">✕</button>
+                    title="Delete game"
+                  >✕</button>
                 <% end %>
               <% end %>
             </div>
           </div>
 
           <%= if expanded && expansion_count > 0 do %>
-            <% expansions = if RuleMaven.Users.game_master?(@current_user), do: Games.expansions_for(game), else: Games.expansions_with_documents(game) %>
+            <% expansions =
+              if RuleMaven.Users.game_master?(@current_user),
+                do: Games.expansions_for(game),
+                else: Games.expansions_with_documents(game) %>
             <%= for exp <- expansions do %>
               <div
                 id={"exp-card-#{game.id}-#{exp.id}"}

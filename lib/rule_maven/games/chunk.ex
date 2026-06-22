@@ -7,6 +7,7 @@ defmodule RuleMaven.Games.Chunk do
     field :content, :string
     field :embedding, Pgvector.Ecto.Vector
     field :section_label, :string
+    field :references_section, {:array, :string}, default: []
     belongs_to :document, RuleMaven.Games.Document, foreign_key: :document_id
 
     timestamps(type: :utc_datetime)
@@ -14,7 +15,14 @@ defmodule RuleMaven.Games.Chunk do
 
   def changeset(chunk, attrs) do
     chunk
-    |> cast(attrs, [:document_id, :chunk_index, :content, :embedding, :section_label])
+    |> cast(attrs, [
+      :document_id,
+      :chunk_index,
+      :content,
+      :embedding,
+      :section_label,
+      :references_section
+    ])
     |> validate_required([:document_id, :chunk_index, :content])
   end
 end

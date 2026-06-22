@@ -91,41 +91,41 @@ defmodule RuleMavenWeb.GameLive.Refresh do
             </.link>
           </div>
         <% else %>
-        <div
-          style="background:var(--bg);border:1px solid var(--border);border-radius:0.75rem;padding:1.5rem"
-          data-refresh={@version}
-        >
-          <%= if !@complete do %>
-            <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-muted)">
-              <span>{@current} / {@total}</span>
-              <span>{if @total > 0, do: trunc(@current / @total * 100), else: 0}%</span>
-            </div>
-            <div style="width:100%;height:6px;background:var(--border);border-radius:3px;margin-bottom:1rem;overflow:hidden">
-              <div style={"width:#{if @total > 0, do: trunc(@current / @total * 100), else: 0}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s"}>
+          <div
+            style="background:var(--bg);border:1px solid var(--border);border-radius:0.75rem;padding:1.5rem"
+            data-refresh={@version}
+          >
+            <%= if !@complete do %>
+              <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-muted)">
+                <span>{@current} / {@total}</span>
+                <span>{if @total > 0, do: trunc(@current / @total * 100), else: 0}%</span>
               </div>
-            </div>
-            <div style="max-height:32rem;overflow-y:auto;font-size:0.7rem;font-family:monospace;color:var(--text)">
-              <%= for entry <- @log do %>
-                <div style="padding:0.15rem 0">{entry}</div>
-              <% end %>
-            </div>
-          <% else %>
-            <div style="text-align:center;padding:1rem 0">
-              <p style="font-size:1.2rem;font-weight:600;color:var(--accent);margin-bottom:0.5rem">
-                ✓ Complete
-              </p>
-              <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem">
-                {@total - @error_count} refreshed, {@error_count} errors
-              </p>
-              <.link
-                navigate={~p"/"}
-                style="display:inline-block;background:var(--accent);color:#fff;padding:0.5rem 1.25rem;border-radius:0.5rem;font-size:0.85rem;font-weight:600;text-decoration:none"
-              >
-                Back to Games
-              </.link>
-            </div>
-          <% end %>
-        </div>
+              <div style="width:100%;height:6px;background:var(--border);border-radius:3px;margin-bottom:1rem;overflow:hidden">
+                <div style={"width:#{if @total > 0, do: trunc(@current / @total * 100), else: 0}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s"}>
+                </div>
+              </div>
+              <div style="max-height:32rem;overflow-y:auto;font-size:0.7rem;font-family:monospace;color:var(--text)">
+                <%= for entry <- @log do %>
+                  <div style="padding:0.15rem 0">{entry}</div>
+                <% end %>
+              </div>
+            <% else %>
+              <div style="text-align:center;padding:1rem 0">
+                <p style="font-size:1.2rem;font-weight:600;color:var(--accent);margin-bottom:0.5rem">
+                  ✓ Complete
+                </p>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem">
+                  {@total - @error_count} refreshed, {@error_count} errors
+                </p>
+                <.link
+                  navigate={~p"/"}
+                  style="display:inline-block;background:var(--accent);color:#fff;padding:0.5rem 1.25rem;border-radius:0.5rem;font-size:0.85rem;font-weight:600;text-decoration:none"
+                >
+                  Back to Games
+                </.link>
+              </div>
+            <% end %>
+          </div>
         <% end %>
       <% end %>
     </div>

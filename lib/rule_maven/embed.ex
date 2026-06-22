@@ -21,7 +21,8 @@ defmodule RuleMaven.Embed do
 
     body = %{
       model: model,
-      input: texts
+      input: texts,
+      dimensions: 768
     }
 
     headers =

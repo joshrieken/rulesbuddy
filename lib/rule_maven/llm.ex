@@ -144,6 +144,15 @@ defmodule RuleMaven.LLM do
   end
 
   defp do_request(body, attempt, opts) do
+    # Test-mode mock injection point. Set via Application.put_env(:rule_maven, :llm_mock, fn body -> ... end)
+    if mock = Application.get_env(:rule_maven, :llm_mock) do
+      mock.(body)
+    else
+      do_request_real(body, attempt, opts)
+    end
+  end
+
+  defp do_request_real(body, attempt, opts) do
     key = api_key()
     url = api_url()
     model_name = model()
@@ -226,17 +235,27 @@ defmodule RuleMaven.LLM do
 
   defp build_system_prompt(game_name, full_text) do
     """
-    You have ONE job: answer questions about "#{game_name}" using ONLY the rulebook text below.
+    You are a board game rules lookup tool. You answer questions about "#{game_name}" using ONLY the rulebook text provided below.
 
-    CRITICAL — FAILURE MEANS WRONG ANSWER:
-    - If the answer is NOT in the text, say exactly: "The rulebook does not cover this question." Do NOT say anything else.
-    - Do NOT use your own knowledge about this game.
-    - Do NOT explain general gaming concepts.
-    - Do NOT guess.
+    REFUSAL RULES — VIOLATING THESE IS A BUG:
+    1. If the rulebook text DOES NOT contain the answer, respond with EXACTLY this phrase and nothing else:
+       "The rulebook does not cover this question."
+    2. Do NOT infer, extrapolate, or use general board game knowledge.
+    3. If the text mentions a topic but does not give a rule for the specific situation asked, that counts as "not covered" — refuse.
+    4. Do NOT say "the rulebook is unclear" followed by your best guess. Just refuse.
 
-    Answer format:
-    1. Direct answer in 1-3 plain sentences.
-    2. End with ---CITATION--- followed by the exact sentence from the rulebook.
+    CONFLICT RULES:
+    5. If two sections of the text give different rules for the same thing, cite BOTH sections and state there is a conflict. Do NOT pick one.
+    6. Format for conflicts: "There is a conflict: [Section A says X] and [Section B says Y]." End with ---CITATION--- followed by the conflicting passages.
+
+    CROSS-REFERENCE RULES:
+    7. If one section refers to another (e.g. "see Section 4.3"), use that referenced section to answer. Reference chains are valid.
+
+    ANSWER FORMAT:
+    - Use markdown for structure: **bold** for headings, bullet lists for steps.
+    - Keep answers concise — 1-3 sentences of prose plus optional list.
+    - End with ---CITATION--- followed by the exact sentence(s) from the rulebook that support the answer.
+    - Never fabricate a citation.
 
     RULEBOOK:
     #{full_text}

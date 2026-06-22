@@ -454,13 +454,13 @@ defmodule RuleMavenWeb.GameLive.Show do
           </div>
         <% end %>
 
-        <%= for msg <- @conversation do %>
+        <%= for {msg, idx} <- Enum.with_index(@conversation) do %>
           <div
             class={["chat-msg", msg.role == :user && "chat-msg-user"]}
             style={"display:flex;flex-direction:column;align-items:#{if msg.role == :user, do: "flex-end", else: "flex-start"}"}
           >
-            <div style={"max-width:85%;padding:0.6rem 0.85rem;border-radius:0.85rem;font-size:0.875rem;line-height:1.55;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}"}>
-              <div class="whitespace-pre-wrap">{msg.content}</div>
+            <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.875rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}"}>
+              <div>{render_markdown(msg.content)}</div>
 
               <%= if msg[:cited_passage] do %>
                 <div style={"margin-top:0.75rem;padding:0.5rem 0 0 0;border-top:1px solid #{if msg.role == :user, do: "rgba(255,255,255,0.3)", else: "var(--border-strong)"};font-size:0.78rem;line-height:1.45;#{if msg.role == :user, do: "color:rgba(255,255,255,0.9)", else: "color:var(--text)"}"}>
@@ -495,6 +495,24 @@ defmodule RuleMavenWeb.GameLive.Show do
                 :if={msg.role == :assistant && !msg[:faq_hit]}
                 style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center"
               >
+                <% q_text = find_question_for_answer(@conversation, msg) %>
+                <% plain_text = strip_markdown(msg.content) %>
+                <button
+                  type="button"
+                  id={"copy-btn-#{idx}"}
+                  phx-hook="ClipboardCopy"
+                  data-clipboard-text={"Q: #{q_text}\n\nA: #{plain_text}"}
+                  style="background:none;border:1px solid var(--border);border-radius:0.25rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.4rem;color:var(--text-muted);font-weight:500"
+                  title="Copy as plain text"
+                >Text</button>
+                <button
+                  type="button"
+                  id={"copy-md-btn-#{idx}"}
+                  phx-hook="ClipboardCopy"
+                  data-clipboard-text={msg.content}
+                  style="background:none;border:1px solid var(--border);border-radius:0.25rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.4rem;color:var(--text-muted);font-weight:500"
+                  title="Copy as markdown"
+                >MD</button>
                 <button
                   :if={msg[:feedback] != "down"}
                   type="button"
@@ -714,6 +732,45 @@ defmodule RuleMavenWeb.GameLive.Show do
           {n, _} -> n
           :error -> default
         end
+    end
+  end
+
+  # ── Helpers ──
+
+  defp find_question_for_answer(conversation, assistant_msg) do
+    {_, question} =
+      Enum.reduce(conversation, {false, ""}, fn msg, {found, q} ->
+        cond do
+          msg == assistant_msg -> {true, q}
+          found -> {true, q}
+          msg.role == :user -> {false, msg.content}
+          true -> {false, q}
+        end
+      end)
+
+    question
+  end
+
+  defp strip_markdown(text) do
+    text
+    |> String.replace(~r/\*\*(.+?)\*\*/, "\\1")
+    |> String.replace(~r/\*(.+?)\*/, "\\1")
+    |> String.replace(~r/^[-*]\s+/m, "")
+  end
+
+  # ── Markdown rendering ──
+
+  defp render_markdown(text) do
+    case MDEx.to_html(text) do
+      {:ok, html} ->
+        html
+        |> then(&"<div class=\"md-answer\" style=\"line-height:1.4;margin:0\">#{&1}</div>")
+        |> Phoenix.HTML.raw()
+
+      {:error, _} ->
+        text
+        |> Phoenix.HTML.html_escape()
+        |> Phoenix.HTML.raw()
     end
   end
 end

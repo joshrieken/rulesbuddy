@@ -5,6 +5,7 @@ defmodule RuleMaven.Faq do
 
   import Ecto.Query, warn: false
   alias RuleMaven.Faq.FaqEntry
+  alias RuleMaven.Faq.FaqCandidate
   alias RuleMaven.Repo
 
   # ── CRUD ──
@@ -151,5 +152,76 @@ defmodule RuleMaven.Faq do
     drafts = Repo.aggregate(from(f in FaqEntry, where: f.status == "draft"), :count)
 
     %{published: published || 0, drafts: drafts || 0}
+  end
+
+  # ── FAQ Candidates (review queue) ──
+
+  def list_pending_candidates do
+    Repo.all(
+      from c in FaqCandidate,
+        where: c.status == "pending",
+        order_by: [desc: c.thumbs_down_count, desc: c.total_asked_count],
+        preload: [:game]
+    )
+  end
+
+  def list_pending_candidates(%RuleMaven.Games.Game{} = game) do
+    Repo.all(
+      from c in FaqCandidate,
+        where: c.game_id == ^game.id and c.status == "pending",
+        order_by: [desc: c.thumbs_down_count, desc: c.total_asked_count]
+    )
+  end
+
+  def get_candidate!(id), do: Repo.get!(FaqCandidate, id)
+
+  def upsert_candidate(attrs) do
+    # Upsert by game_id + question_text to avoid duplicates from re-clustering
+    existing =
+      Repo.one(
+        from c in FaqCandidate,
+          where: c.game_id == ^attrs[:game_id] and c.question_text == ^attrs[:question_text]
+      )
+
+    if existing do
+      existing
+      |> FaqCandidate.changeset(attrs)
+      |> Repo.update()
+    else
+      %FaqCandidate{}
+      |> FaqCandidate.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  def approve_candidate(%FaqCandidate{} = candidate, attrs \\ %{}) do
+    answer = attrs[:answer] || candidate.sample_answer_text || ""
+
+    # Create FAQ entry
+    case create_faq(%{
+           game_id: candidate.game_id,
+           canonical_question: candidate.question_text,
+           canonical_answer: answer,
+           source_qa_ids: [],
+           status: "published",
+           auto_approved: false
+         }) do
+      {:ok, faq_entry} ->
+        # Link candidate to published FAQ
+        candidate
+        |> FaqCandidate.changeset(%{status: "approved", published_faq_id: faq_entry.id})
+        |> Repo.update()
+
+        {:ok, faq_entry}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def reject_candidate(%FaqCandidate{} = candidate) do
+    candidate
+    |> FaqCandidate.changeset(%{status: "rejected"})
+    |> Repo.update()
   end
 end

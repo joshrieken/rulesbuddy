@@ -59,7 +59,8 @@ defmodule RuleMaven.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:sweet_xml, "~> 0.7"},
       {:pgvector, "~> 0.3"},
-      {:oban, "~> 2.18"}
+      {:oban, "~> 2.18"},
+      {:mdex, "~> 0.1"}
     ]
   end
 
