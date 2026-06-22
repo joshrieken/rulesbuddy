@@ -54,8 +54,6 @@ Hooks.ChatScroll = {
       const last = messages[messages.length - 1];
       if (last) {
         last.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else {
-        el.scrollTop = el.scrollHeight;
       }
     });
   },
@@ -69,7 +67,7 @@ Hooks.ChatScroll = {
 
 Hooks.FocusInput = {
   mounted() {
-    requestAnimationFrame(() => this.el.focus());
+    requestAnimationFrame(() => this.el.focus({ preventScroll: true }));
   }
 };
 
