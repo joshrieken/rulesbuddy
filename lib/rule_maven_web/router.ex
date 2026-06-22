@@ -1,6 +1,8 @@
 defmodule RuleMavenWeb.Router do
   use RuleMavenWeb, :router
 
+  import Oban.Web.Router
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -13,11 +15,6 @@ defmodule RuleMavenWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-  end
-
-  pipeline :admin do
-    plug RuleMavenWeb.AuthPlug
-    plug RuleMavenWeb.AuthPlug, :require_game_master
   end
 
   scope "/", RuleMavenWeb do
@@ -43,8 +40,9 @@ defmodule RuleMavenWeb.Router do
     end
   end
 
-  scope "/oban", Oban.Web do
-    pipe_through [:browser, :admin]
-    live "/", DashboardLive, :index
+  scope "/", RuleMavenWeb do
+    pipe_through [:browser]
+
+    oban_dashboard "/oban", on_mount: [RuleMavenWeb.ObanAuthHook]
   end
 end
