@@ -802,7 +802,6 @@ defmodule RuleMavenWeb.GameLive.Show do
               style="background:var(--bg);color:var(--text);border-color:var(--border-strong)"
               disabled={@loading || @source_count == 0}
               autocomplete="off"
-              autofocus
               id="ask-input"
               phx-hook="FocusInput"
             />
