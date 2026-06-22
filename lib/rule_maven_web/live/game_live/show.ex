@@ -747,7 +747,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.8rem;user-select:none">
               Suggested questions
             </summary>
-            <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.5rem">
+            <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.5rem;max-height:40vh;overflow-y:auto;padding-right:0.25rem">
               <%= for cat <- @suggestions do %>
                 <div>
                   <div style="font-size:0.72rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;margin-bottom:0.25rem">
