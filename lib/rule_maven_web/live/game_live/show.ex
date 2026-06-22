@@ -396,7 +396,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       >
         <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:0.35rem">
           <div class="flex items-center gap-1" style="min-width:0;flex-wrap:wrap">
-            <.link navigate={~p"/"} class="text-blue-600 hover:underline text-sm font-semibold" style="flex-shrink:0">
+            <.link navigate={~p"/"} style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0">
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:140px">{@game.name}</h1>
@@ -461,7 +461,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               <.link
                 href={~p"/games/#{@game.id}/cheatsheet"}
                 target="_blank"
-                class="text-xs text-blue-500 hover:underline font-semibold"
+                style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
               >
                 Cheat Sheet
               </.link>
@@ -469,16 +469,14 @@ defmodule RuleMavenWeb.GameLive.Show do
             <.link
               :if={RuleMaven.Users.game_master?(@current_user)}
               navigate={~p"/games/#{@game.id}/edit"}
-              class="text-blue-600 hover:underline text-xs font-semibold"
-              style="flex-shrink:0"
+              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
             >
               Edit
             </.link>
             <.link
               :if={RuleMaven.Users.game_master?(@current_user)}
               navigate={~p"/games/#{@game.id}/review"}
-              class="text-blue-600 hover:underline text-xs font-semibold"
-              style="flex-shrink:0"
+              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
             >
               Review
             </.link>
@@ -551,7 +549,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               <.link
                 :if={RuleMaven.Users.game_master?(@current_user)}
                 navigate={~p"/games/#{@game.id}/edit"}
-                class="text-blue-600 hover:underline text-sm"
+                style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.3rem 0.75rem;border-radius:0.3rem"
               >
                 Add rulebook text or PDF
               </.link>
