@@ -12,6 +12,7 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 | `Games` | `games.ex` | 660 | Game/Document CRUD, questions, followup chains, chunk retrieval, community pool | `get_game!/1`, `create_game/1`, `create_document/1`, `grouped_questions/1`, `find_parent_question_id/3`, `community_questions/2`, `find_similar_question_in_pool/2`, `question_threads/1`, `retrieve_chunks/3`, `chunk_document/1` |
 | `LLM` | `llm.ex` | 503 | LLM API calls (multi-provider), chat, question generation, pool/FAQ cache | `ask/4`, `chat/3`, `suggest_questions/3`, `provider/0`, `model/0`, `stats/1` |
 | `LLM.Log` | `llm/log.ex` | — | LLM request/response logging | `log_llm/4` |
+| `LLMProxy` | `llm_proxy.ex` | 33 | Routes LLM/embed calls through proxy when `llm_proxy_url` DB setting is configured | `chat_url/0`, `embed_url/0`, `enabled?/0` |
 | `CheatSheet` | `cheat_sheet.ex` | 711 | Cheatsheet generation (async Oban), versions, HTML wrapping | `save_version/3`, `generate_async/5`, `generate_content/3`, `status/1`, `wrap_html_for_serve/2` |
 | `CheatSheet.CheatSheetVersion` | `cheat_sheet/cheat_sheet_version.ex` | — | Schema for stored cheatsheet versions | — |
 | `Faq` | `faq.ex` | 269 | FAQ CRUD, candidate clustering, auto-approval, thread consolidation | `create_faq/1`, `approve_faq/2`, `upsert_candidate/1`, `approve_candidate/2`, `consolidate_thread/3`, `build_consolidated_answer/2` |

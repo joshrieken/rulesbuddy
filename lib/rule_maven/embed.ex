@@ -23,7 +23,7 @@ defmodule RuleMaven.Embed do
 
   def embed_batch(texts) when is_list(texts) do
     model = model()
-    url = api_url()
+    url = RuleMaven.LLMProxy.embed_url() || api_url()
     key = api_key()
 
     body = %{

@@ -36,6 +36,7 @@ defmodule RuleMavenWeb.SettingsLive do
        embedding_key: Settings.get("embedding_api_key_openrouter") || "",
        auto_approve_docs: Settings.get("auto_approve_documents") || "true",
        auto_approve_faqs: Settings.get("auto_approve_faqs") || "true",
+       llm_proxy_url: Settings.get("llm_proxy_url") || "",
        saved: false,
        usage_stats: nil,
        page_title: "Settings"
@@ -139,7 +140,8 @@ defmodule RuleMavenWeb.SettingsLive do
       "embedding_model" => params["embedding_model"],
       "embedding_api_key_openrouter" => params["embedding_key"],
       "auto_approve_documents" => params["auto_approve_docs"],
-      "auto_approve_faqs" => params["auto_approve_faqs"]
+      "auto_approve_faqs" => params["auto_approve_faqs"],
+      "llm_proxy_url" => params["llm_proxy_url"]
     }
 
     Enum.each(fields, fn {key, val} ->
@@ -165,6 +167,7 @@ defmodule RuleMavenWeb.SettingsLive do
        embedding_key: fields["embedding_api_key_openrouter"] |> trim(),
        auto_approve_docs: fields["auto_approve_documents"] |> trim(),
        auto_approve_faqs: fields["auto_approve_faqs"] |> trim(),
+       llm_proxy_url: fields["llm_proxy_url"] |> trim(),
        saved: true
      )}
   end
@@ -647,6 +650,35 @@ defmodule RuleMavenWeb.SettingsLive do
                 />
                 <p style="font-size:0.7rem;color:var(--text-muted);margin:0.25rem 0 0 0">
                   Falls back to OpenRouter LLM key if left blank.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <%!-- ════════════════════════════════════════ --%>
+          <%!-- LLM Proxy --%>
+          <%!-- ════════════════════════════════════════ --%>
+          <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">LLM Proxy</h2>
+            <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
+              Route all LLM and embedding calls through a proxy (e.g. Headroom). Leave blank to call providers directly.
+            </p>
+
+            <div style="display:flex;flex-direction:column;gap:0.75rem">
+              <div>
+                <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.25rem">
+                  Proxy URL
+                </label>
+                <input
+                  type="text"
+                  name="llm_proxy_url"
+                  id="llm_proxy_url"
+                  value={@llm_proxy_url}
+                  placeholder="http://localhost:8787"
+                  style="width:100%;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.75rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
+                />
+                <p style="font-size:0.7rem;color:var(--text-muted);margin:0.25rem 0 0 0">
+                  Calls will be sent to PROXY_URL/v1/chat/completions and PROXY_URL/v1/embeddings. Proxy handles upstream routing.
                 </p>
               </div>
             </div>

@@ -22,7 +22,7 @@ defmodule RuleMaven.Workers.AskWorker do
 
     game = Games.get_game!(game_id)
 
-    case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context) do
+    case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context, user_id: user_id) do
       {:ok, %{answer: answer} = llm_result} ->
         passage = llm_result[:cited_passage]
         followup? = llm_result[:followup] || false

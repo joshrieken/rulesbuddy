@@ -173,21 +173,23 @@ defmodule RuleMaven.GamesTest do
       %{game: game, user1: user1, user2: user2}
     end
 
-    test "community_questions/2 returns community-visible questions", %{
+    test "community_questions/2 returns FAQ-approved questions", %{
       game: game,
       user1: user1,
       user2: user2
     } do
-      log_question!(game.id, user1.id, "Community Q", "Community A", nil, "community")
-      log_question!(game.id, user2.id, "Another Q", "Another A", nil, "community")
+      q1 = log_question!(game.id, user1.id, "Community Q", "Community A", nil, "community")
+      q2 = log_question!(game.id, user2.id, "Another Q", "Another A", nil, "community")
+      create_faq!(game.id, [q1.id, q2.id])
 
       community = Games.community_questions(game)
       assert length(community) == 2
     end
 
-    test "community_questions/2 excludes private questions", %{game: game, user1: user1} do
-      log_question!(game.id, user1.id, "Public Q", "Public A", nil, "community")
+    test "community_questions/2 excludes non-FAQ questions", %{game: game, user1: user1} do
+      q1 = log_question!(game.id, user1.id, "Public Q", "Public A", nil, "community")
       log_question!(game.id, user1.id, "Private Q", "Private A", nil, "private")
+      create_faq!(game.id, [q1.id])
 
       community = Games.community_questions(game)
       assert length(community) == 1
@@ -199,8 +201,9 @@ defmodule RuleMaven.GamesTest do
       user1: user1,
       user2: user2
     } do
-      log_question!(game.id, user1.id, "User1 Q", "A1", nil, "community")
-      log_question!(game.id, user2.id, "User2 Q", "A2", nil, "community")
+      q1 = log_question!(game.id, user1.id, "User1 Q", "A1", nil, "community")
+      q2 = log_question!(game.id, user2.id, "User2 Q", "A2", nil, "community")
+      create_faq!(game.id, [q1.id, q2.id])
 
       # Exclude user1 — should only see user2's question
       community = Games.community_questions(game, user1.id)
@@ -210,7 +213,8 @@ defmodule RuleMaven.GamesTest do
 
     test "community_questions/2 only returns root questions", %{game: game, user1: user1} do
       root = log_question!(game.id, user1.id, "Root Q", "Root A", nil, "community")
-      log_question!(game.id, user1.id, "Followup Q", "FU A", root.id, "community")
+      fu = log_question!(game.id, user1.id, "Followup Q", "FU A", root.id, "community")
+      create_faq!(game.id, [root.id, fu.id])
 
       community = Games.community_questions(game)
       assert length(community) == 1
@@ -304,5 +308,18 @@ defmodule RuleMaven.GamesTest do
       })
 
     q
+  end
+
+  defp create_faq!(game_id, source_qa_ids) do
+    {:ok, _faq} =
+      RuleMaven.Faq.create_faq(%{
+        game_id: game_id,
+        canonical_question: "FAQ question",
+        canonical_answer: "FAQ answer",
+        source_qa_ids: source_qa_ids,
+        status: "published"
+      })
+
+    :ok
   end
 end

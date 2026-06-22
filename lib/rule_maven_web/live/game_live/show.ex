@@ -35,7 +35,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game:#{game.id}")
     end
 
-    grouped = Games.grouped_questions(game)
+    grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_conversation(grouped)
     sources = Games.list_documents(game)
     expansions = Games.expansions_with_documents(game)
@@ -233,7 +233,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       q -> Games.delete_question(q)
     end
 
-    grouped = Games.grouped_questions(game)
+    grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_conversation(grouped)
 
     {:noreply,
@@ -275,7 +275,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         new_vis = if q.visibility == "community", do: "private", else: "community"
         Games.update_question_visibility(q, new_vis)
 
-        grouped = Games.grouped_questions(game)
+        grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
         conversation = build_conversation(grouped)
         community = Games.community_questions(game, socket.assigns.current_user.id)
         refresh = socket.assigns.refresh + 1
@@ -313,7 +313,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       q -> Games.pin_question(q)
     end
 
-    grouped = Games.grouped_questions(game)
+    grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_conversation(grouped)
 
     {:noreply, assign(socket, conversation: conversation)}
@@ -440,7 +440,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     %{game: game} = socket.assigns
 
     # Rebuild conversation from DB so answer updates survive refresh
-    grouped = Games.grouped_questions(game)
+    grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_conversation(grouped)
     community = Games.community_questions(game, socket.assigns.current_user.id)
 
@@ -765,7 +765,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   type="button"
                   phx-click="dismiss_onboarding"
                   style="background:var(--accent);color:#fff;border:none;padding:0.4rem 1.5rem;border-radius:0.4rem;font-size:0.8rem;font-weight:600;cursor:pointer"
-                >Ask a question</button>
+                >See suggested questions</button>
               </div>
             </div>
 

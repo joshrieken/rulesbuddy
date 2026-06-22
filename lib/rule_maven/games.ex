@@ -249,8 +249,8 @@ defmodule RuleMaven.Games do
     end
   end
 
-  def grouped_questions(%Game{} = game) do
-    all = recent_questions(game, 200)
+  def grouped_questions(%Game{} = game, opts \\ []) do
+    all = recent_questions(game, 200, opts)
 
     # Separate roots (no parent) from followups
     {roots, followups} = Enum.split_with(all, &is_nil(&1.parent_question_id))
@@ -312,13 +312,39 @@ defmodule RuleMaven.Games do
 
   def delete_question(%QuestionLog{} = q), do: Repo.delete(q)
 
-  def recent_questions(%Game{} = game, limit \\ 20) do
-    Repo.all(
+  def recent_questions(%Game{} = game, limit \\ 20, opts \\ []) do
+    user_id = Keyword.get(opts, :user_id)
+
+    base =
       from q in QuestionLog,
         where: q.game_id == ^game.id,
         order_by: [desc: q.inserted_at],
         limit: ^limit
-    )
+
+    query =
+      if user_id do
+        faq_ids = get_faq_source_ids(game.id)
+
+        from q in base,
+          where: q.user_id == ^user_id or q.id in ^faq_ids
+      else
+        base
+      end
+
+    Repo.all(query)
+  end
+
+  defp get_faq_source_ids(game_id) do
+    import Ecto.Query
+
+    faq_ids =
+      Repo.all(
+        from f in RuleMaven.Faq.FaqEntry,
+          where: f.game_id == ^game_id and f.status == "published",
+          select: f.source_qa_ids
+      )
+
+    List.flatten(faq_ids) |> Enum.uniq()
   end
 
   def delete_all_questions(%Game{} = game) do
@@ -329,14 +355,16 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
-  Returns community-visible questions (visibility = "community") for a game.
+  Returns community-visible FAQ-approved questions for a game.
   Excludes questions by the given user_id when specified.
   """
   def community_questions(%Game{} = game, exclude_user_id \\ nil) do
+    faq_ids = get_faq_source_ids(game.id)
+
     query =
       from q in QuestionLog,
         where: q.game_id == ^game.id,
-        where: q.visibility == "community",
+        where: q.id in ^faq_ids,
         where: is_nil(q.parent_question_id),
         order_by: [desc: q.inserted_at],
         limit: 50
@@ -370,8 +398,12 @@ defmodule RuleMaven.Games do
   Finds a similar question in the question pool using embedding similarity.
   Returns the matching QuestionLog or nil.
   """
-  def find_similar_question_in_pool(game_id, question_embedding, threshold \\ 0.08) do
-    Repo.one(
+  def find_similar_question_in_pool(game_id, question_embedding, opts \\ []) do
+    threshold = Keyword.get(opts, :threshold, 0.08)
+    user_id = Keyword.get(opts, :user_id)
+    faq_ids = get_faq_source_ids(game_id)
+
+    base =
       from q in QuestionLog,
         where: q.game_id == ^game_id,
         where: not is_nil(q.question_embedding),
@@ -389,7 +421,15 @@ defmodule RuleMaven.Games do
             ^Pgvector.new(question_embedding)
           ),
         limit: 1
-    )
+
+    query =
+      if user_id do
+        from q in base, where: q.user_id == ^user_id or q.id in ^faq_ids
+      else
+        base
+      end
+
+    Repo.one(query)
   end
 
   @doc """

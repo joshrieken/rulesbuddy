@@ -31,7 +31,9 @@ defmodule RuleMaven.LLM do
   Asks a rules question about a game and returns the answer with cited passage.
   Checks FAQ cache first, falls back to retrieval + LLM on miss.
   """
-  def ask(game, question, expansion_ids \\ [], recent_context \\ []) do
+  def ask(game, question, expansion_ids \\ [], recent_context \\ [], opts \\ []) do
+    user_id = Keyword.get(opts, :user_id)
+
     # Step 0: embed the question (used for pool check + FAQ check + logging)
     question_embedding =
       case RuleMaven.Embed.embed(question) do
@@ -41,7 +43,9 @@ defmodule RuleMaven.LLM do
 
     pool_hit =
       question_embedding &&
-        RuleMaven.Games.find_similar_question_in_pool(game.id, question_embedding)
+        RuleMaven.Games.find_similar_question_in_pool(game.id, question_embedding,
+          user_id: user_id
+        )
 
     faq_hit = question_embedding && check_faq_cache(game.id, expansion_ids, question_embedding)
 
@@ -179,7 +183,7 @@ defmodule RuleMaven.LLM do
 
   defp do_request_real(body, attempt, opts) do
     key = api_key()
-    url = api_url()
+    url = RuleMaven.LLMProxy.chat_url() || api_url()
     model_name = model()
     provider_name = provider()
     start = System.monotonic_time(:millisecond)
@@ -327,7 +331,7 @@ defmodule RuleMaven.LLM do
 
     # Extract FOLLOWUPS
     {followups, cleaned} =
-      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?:\n---CITATION|---\n|$)}s, cleaned) do
+      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?=\n---CITATION---|$)}s, cleaned) do
         [_, qs] ->
           q_list =
             qs
@@ -337,7 +341,7 @@ defmodule RuleMaven.LLM do
             |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
 
           {q_list,
-           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(\n---CITATION|---\n|$)}s, "")}
+           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(?=\n---CITATION---|$)}s, "")}
 
         nil ->
           {[], cleaned}
@@ -349,8 +353,14 @@ defmodule RuleMaven.LLM do
         {answer, String.trim(passage), followup?, followups}
 
       _ ->
-        {text, nil, followup?, followups}
+        {strip_markers(cleaned), nil, followup?, followups}
     end
+  end
+
+  defp strip_markers(text) do
+    text
+    |> String.replace(~r/^---\s*$/ms, "")
+    |> String.trim()
   end
 
   defp api_url do
