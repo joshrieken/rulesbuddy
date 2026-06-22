@@ -89,22 +89,16 @@ defmodule RuleMavenWeb.Feature.FlowTest do
   feature "logged-out user sees Log in link", %{session: session} do
     session
     |> visit("/")
-    |> assert_has(css(".header-auth-link", text: "Log in"))
+    |> assert_has(css(".nav-link", text: "Log in"))
   end
 
-  feature "game master sees GM badge and Admin link", %{session: session} do
+  feature "game master sees admin nav links", %{session: session} do
     user = create_user("e2e_gm_visible", "game_master")
 
     session
     |> login(user.username)
-    |> assert_has(css(".header-role-badge-gm", text: "GM"))
-
-    # Admin link is inside a <details> dropdown — click summary to open
-    Wallaby.Browser.find(session, css("#user-dropdown-gm summary"), fn el ->
-      Wallaby.Element.click(el)
-    end)
-
-    assert_has(session, css(".user-dropdown-link", text: "Admin"))
+    |> assert_has(css(".nav-link", text: "Dashboard"))
+    |> assert_has(css(".nav-link", text: "Threads"))
   end
 
   feature "theme persists across page navigation", %{session: session} do

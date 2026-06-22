@@ -291,3 +291,24 @@ if ("serviceWorker" in navigator) {
     });
   });
 }
+
+// Hamburger drawer toggle
+(function() {
+  var btn = document.getElementById('hamburger-btn');
+  var drawer = document.getElementById('drawer');
+  var overlay = document.getElementById('drawer-overlay');
+  var closeBtn = document.getElementById('drawer-close');
+  if (!btn || !drawer || !overlay) return;
+
+  function open() { drawer.classList.add('open'); overlay.classList.add('open'); }
+  function close() { drawer.classList.remove('open'); overlay.classList.remove('open'); }
+
+  btn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', close);
+
+  // Close on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) close();
+  });
+})();

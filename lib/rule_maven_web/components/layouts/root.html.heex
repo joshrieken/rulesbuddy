@@ -45,77 +45,94 @@
             <span class="header-icon">🎲</span>
             <span class="header-title">Rule Maven</span>
           </a>
-          <span class="header-tagline">board game concierge</span>
 
-          <div class="header-controls">
-            <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;margin-right:0.2rem">Theme</span>
-            <select class="theme-select" id="theme-select" aria-label="Choose theme">
-              <option value="ocean">Abyss</option>
-              <option value="arcade">Arcade</option>
-              <option value="brass">Brass</option>
-              <option value="forest">Canopy</option>
-              <option value="retro">Cassette</option>
-              <option value="coral">Coral</option>
-              <option value="scary">Crypt</option>
-              <option value="sunset">Dusk</option>
-              <option value="ember">Ember</option>
-              <option value="frost">Frost</option>
-              <option value="happy">Golden Hour</option>
-              <option value="honey">Honey</option>
-              <option value="light">Lavender</option>
-              <option value="marble">Marble</option>
-              <option value="meadow">Meadow</option>
-              <option value="dark">Midnight</option>
-              <option value="scifi">Nebula</option>
-              <option value="matrix">Neon</option>
-              <option value="fantasy">Parchment</option>
-              <option value="twilight">Twilight</option>
-              <option value="void">Void</option>
-            </select>
-          </div>
+          <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+            <span></span><span></span><span></span>
+          </button>
 
-          <div class="header-auth">
-            <% me =
-              assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
-                (assigns[:conn] && RuleMavenWeb.Layouts.current_user(assigns[:conn])) %>
+          <% me =
+            assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
+              (assigns[:conn] && RuleMavenWeb.Layouts.current_user(assigns[:conn])) %>
+
+          <!-- Desktop nav -->
+          <nav class="header-nav" id="header-nav">
+            <%= if me && RuleMaven.Users.game_master?(me) do %>
+              <.link href={~p"/admin"} class="nav-link">Dashboard</.link>
+              <.link href={~p"/admin/threads"} class="nav-link">Threads</.link>
+              <.link href={~p"/admin/users"} class="nav-link">Users</.link>
+              <.link href={~p"/admin/invites"} class="nav-link">Invites</.link>
+              <.link href={~p"/admin/db"} class="nav-link nav-link-dim">DB</.link>
+              <.link href={~p"/oban"} class="nav-link nav-link-dim" target="_blank">Oban</.link>
+            <% end %>
+          </nav>
+
+          <div class="header-right">
+            <div class="header-controls">
+              <select class="theme-select" id="theme-select" aria-label="Theme">
+                <option value="ocean">Abyss</option>
+                <option value="arcade">Arcade</option>
+                <option value="brass">Brass</option>
+                <option value="forest">Canopy</option>
+                <option value="retro">Cassette</option>
+                <option value="coral">Coral</option>
+                <option value="scary">Crypt</option>
+                <option value="sunset">Dusk</option>
+                <option value="ember">Ember</option>
+                <option value="frost">Frost</option>
+                <option value="happy">Golden Hour</option>
+                <option value="honey">Honey</option>
+                <option value="light">Lavender</option>
+                <option value="marble">Marble</option>
+                <option value="meadow">Meadow</option>
+                <option value="dark">Midnight</option>
+                <option value="scifi">Nebula</option>
+                <option value="matrix">Neon</option>
+                <option value="fantasy">Parchment</option>
+                <option value="twilight">Twilight</option>
+                <option value="void">Void</option>
+              </select>
+            </div>
 
             <%= cond do %>
-              <% me && RuleMaven.Users.game_master?(me) -> %>
-                <details id="user-dropdown-gm" class="user-dropdown">
-                  <summary class="user-dropdown-toggle">
-                    <span class="header-user">{me.username}</span>
-                    <span class="header-role-badge header-role-badge-gm">GM</span>
-                  </summary>
-                  <div class="user-dropdown-menu">
-                    <div class="user-dropdown-section">Admin</div>
-                    <.link href={~p"/admin"} class="user-dropdown-link">Dashboard</.link>
-                    <.link href={~p"/admin/db"} class="user-dropdown-link">DB Admin</.link>
-                    <.link href={~p"/admin/threads"} class="user-dropdown-link">Review Threads</.link>
-                    <.link href={~p"/admin/users"} class="user-dropdown-link">Manage Users</.link>
-                    <.link href={~p"/admin/invites"} class="user-dropdown-link">Invite Codes</.link>
-                    <div class="user-dropdown-section">Tools</div>
-                    <.link href={~p"/oban"} class="user-dropdown-link">Oban Dashboard ↗</.link>
-                    <.link href={~p"/settings"} class="user-dropdown-link">Settings</.link>
-                    <div class="user-dropdown-section"></div>
-                    <.link href={~p"/logout"} class="user-dropdown-link">Log out</.link>
-                  </div>
-                </details>
               <% me -> %>
-                <details id="user-dropdown-player" class="user-dropdown">
-                  <summary class="user-dropdown-toggle">
-                    <span class="header-user">{me.username}</span>
-                    <span class="header-role-badge header-role-badge-player">Player</span>
-                  </summary>
-                  <div class="user-dropdown-menu">
-                    <.link href={~p"/logout"} class="user-dropdown-link">Log out</.link>
-                  </div>
-                </details>
+                <.link href={~p"/settings"} class="nav-link nav-link-dim" aria-label="Settings">⚙</.link>
+                <span class="header-user"><%= me.username %></span>
+                <.link href={~p"/logout"} class="nav-link">Log out</.link>
               <% true -> %>
-                <.link href={~p"/login"} class="header-auth-link">Log in</.link>
+                <.link href={~p"/login"} class="nav-link">Log in</.link>
             <% end %>
           </div>
         </div>
       </header>
+
+      <!-- Mobile drawer overlay -->
+      <div class="drawer-overlay" id="drawer-overlay"></div>
+      <div class="drawer" id="drawer">
+        <div class="drawer-header">
+          <span class="drawer-title">Menu</span>
+          <button class="drawer-close" id="drawer-close" aria-label="Close menu">&times;</button>
+        </div>
+        <nav class="drawer-nav">
+          <.link href={~p"/"} class="drawer-link">🏠 Home</.link>
+          <%= if me && RuleMaven.Users.game_master?(me) do %>
+            <div class="drawer-section">Admin</div>
+            <.link href={~p"/admin"} class="drawer-link">Dashboard</.link>
+            <.link href={~p"/admin/db"} class="drawer-link">DB Admin</.link>
+            <.link href={~p"/admin/threads"} class="drawer-link">Review Threads</.link>
+            <.link href={~p"/admin/users"} class="drawer-link">Manage Users</.link>
+            <.link href={~p"/admin/invites"} class="drawer-link">Invite Codes</.link>
+            <div class="drawer-section">Tools</div>
+            <.link href={~p"/oban"} class="drawer-link" target="_blank">Oban Dashboard ↗</.link>
+            <.link href={~p"/settings"} class="drawer-link">Settings</.link>
+          <% end %>
+          <div class="drawer-section"></div>
+          <%= if me do %>
+            <.link href={~p"/logout"} class="drawer-link">Log out</.link>
+          <% else %>
+            <.link href={~p"/login"} class="drawer-link">Log in</.link>
+          <% end %>
+        </nav>
+      </div>
 
       <.flash_group flash={assigns[:flash] || %{}} />
 
