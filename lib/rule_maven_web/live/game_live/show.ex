@@ -468,6 +468,13 @@ defmodule RuleMavenWeb.GameLive.Show do
             >
               Review
             </.link>
+            <.link
+              :if={RuleMaven.Users.game_master?(@current_user)}
+              navigate={~p"/admin"}
+              class="text-blue-600 hover:underline text-sm"
+            >
+              Admin
+            </.link>
           </div>
         </div>
       </div>
