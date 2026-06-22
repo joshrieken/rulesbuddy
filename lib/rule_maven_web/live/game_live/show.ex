@@ -421,7 +421,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <summary style="cursor:pointer;color:var(--text-muted);font-weight:600;user-select:none">
                   ({length(@sources)})
                 </summary>
-                <div style="position:absolute;top:100%;left:0;margin-top:0.25rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem;min-width:180px;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.15)">
+                <div style="position:absolute;top:100%;right:0;margin-top:0.25rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem;min-width:160px;max-width:calc(100vw - 2rem);z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.15);overflow-x:auto">
                   <%= for src <- @sources do %>
                     <div style="padding:0.3rem 0;font-size:0.7rem;display:flex;gap:0.5rem;align-items:center;white-space:nowrap">
                       <span style="color:var(--text);font-weight:500">{src.label}</span>
