@@ -38,6 +38,11 @@ defmodule RuleMavenWeb.GameLive.Show do
         loading: false
       )
 
+    if sources != [] do
+      already_asked = Enum.map(grouped, & &1.primary.question)
+      send(self(), {:refresh_suggestions, game, sources, already_asked})
+    end
+
     {:noreply, socket}
   end
 
