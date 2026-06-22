@@ -482,9 +482,9 @@ defmodule RuleMavenWeb.GameLive.Show do
         <!-- Question sidebar -->
         <div
           id="question-sidebar"
-          style="flex-shrink:0;width:15rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.85rem;display:flex;flex-direction:column"
+          style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
         >
-          <div style="padding:0.3rem 0.75rem;font-size:0.72rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase">
+          <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase">
             Questions
           </div>
           <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user end) do %>
@@ -493,7 +493,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               id={"sidebar-q-#{idx}"}
               phx-hook="ScrollToMessage"
               data-target={"chat-msg-#{idx}"}
-              style="text-align:left;background:none;border:none;cursor:pointer;padding:0.4rem 0.75rem;color:var(--text);font-size:0.85rem;line-height:1.4;border-left:2px solid transparent;width:100%"
+              style="text-align:left;background:none;border:none;cursor:pointer;padding:0.45rem 0.75rem;color:var(--text);font-size:0.9rem;line-height:1.45;border-left:2px solid transparent;width:100%"
               onmouseover="this.style.background='var(--bg-subtle)'"
               onmouseout="this.style.background='none'"
             >
@@ -507,7 +507,7 @@ defmodule RuleMavenWeb.GameLive.Show do
           <% end %>
           <div
             :if={@conversation == []}
-            style="padding:0.5rem 0.75rem;color:var(--text-muted);font-size:0.65rem"
+            style="padding:0.5rem 0.75rem;color:var(--text);font-size:0.8rem"
           >
             No questions yet
           </div>
