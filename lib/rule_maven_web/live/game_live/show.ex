@@ -38,12 +38,13 @@ defmodule RuleMavenWeb.GameLive.Show do
         loading: false
       )
 
-    if sources != [] do
-      already_asked = Enum.map(grouped, & &1.primary.question)
-      send(self(), {:refresh_suggestions, game, sources, already_asked})
-    end
+    suggestions =
+      case RuleMaven.Settings.get("suggestions_#{game.id}") do
+        nil -> []
+        json -> Jason.decode!(json)
+      end
 
-    {:noreply, socket}
+    {:noreply, assign(socket, suggestions: suggestions)}
   end
 
   # Build flat conversation list from grouped questions
@@ -372,19 +373,6 @@ defmodule RuleMavenWeb.GameLive.Show do
          |> assign(conversation: convo ++ [error_msg], loading: false)
          |> push_event("scroll_bottom", %{})}
     end
-  end
-
-  @impl true
-  def handle_info({:refresh_suggestions, game, sources, already_asked}, socket) do
-    text = sources |> Enum.map(& &1.full_text) |> Enum.join("\n\n")
-
-    suggestions =
-      case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
-        {:ok, qs} -> qs
-        {:error, _} -> socket.assigns.suggestions
-      end
-
-    {:noreply, assign(socket, suggestions: suggestions)}
   end
 
   @impl true

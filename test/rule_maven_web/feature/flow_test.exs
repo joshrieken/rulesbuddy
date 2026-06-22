@@ -130,6 +130,7 @@ defmodule RuleMavenWeb.Feature.FlowTest do
 
   feature "game list shows game metadata when logged in", %{session: session} do
     user = create_user("e2e_meta_user", "game_master")
+
     game_fixture(%{
       name: "Meta Test Game",
       bgg_id: 8888,

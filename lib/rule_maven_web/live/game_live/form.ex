@@ -44,7 +44,8 @@ defmodule RuleMavenWeb.GameLive.Form do
         bgg_search: "",
         bgg_searching: false,
         bgg_search_results: [],
-        bgg_search_error: nil
+        bgg_search_error: nil,
+        suggestions: []
       )
       |> allow_upload(:rulebook_pdfs,
         accept: ["application/pdf"],
@@ -132,6 +133,11 @@ defmodule RuleMavenWeb.GameLive.Form do
 
           tab = Map.get(params, "tab", "rulebook")
           socket = assign(socket, tab: tab)
+
+          if entries != [] do
+            send(self(), {:refresh_suggestions, game})
+          end
+
           socket
 
         _ ->
@@ -625,7 +631,11 @@ defmodule RuleMavenWeb.GameLive.Form do
            download_ok: source.pdf_path,
            source_entries: sources
          )
-         |> put_flash(:info, "Rulebook downloaded!")}
+         |> put_flash(:info, "Rulebook downloaded!")
+         |> then(fn s ->
+           send(self(), {:refresh_suggestions, game})
+           s
+         end)}
 
       {:error, reason} ->
         {:noreply, assign(socket, downloading: false, download_error: reason)}
@@ -671,11 +681,38 @@ defmodule RuleMavenWeb.GameLive.Form do
            download_ok: source.pdf_path,
            source_entries: sources
          )
-         |> put_flash(:info, "Rulebook found and downloaded!")}
+         |> put_flash(:info, "Rulebook found and downloaded!")
+         |> then(fn s ->
+           send(self(), {:refresh_suggestions, game})
+           s
+         end)}
 
       {:error, reason} ->
         {:noreply, assign(socket, downloading: false, download_error: reason)}
     end
+  end
+
+  @impl true
+  def handle_info({:refresh_suggestions, game}, socket) do
+    text = Games.document_full_text(game)
+
+    already_asked =
+      game
+      |> Games.recent_questions(100)
+      |> Enum.map(& &1.question)
+      |> Enum.uniq()
+
+    suggestions =
+      case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
+        {:ok, qs} ->
+          RuleMaven.Settings.put("suggestions_#{game.id}", Jason.encode!(qs))
+          qs
+
+        {:error, _} ->
+          socket.assigns.suggestions
+      end
+
+    {:noreply, assign(socket, suggestions: suggestions)}
   end
 
   @impl true
@@ -1425,6 +1462,37 @@ defmodule RuleMavenWeb.GameLive.Form do
               <% end %>
             </div>
           </div>
+
+          <%!-- Suggested questions (compact, per-category collapsible) --%>
+          <%= if @suggestions != [] do %>
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+              <details style="font-size:0.7rem">
+                <summary style="cursor:pointer;color:var(--text-secondary);font-weight:600;font-size:0.68rem;user-select:none">
+                  Suggested questions ({Enum.reduce(@suggestions, 0, fn c, acc ->
+                    acc + length(c.questions)
+                  end)})
+                </summary>
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.4rem">
+                  <%= for cat <- @suggestions do %>
+                    <details style="border:1px solid var(--border);border-radius:0.35rem;padding:0.3rem 0.5rem;font-size:0.65rem;background:var(--bg);min-width:0;flex:1 1 200px;max-width:280px">
+                      <summary style="cursor:pointer;font-weight:600;color:var(--text);margin-bottom:0.15rem;font-size:0.63rem;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                        {cat.category}
+                      </summary>
+                      <div style="display:flex;flex-direction:column;gap:0.1rem;margin-top:0.2rem">
+                        <%= for q <- cat.questions do %>
+                          <.link
+                            navigate={~p"/games/#{@game.id}"}
+                            style="font-size:0.65rem;color:var(--blue);text-decoration:none;padding:0.1rem 0.25rem;border-radius:0.2rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                            class="hover:bg-blue-50"
+                          >{q}</.link>
+                        <% end %>
+                      </div>
+                    </details>
+                  <% end %>
+                </div>
+              </details>
+            </div>
+          <% end %>
 
           <%!-- Danger tab --%>
           <div style={if @tab == "danger", do: "display:block", else: "display:none"}>

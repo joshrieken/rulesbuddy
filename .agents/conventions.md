@@ -109,3 +109,9 @@ inside a conditional block (`if`, `for`, `else`). If conditional removes
 the element from DOM, refresh reference is lost and LiveView stops
 re-rendering that section. Always put `data-refresh={@counter}` on the
 outermost wrapper div that always exists (even if hidden with `display:none`).
+
+## Dev Server
+
+- **Never start your own dev server.** If one isn't running and you need it, ask the user.
+- **Server logs are in `tmp/`**, not `log/`. Check `tmp/` for runtime output, crash dumps, or Erlang error logs.
+- The user's dev server runs in their terminal; yours would port-conflict and cause confusion.
