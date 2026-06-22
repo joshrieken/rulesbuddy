@@ -48,7 +48,11 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 | `GameLive.Import` | `game_live/import.ex` | 328 | `/games/import` | Import games via BGG search |
 | `GameLive.Refresh` | `game_live/refresh.ex` | 134 | `/games/refresh` | Refresh game metadata from BGG |
 | `GameLive.Faq` | `game_live/faq.ex` | 106 | `/games/:id/faq` | Browse published FAQ entries per game, search |
-| `AdminLive` | `admin_live.ex` | 718 | `/admin` | Admin panel: DB tables, question thread review & consolidation to FAQ |
+| `AdminLive.Index` | `admin_live/index.ex` | 82 | `/admin` | Admin dashboard with navigation tiles |
+| `AdminLive.Db` | `admin_live/db.ex` | 540 | `/admin/db` | Browse/edit DB tables (CRUD), extended/table view |
+| `AdminLive.Threads` | `admin_live/threads.ex` | 195 | `/admin/threads` | Review Q&A threads with followups, merge into FAQ |
+| `AdminLive.Users` | `admin_live/users.ex` | 124 | `/admin/users` | User list with promote/demote role management |
+| `AdminLive.Invites` | `admin_live/invites.ex` | 139 | `/admin/invites` | Generate and deactivate invite codes |
 | `SettingsLive` | `settings_live.ex` | 605 | `/settings` | App settings: LLM keys, provider, models |
 | `UserLiveAuth` | `user_live_auth.ex` | — | (session helper) | LiveView session auth, assigns `current_user` |
 
@@ -111,6 +115,6 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 | Debug FAQ cache | `llm.ex` (`ask/4`), `faq.ex` (`check_faq_cache/3`) |
 | Debug question pool | `llm.ex` (`ask/4`), `games.ex` (`find_similar_question_in_pool/2`) |
 | Debug followup chains | `games/question_log.ex` (schema), `games.ex` (`grouped_questions/1`, `find_parent_question_id/3`), `workers/ask_worker.ex` |
-| Admin thread review | `admin_live.ex`, `games.ex` (`question_threads/1`, `all_question_threads/0`), `faq.ex` (`consolidate_thread/3`) |
+| Admin thread review | `admin_live/threads.ex`, `games.ex` (`question_threads/1`, `all_question_threads/0`), `faq.ex` (`consolidate_thread/3`) |
 | FAQ page | `game_live/faq.ex`, `faq.ex` |
 | Fix BGG import | `bgg.ex`, `game_live/import.ex` |
