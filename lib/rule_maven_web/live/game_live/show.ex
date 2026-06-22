@@ -425,7 +425,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <%= for src <- @sources do %>
                     <div style="padding:0.3rem 0;font-size:0.7rem;display:flex;gap:0.5rem;align-items:center">
                       <span style="color:var(--text);font-weight:500;white-space:nowrap">{src.label}</span>
-                      <span style="color:var(--text);font-weight:500">{src.label}</span>
                       <%= if src.pdf_path do %>
                         <.link
                           href={"/#{src.pdf_path}"}
