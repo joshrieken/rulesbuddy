@@ -134,7 +134,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           tab = Map.get(params, "tab", "rulebook")
           socket = assign(socket, tab: tab)
 
-          if entries != [] do
+          if entries != [] && is_nil(RuleMaven.Settings.get("suggestions_#{game.id}")) do
             send(self(), {:refresh_suggestions, game})
           end
 
