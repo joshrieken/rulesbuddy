@@ -133,6 +133,22 @@ Hooks.GameListScroll = {
   }
 };
 
+Hooks.ScrollToMessage = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      const targetId = this.el.getAttribute("data-target");
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Brief highlight
+        target.style.transition = "background 0.3s";
+        target.style.background = "var(--bg-subtle)";
+        setTimeout(() => { target.style.background = ""; }, 1500);
+      }
+    });
+  }
+};
+
 Hooks.ClipboardCopy = {
   mounted() {
     this.el.addEventListener("click", () => {

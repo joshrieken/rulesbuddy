@@ -434,11 +434,41 @@ defmodule RuleMavenWeb.GameLive.Show do
         </div>
       </div>
 
-      <!-- Messages -->
+      <div style="display:flex;flex:1;min-height:0">
+        <!-- Question sidebar -->
+        <div
+          id="question-sidebar"
+          style="flex-shrink:0;width:14rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.78rem;display:flex;flex-direction:column"
+        >
+          <div style="padding:0.25rem 0.75rem;font-size:0.65rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase">
+            Questions
+          </div>
+          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user end) do %>
+            <button
+              type="button"
+              id={"sidebar-q-#{idx}"}
+              phx-hook="ScrollToMessage"
+              data-target={"chat-msg-#{idx}"}
+              style="text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text);font-size:0.78rem;line-height:1.3;border-left:2px solid transparent;width:100%"
+              onmouseover="this.style.background='var(--bg-subtle)'"
+              onmouseout="this.style.background='none'"
+            >
+              <%= if msg[:feedback] == "down" do %><span style="color:#ef4444;margin-right:0.15rem">👎</span><% end %>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
+                {String.slice(msg.content, 0, 55)}<%= if String.length(msg.content) > 55, do: "…" %>
+              </span>
+            </button>
+          <% end %>
+          <div :if={@conversation == []} style="padding:0.5rem 0.75rem;color:var(--text-muted);font-size:0.65rem">
+            No questions yet
+          </div>
+        </div>
+
+        <!-- Messages -->
       <div
         id="chat-messages"
         class="chat-messages"
-        style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:1rem;background:var(--bg);max-width:48rem;margin:0 auto;width:100%"
+        style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:1rem;background:var(--bg);max-width:48rem;margin:0 auto;width:100%;min-width:0"
         phx-hook="ChatScroll"
       >
         <%= if @source_count == 0 do %>
@@ -456,6 +486,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
         <%= for {msg, idx} <- Enum.with_index(@conversation) do %>
           <div
+            id={"chat-msg-#{idx}"}
             class={["chat-msg", msg.role == :user && "chat-msg-user"]}
             style={"display:flex;flex-direction:column;align-items:#{if msg.role == :user, do: "flex-end", else: "flex-start"}"}
           >
@@ -600,6 +631,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             Thinking...
           </div>
         </div>
+      </div>
       </div>
 
       <!-- Input -->
