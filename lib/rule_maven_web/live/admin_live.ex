@@ -9,6 +9,7 @@ defmodule RuleMavenWeb.AdminLive do
     if Users.game_master?(socket.assigns.current_user) do
       tables = fetch_tables()
       threads = Games.all_question_threads()
+      all_users = Users.list_users()
 
       {:ok,
        assign(socket,
@@ -26,6 +27,7 @@ defmodule RuleMavenWeb.AdminLive do
          page: 1,
          per_page: 50,
          threads: threads,
+         users: all_users,
          section: nil,
          merge_question: "",
          merge_answer: "",
@@ -140,10 +142,14 @@ defmodule RuleMavenWeb.AdminLive do
     threads =
       if section == "threads", do: Games.all_question_threads(), else: socket.assigns.threads
 
+    users =
+      if section == "users", do: Users.list_users(), else: socket.assigns.users
+
     {:noreply,
      assign(socket,
        section: section,
        threads: threads,
+       users: users,
        merge_thread_root: nil,
        merge_question: "",
        merge_answer: ""
@@ -411,6 +417,12 @@ defmodule RuleMavenWeb.AdminLive do
           href="/settings/usage"
           style="color:var(--blue);font-size:0.75rem;text-decoration:none"
         >LLM Usage</.link>
+        <button
+          type="button"
+          phx-click="show_section"
+          phx-value-section="users"
+          style={"background:none;border:1px solid var(--border);border-radius:0.3rem;padding:0.2rem 0.5rem;font-size:0.65rem;font-weight:600;cursor:pointer;#{if @section == "users", do: "background:var(--accent);color:#fff;border-color:var(--accent)", else: "color:var(--text-muted)"}"}
+        >Manage Users</button>
         <button
           type="button"
           phx-click="show_section"
@@ -710,7 +722,8 @@ defmodule RuleMavenWeb.AdminLive do
                     </div>
                     <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.4">
                       {String.slice(root.answer || "", 0, 150)}{if String.length(root.answer || "") >
-                                                                     150, do: "…"}
+                                                                     150,
+                                                                   do: "…"}
                     </div>
                     <%= if thread.followups != [] do %>
                       <div style="margin-top:0.35rem;padding-left:0.5rem;border-left:2px solid var(--border-subtle)">
@@ -745,6 +758,73 @@ defmodule RuleMavenWeb.AdminLive do
               No question threads with followups yet.
             </p>
           <% end %>
+        </div>
+      <% end %>
+
+      <%!-- User management --%>
+      <%= if @section == "users" do %>
+        <div style="margin-top:1rem">
+          <h2 style="font-size:1rem;font-weight:700;margin:0 0 0.5rem">Users ({length(@users)})</h2>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.75rem">
+            Promote players to game masters, or demote them back.
+          </p>
+
+          <div style="overflow-x:auto;border:1px solid var(--border);border-radius:0.5rem">
+            <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+              <thead>
+                <tr style="background:var(--bg-subtle);text-align:left">
+                  <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">
+                    Username
+                  </th>
+                  <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Email</th>
+                  <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Role</th>
+                  <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Joined</th>
+                  <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border);width:120px">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for user <- @users do %>
+                  <tr style="background:var(--bg)">
+                    <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);font-weight:500">
+                      {user.username}
+                    </td>
+                    <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);color:var(--text-muted)">
+                      {user.email}
+                    </td>
+                    <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);font-weight:600">
+                      <span style={"#{if user.role == "game_master", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);color:var(--text-muted);font-size:0.65rem">
+                      {String.slice(to_string(user.inserted_at), 0, 10)}
+                    </td>
+                    <td style="padding:0.15rem 0.5rem;border-bottom:1px solid var(--border-subtle)">
+                      <div style="display:flex;gap:0.2rem">
+                        <%= if user.role == "player" do %>
+                          <button
+                            type="button"
+                            phx-click="promote_user"
+                            phx-value-id={user.id}
+                            style="background:none;border:1px solid var(--accent);color:var(--accent);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.6rem;font-weight:600;cursor:pointer"
+                          >Promote</button>
+                        <% else %>
+                          <button
+                            type="button"
+                            phx-click="demote_user"
+                            phx-value-id={user.id}
+                            style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.6rem;font-weight:600;cursor:pointer"
+                          >Demote</button>
+                        <% end %>
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
         </div>
       <% end %>
     </div>
