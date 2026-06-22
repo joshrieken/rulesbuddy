@@ -322,7 +322,6 @@ defmodule RuleMavenWeb.GameLive.Index do
   def render(assigns) do
     ~H"""
     <div class="game-list">
-      <h1 class="text-2xl font-bold mb-4">Rule Maven</h1>
 
       <form phx-change="search" phx-submit="search" class="mb-4">
         <label class="block text-xs text-gray-400 mb-1">Search</label>
