@@ -31,7 +31,7 @@ defmodule RuleMaven.LLM do
   Asks a rules question about a game and returns the answer with cited passage.
   Checks FAQ cache first, falls back to retrieval + LLM on miss.
   """
-  def ask(game, question, expansion_ids \\ []) do
+  def ask(game, question, expansion_ids \\ [], recent_context \\ []) do
     # Step 0: embed the question (used for FAQ check + logging)
     question_embedding =
       case RuleMaven.Embed.embed(question) do
@@ -60,7 +60,7 @@ defmodule RuleMaven.LLM do
       game_ids = [game.id | expansion_ids]
       chunks = RuleMaven.Games.retrieve_chunks_for_games(game_ids, question)
       context = Enum.map_join(chunks, "\n\n---\n\n", fn {_, text} -> text end)
-      system_prompt = build_system_prompt(game.name, context)
+      system_prompt = build_system_prompt(game.name, context, recent_context)
       provider_name = provider()
       model_name = model()
 
@@ -74,7 +74,7 @@ defmodule RuleMaven.LLM do
       }
 
       case do_request(body, 1, operation: "ask", game_id: game.id) do
-        {:ok, %{answer: answer, cited_passage: passage}} ->
+        {:ok, %{answer: answer, cited_passage: passage} = llm_result} ->
           {:ok,
            %{
              answer: answer,
@@ -82,7 +82,9 @@ defmodule RuleMaven.LLM do
              provider: provider_name,
              model: model_name,
              question_embedding: question_embedding,
-             faq_hit: false
+             faq_hit: false,
+             followup: llm_result[:followup] || false,
+             followups: llm_result[:followups] || []
            }}
 
         {:error, reason} ->
@@ -233,9 +235,20 @@ defmodule RuleMaven.LLM do
     |> Repo.insert()
   end
 
-  defp build_system_prompt(game_name, full_text) do
+  defp build_system_prompt(game_name, full_text, recent_context) do
+    context_block =
+      if recent_context != [] do
+        pairs =
+          Enum.map(recent_context, fn {q, a} -> "Q: #{q}\nA: #{String.slice(a, 0, 200)}" end)
+
+        "\nRECENT CONVERSATION:\n#{Enum.join(pairs, "\n\n")}\n\nUse the above for context — this may be a followup question."
+      else
+        ""
+      end
+
     """
     You are a board game rules lookup tool. You answer questions about "#{game_name}" using ONLY the rulebook text provided below.
+    #{context_block}
 
     REFUSAL RULES — VIOLATING THESE IS A BUG:
     1. If the rulebook text DOES NOT contain the answer, respond with EXACTLY this phrase and nothing else:
@@ -254,6 +267,8 @@ defmodule RuleMaven.LLM do
     ANSWER FORMAT:
     - Use markdown for structure: **bold** for headings, bullet lists for steps.
     - Keep answers concise — 1-3 sentences of prose plus optional list.
+    - Before the citation, add a FOLLOWUP tag: ---FOLLOWUP: yes--- if this question is a followup to the recent conversation (references prior exchange, uses pronouns like "it"/"that"/"they"), otherwise ---FOLLOWUP: no---.
+    - Then suggest 2-3 natural followup questions a player might ask next. Format: ---FOLLOWUPS--- each on its own line, no numbers.
     - End with ---CITATION--- followed by the exact sentence(s) from the rulebook that support the answer.
     - Never fabricate a citation.
 
@@ -265,8 +280,10 @@ defmodule RuleMaven.LLM do
   defp parse_response(body) do
     case body do
       %{"choices" => [%{"message" => %{"content" => text}} | _]} ->
-        {answer, passage} = extract_passage(text)
-        {:ok, %{answer: answer, cited_passage: passage}}
+        {answer, passage, followup?, followups} = extract_passage(text)
+
+        {:ok,
+         %{answer: answer, cited_passage: passage, followup: followup?, followups: followups}}
 
       %{"error" => %{"message" => message}} ->
         {:error, message}
@@ -277,9 +294,35 @@ defmodule RuleMaven.LLM do
   end
 
   defp extract_passage(text) do
-    case String.split(text, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
-      [answer, passage] -> {String.trim(answer), String.trim(passage)}
-      _ -> {text, nil}
+    # Extract FOLLOWUP tag
+    {followup?, cleaned} =
+      case Regex.run(~r{---FOLLOWUP:\s*(yes|no)---}i, text) do
+        [_, "yes"] -> {true, String.replace(text, ~r{---FOLLOWUP:\s*yes---\s*}i, "")}
+        [_, "no"] -> {false, String.replace(text, ~r{---FOLLOWUP:\s*no---\s*}i, "")}
+        nil -> {false, text}
+      end
+
+    # Extract FOLLOWUPS
+    {followups, cleaned} =
+      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?:\n---CITATION|---\n|$)@}s, cleaned) do
+        [_, qs] ->
+          q_list =
+            qs
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
+
+          {q_list,
+           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(\n---CITATION|---\n|$)@}s, "")}
+
+        nil ->
+          {[], cleaned}
+      end
+
+    case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
+      [answer, passage] -> {String.trim(answer), String.trim(passage), followup?, followups}
+      _ -> {text, nil, followup?, followups}
     end
   end
 
@@ -366,6 +409,62 @@ defmodule RuleMaven.LLM do
       by_provider: by_provider,
       by_operation: by_operation
     }
+  end
+
+  @doc """
+  Generates a list of suggested questions for a game based on its rulebook text.
+  Returns `{:ok, [question_string]}` or `{:error, reason}`.
+  """
+  def suggest_questions(game_name, rulebook_text, already_asked \\ []) do
+    exclude =
+      if already_asked != [] do
+        "Do NOT suggest any of these already-asked questions: #{Enum.map_join(already_asked, ", ", &"\"#{&1}\"")}"
+      else
+        ""
+      end
+
+    prompt = """
+    Based on the rulebook text below for "#{game_name}", suggest common rules questions grouped by topic category.
+    #{exclude}
+
+    Return in this exact format — each category on its own line, then questions indented with "- ":
+
+    CATEGORY: Setup
+    - How many cards do I draw?
+    - Who goes first?
+    CATEGORY: Combat
+    - How does attacking work?
+    CATEGORY: Movement
+    - How far can I move?
+
+    RULEBOOK (summary):
+    #{String.slice(rulebook_text, 0, 3000)}
+    """
+
+    case chat(prompt, "suggest_questions",
+           system:
+             "You generate categorized board game rules questions. Group by topic. Be specific.",
+           max_tokens: 512
+         ) do
+      {:ok, text} ->
+        categories =
+          text
+          |> String.split(~r/^CATEGORY:\s*/mi)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.map(fn block ->
+            [name | questions] =
+              String.split(block, "\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+            questions = Enum.map(questions, &String.replace(&1, ~r/^[-*]\s*/, ""))
+            %{category: name, questions: questions}
+          end)
+          |> Enum.reject(fn %{questions: qs} -> qs == [] end)
+
+        {:ok, categories}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp api_key do

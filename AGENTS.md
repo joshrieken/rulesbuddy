@@ -107,6 +107,30 @@ in pattern matches, unreachable clauses).
   the suite pass — fix the code or the test, or flag it
   explicitly and ask.
 
+### TDD Workflow (mandatory)
+
+1. **Write test first** — red. One focused test case.
+2. **Run `mix test test/path/to/file_test.exs`** — confirm it fails.
+3. **Implement minimal code** — green. No extra abstractions.
+4. **Run full suite `mix test`** — confirm no regressions.
+5. **Run `mix compile --warnings-as-errors`** — zero warnings.
+6. **Commit** — atomic, descriptive message.
+
+Never skip step 2 or 4. Regressions are unacceptable.
+
+### LLM mocking
+
+For tests that call `RuleMaven.LLM.ask/4`, inject mock via:
+```elixir
+Application.put_env(:rule_maven, :llm_mock, fn body ->
+  {:ok, %{answer: "test", cited_passage: "test", followup: false, followups: []}}
+end)
+on_exit(fn -> Application.delete_env(:rule_maven, :llm_mock) end)
+```
+
+Mock returns `do_request_real` output format: `{:ok, %{answer:, cited_passage:, followup:, followups:}}`.
+Body passed to mock has atom keys: `%{messages: [%{role: "system", content: _}, %{role: "user", content: _}]}`.
+
 ## Database & Migrations
 
 - Migrations are additive and reversible by default
@@ -179,6 +203,13 @@ The agent should pause and confirm before:
   outside local dev
 - Force-pushing, rebasing shared history, or deleting a branch
 - Bumping the Elixir/OTP/Phoenix version
+
+## Commit Discipline
+
+After every completed unit of work, commit immediately with a
+descriptive message. Use conventional commits (`feat:`, `fix:`,
+`chore:`, `test:`, `refactor:`). Never leave uncommitted changes
+at session end. Always run full pre-commit check before committing.
 
 ## When Uncertain
 

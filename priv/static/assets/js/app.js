@@ -36,21 +36,40 @@ Hooks.ChatScroll = {
   mounted() {
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
-    this.scrollToBottom();
+    this.scrollToLatestAnswer();
     this.handleEvent("scroll_bottom", () => this.scrollToBottom());
   },
   updated() {
-    this.scrollToBottom();
+    this.scrollToLatestAnswer();
   },
   destroyed() {
     document.documentElement.style.overflow = "";
     document.body.style.overflow = "";
+  },
+  scrollToLatestAnswer() {
+    const el = this.el;
+    requestAnimationFrame(() => {
+      // Find the last assistant message and scroll it to the top of the viewport
+      const messages = el.querySelectorAll(".chat-msg:not(.chat-msg-user)");
+      const last = messages[messages.length - 1];
+      if (last) {
+        last.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
   },
   scrollToBottom() {
     const el = this.el;
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
+  }
+};
+
+Hooks.FocusInput = {
+  mounted() {
+    requestAnimationFrame(() => this.el.focus());
   }
 };
 
