@@ -2,6 +2,8 @@ defmodule RuleMaven.GamesTest do
   use RuleMaven.DataCase
 
   alias RuleMaven.Games
+  alias RuleMaven.Repo
+  import RuleMaven.GamesFixtures
 
   describe "games" do
     alias RuleMaven.Games.Game
@@ -57,5 +59,225 @@ defmodule RuleMaven.GamesTest do
       game = game_fixture()
       assert %Ecto.Changeset{} = Games.change_game(game)
     end
+  end
+
+  describe "followup chains" do
+    setup do
+      game = game_fixture()
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "test_followups",
+          email: "test_followups@test.com",
+          password_hash: "x"
+        })
+
+      %{game: game, user: user}
+    end
+
+    test "find_parent_question_id/3 returns nil when no root questions exist", %{
+      game: game,
+      user: user
+    } do
+      q = log_question!(game.id, user.id, "First question", "Answer 1")
+      assert Games.find_parent_question_id(game.id, user.id, q.id) == nil
+    end
+
+    test "find_parent_question_id/3 returns most recent root question", %{game: game, user: user} do
+      root = log_question!(game.id, user.id, "Root question", "Root answer")
+      q2 = log_question!(game.id, user.id, "Second question", "Answer 2")
+
+      parent_id = Games.find_parent_question_id(game.id, user.id, q2.id)
+      assert parent_id == root.id
+    end
+
+    test "find_parent_question_id/3 excludes the current question", %{game: game, user: user} do
+      q = log_question!(game.id, user.id, "Only question", "Answer")
+      parent_id = Games.find_parent_question_id(game.id, user.id, q.id)
+      assert parent_id == nil
+    end
+
+    test "find_parent_question_id/3 skips followups and finds the root", %{game: game, user: user} do
+      root = log_question!(game.id, user.id, "Root Q", "Root A")
+      _fu1 = log_question!(game.id, user.id, "Followup 1", "FU1 A", root.id)
+      fu2 = log_question!(game.id, user.id, "Followup 2", "FU2 A")
+
+      # fu2 should find root (the most recent non-followup), not fu1
+      parent_id = Games.find_parent_question_id(game.id, user.id, fu2.id)
+      assert parent_id == root.id
+    end
+
+    test "grouped_questions/1 nests followups under their parent", %{game: game, user: user} do
+      root = log_question!(game.id, user.id, "Root Q", "Root A")
+      fu = log_question!(game.id, user.id, "Followup Q", "Followup A", root.id)
+
+      grouped = Games.grouped_questions(game)
+      assert length(grouped) == 1
+
+      group = hd(grouped)
+      assert group.primary.id == root.id
+      assert length(group.followups) == 1
+      assert hd(group.followups).id == fu.id
+    end
+
+    test "grouped_questions/1 groups same text into history", %{game: game, user: user} do
+      q1 = log_question!(game.id, user.id, "Same question", "Answer v1")
+      q2 = log_question!(game.id, user.id, "Same question", "Answer v2")
+
+      grouped = Games.grouped_questions(game)
+      assert length(grouped) == 1
+
+      group = hd(grouped)
+      assert group.primary.id == q2.id
+      assert length(group.history) == 1
+      assert hd(group.history).id == q1.id
+    end
+
+    test "grouped_questions/1 handles roots with no followups or history", %{
+      game: game,
+      user: user
+    } do
+      log_question!(game.id, user.id, "Lone question", "Lone answer")
+
+      grouped = Games.grouped_questions(game)
+      assert length(grouped) == 1
+
+      group = hd(grouped)
+      assert group.followups == []
+      assert group.history == []
+    end
+
+    test "grouped_questions/1 returns empty list when no questions exist", %{game: game} do
+      assert Games.grouped_questions(game) == []
+    end
+  end
+
+  describe "community pool" do
+    setup do
+      game = game_fixture()
+
+      user1 =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "comm_user1",
+          email: "comm1@test.com",
+          password_hash: "x"
+        })
+
+      user2 =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "comm_user2",
+          email: "comm2@test.com",
+          password_hash: "x"
+        })
+
+      %{game: game, user1: user1, user2: user2}
+    end
+
+    test "community_questions/2 returns community-visible questions", %{
+      game: game,
+      user1: user1,
+      user2: user2
+    } do
+      log_question!(game.id, user1.id, "Community Q", "Community A", nil, "community")
+      log_question!(game.id, user2.id, "Another Q", "Another A", nil, "community")
+
+      community = Games.community_questions(game)
+      assert length(community) == 2
+    end
+
+    test "community_questions/2 excludes private questions", %{game: game, user1: user1} do
+      log_question!(game.id, user1.id, "Public Q", "Public A", nil, "community")
+      log_question!(game.id, user1.id, "Private Q", "Private A", nil, "private")
+
+      community = Games.community_questions(game)
+      assert length(community) == 1
+      assert hd(community).question == "Public Q"
+    end
+
+    test "community_questions/2 excludes given user's questions", %{
+      game: game,
+      user1: user1,
+      user2: user2
+    } do
+      log_question!(game.id, user1.id, "User1 Q", "A1", nil, "community")
+      log_question!(game.id, user2.id, "User2 Q", "A2", nil, "community")
+
+      # Exclude user1 — should only see user2's question
+      community = Games.community_questions(game, user1.id)
+      assert length(community) == 1
+      assert hd(community).question == "User2 Q"
+    end
+
+    test "community_questions/2 only returns root questions", %{game: game, user1: user1} do
+      root = log_question!(game.id, user1.id, "Root Q", "Root A", nil, "community")
+      log_question!(game.id, user1.id, "Followup Q", "FU A", root.id, "community")
+
+      community = Games.community_questions(game)
+      assert length(community) == 1
+      assert hd(community).id == root.id
+    end
+  end
+
+  describe "search" do
+    setup do
+      game = game_fixture()
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "search_user",
+          email: "search@test.com",
+          password_hash: "x"
+        })
+
+      log_question!(game.id, user.id, "How many cards?", "Five.")
+      log_question!(game.id, user.id, "Can I move twice?", "No.")
+      log_question!(game.id, user.id, "What about trading?", "Only on your turn.")
+
+      %{game: game}
+    end
+
+    test "search_questions/2 finds matching questions", %{game: game} do
+      results = Games.search_questions(game, "cards")
+      assert length(results) == 1
+      assert hd(results).question == "How many cards?"
+    end
+
+    test "search_questions/2 matches partial text", %{game: game} do
+      results = Games.search_questions(game, "move")
+      assert length(results) == 1
+      assert hd(results).question == "Can I move twice?"
+    end
+
+    test "search_questions/2 returns empty for no match", %{game: game} do
+      results = Games.search_questions(game, "zzznotfound")
+      assert results == []
+    end
+
+    test "search_questions/2 is case insensitive", %{game: game} do
+      results = Games.search_questions(game, "TRADING")
+      assert length(results) == 1
+      assert hd(results).question == "What about trading?"
+    end
+  end
+
+  defp log_question!(
+         game_id,
+         user_id,
+         question,
+         answer,
+         parent_id \\ nil,
+         visibility \\ "community"
+       ) do
+    {:ok, q} =
+      Games.log_question(%{
+        game_id: game_id,
+        user_id: user_id,
+        question: question,
+        answer: answer,
+        parent_question_id: parent_id,
+        visibility: visibility
+      })
+
+    q
   end
 end

@@ -7,6 +7,13 @@ defmodule RuleMaven.Embed do
   @default_model "openai/text-embedding-3-small"
 
   def embed(text) when is_binary(text) do
+    case Application.get_env(:rule_maven, :embed_mock) do
+      nil -> embed_real(text)
+      mock when is_function(mock) -> mock.(text)
+    end
+  end
+
+  defp embed_real(text) do
     embed_batch([text])
     |> case do
       {:ok, [vec]} -> {:ok, vec}
