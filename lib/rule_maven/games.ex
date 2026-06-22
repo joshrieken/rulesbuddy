@@ -304,6 +304,12 @@ defmodule RuleMaven.Games do
     Repo.update(QuestionLog.changeset(q, %{pinned: true}))
   end
 
+  def update_question_visibility(%QuestionLog{} = q, visibility) do
+    q
+    |> QuestionLog.changeset(%{visibility: visibility})
+    |> Repo.update()
+  end
+
   def delete_question(%QuestionLog{} = q), do: Repo.delete(q)
 
   def recent_questions(%Game{} = game, limit \\ 20) do

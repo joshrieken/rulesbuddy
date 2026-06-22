@@ -14,7 +14,7 @@ defmodule RuleMaven.Games.QuestionLog do
     field :source_chunk_ids, {:array, :integer}
     field :feedback, :string
     field :cluster_id, :integer
-    field :visibility, :string, default: "community"
+    field :visibility, :string, default: "private"
     belongs_to :game, RuleMaven.Games.Game
     belongs_to :user, RuleMaven.Users.User
     belongs_to :document, RuleMaven.Games.Document

@@ -216,6 +216,31 @@ defmodule RuleMaven.GamesTest do
       assert length(community) == 1
       assert hd(community).id == root.id
     end
+
+    test "log_question/1 defaults to private visibility", %{game: game, user1: user1} do
+      {:ok, q} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: user1.id,
+          question: "Default visibility?",
+          answer: "Should be private"
+        })
+
+      assert q.visibility == "private"
+    end
+
+    test "log_question/1 respects explicit visibility", %{game: game, user1: user1} do
+      {:ok, q} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: user1.id,
+          question: "Explicit community",
+          answer: "Visible",
+          visibility: "community"
+        })
+
+      assert q.visibility == "community"
+    end
   end
 
   describe "search" do

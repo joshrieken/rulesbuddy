@@ -18,7 +18,7 @@ defmodule RuleMavenWeb.GameLive.Show do
        suggestions: [],
        suggestions_open: true,
        sidebar_open: false,
-       visibility: "community",
+       visibility: "private",
        search_query: "",
        community_questions: [],
        faq_count: 0,
@@ -93,6 +93,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         pinned: g.primary.pinned,
         faq_hit: g.primary.llm_provider == "faq",
         pool_hit: g.primary.llm_provider == "pool",
+        visibility: g.primary.visibility,
         timestamp: g.primary.inserted_at
       }
 
@@ -252,6 +253,36 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   @impl true
+  def handle_event("toggle_question_visibility", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    game = socket.assigns.game
+
+    game
+    |> Games.recent_questions(200)
+    |> Enum.find(&(&1.id == id))
+    |> case do
+      nil ->
+        {:noreply, socket}
+
+      q ->
+        new_vis = if q.visibility == "community", do: "private", else: "community"
+        Games.update_question_visibility(q, new_vis)
+
+        grouped = Games.grouped_questions(game)
+        conversation = build_conversation(grouped)
+        community = Games.community_questions(game, socket.assigns.current_user.id)
+        refresh = socket.assigns.refresh + 1
+
+        {:noreply,
+         assign(socket,
+           conversation: conversation,
+           community_questions: community,
+           refresh: refresh
+         )}
+    end
+  end
+
+  @impl true
   def handle_event("search", %{"query" => query}, socket) do
     {:noreply, assign(socket, search_query: query)}
   end
@@ -395,7 +426,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   def handle_info({:ask_question, question}, socket) do
-    handle_info({:ask_question, question, "community"}, socket)
+    handle_info({:ask_question, question, "private"}, socket)
   end
 
   def handle_info({:ask_complete, _data}, socket) do
@@ -817,6 +848,18 @@ defmodule RuleMavenWeb.GameLive.Show do
                   style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
                   title="Re-ask"
                 >↻</button>
+                <button
+                  :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
+                  type="button"
+                  phx-click="toggle_question_visibility"
+                  phx-value-id={msg.id}
+                  title={
+                    if msg[:visibility] == "community",
+                      do: "Make private",
+                      else: "Make community-visible"
+                  }
+                  style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
+                >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
                 <button
                   :if={!msg[:history]}
                   type="button"
