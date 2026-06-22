@@ -16,7 +16,8 @@ defmodule RuleMavenWeb.GameLive.Show do
        retry_cooldowns: %{},
         confirm_delete_id: nil,
         suggestions: [],
-        suggestions_open: true
+        suggestions_open: true,
+        sidebar_open: false
       )}
   end
 
@@ -119,6 +120,11 @@ defmodule RuleMavenWeb.GameLive.Show do
       end
 
     {:noreply, assign(socket, included_expansions: included)}
+  end
+
+  @impl true
+  def handle_event("toggle_sidebar", _params, socket) do
+    {:noreply, assign(socket, sidebar_open: !socket.assigns.sidebar_open)}
   end
 
   @impl true
@@ -393,6 +399,12 @@ defmodule RuleMavenWeb.GameLive.Show do
             <.link navigate={~p"/"} class="text-blue-600 hover:underline text-sm font-semibold">
               &larr; Games
             </.link>
+            <button
+              type="button"
+              phx-click="toggle_sidebar"
+              class="sidebar-toggle"
+              style="background:none;border:1px solid var(--border);border-radius:0.3rem;padding:0.15rem 0.4rem;font-size:0.8rem;cursor:pointer;color:var(--text);display:none"
+            >☰</button>
             <h1 class="text-base font-bold truncate">{@game.name}</h1>
             <%= if @game.bgg_id do %>
               <.link
@@ -476,6 +488,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         <!-- Question sidebar -->
         <div
           id="question-sidebar"
+          class={"question-sidebar #{if @sidebar_open, do: "", else: "sidebar-closed"}"}
           style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
         >
           <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase">
