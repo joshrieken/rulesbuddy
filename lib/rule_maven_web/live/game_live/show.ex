@@ -485,19 +485,35 @@ defmodule RuleMavenWeb.GameLive.Show do
       </div>
 
       <div style="display:flex;flex:1;min-height:0">
+        <!-- Sidebar backdrop (mobile only) -->
+        <div
+          :if={@sidebar_open}
+          class="sidebar-backdrop"
+          phx-click="toggle_sidebar"
+          style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:49;background:rgba(0,0,0,0.3)"
+        >
+        </div>
+
         <!-- Question sidebar -->
         <div
           id="question-sidebar"
           class={"question-sidebar #{if @sidebar_open, do: "", else: "sidebar-closed"}"}
           style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
         >
-          <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase">
-            Questions
+          <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
+            <span>Questions</span>
+            <button
+              type="button"
+              phx-click="toggle_sidebar"
+              class="sidebar-close-btn"
+              style="display:none;background:none;border:none;font-size:1rem;cursor:pointer;color:var(--text);padding:0;line-height:1"
+            >✕</button>
           </div>
           <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user end) do %>
             <button
               type="button"
               id={"sidebar-q-#{idx}"}
+              phx-click="toggle_sidebar"
               phx-hook="ScrollToMessage"
               data-target={"chat-msg-#{idx}"}
               style="text-align:left;background:none;border:none;cursor:pointer;padding:0.45rem 0.75rem;color:var(--text);font-size:0.9rem;line-height:1.45;border-left:2px solid transparent;width:100%"

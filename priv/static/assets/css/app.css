@@ -1814,9 +1814,13 @@ body:has([data-phx-main].phx-connected)::after {
 
 /* ===== Question sidebar ===== */
 .sidebar-toggle { display: none; }
+.sidebar-close-btn { display: none; }
+.sidebar-backdrop { display: none; }
 
 @media (max-width: 768px) {
   .sidebar-toggle { display: inline-flex !important; }
+  .sidebar-close-btn { display: inline !important; }
+  .sidebar-backdrop { display: block !important; }
   .question-sidebar {
     position: absolute !important;
     top: 0;
