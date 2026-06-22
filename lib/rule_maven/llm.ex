@@ -304,7 +304,7 @@ defmodule RuleMaven.LLM do
 
     # Extract FOLLOWUPS
     {followups, cleaned} =
-      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?:\n---CITATION|---\n|$)@}s, cleaned) do
+      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?:\n---CITATION|---\n|$)}s, cleaned) do
         [_, qs] ->
           q_list =
             qs
@@ -314,15 +314,19 @@ defmodule RuleMaven.LLM do
             |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
 
           {q_list,
-           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(\n---CITATION|---\n|$)@}s, "")}
+           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(\n---CITATION|---\n|$)}s, "")}
 
         nil ->
           {[], cleaned}
       end
 
     case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
-      [answer, passage] -> {String.trim(answer), String.trim(passage), followup?, followups}
-      _ -> {text, nil, followup?, followups}
+      [answer, passage] ->
+        answer = answer |> String.trim() |> String.replace(~r/---FOLLOWUPS?.*/s, "")
+        {answer, String.trim(passage), followup?, followups}
+
+      _ ->
+        {text, nil, followup?, followups}
     end
   end
 
