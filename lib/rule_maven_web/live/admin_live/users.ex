@@ -7,7 +7,17 @@ defmodule RuleMavenWeb.AdminLive.Users do
   def mount(_params, _session, socket) do
     if Users.game_master?(socket.assigns.current_user) do
       all_users = Users.list_users()
-      {:ok, assign(socket, page_title: "Manage Users", users: all_users)}
+
+      {:ok,
+       assign(socket,
+         page_title: "Manage Users",
+         users: all_users,
+         new_username: "",
+         new_email: "",
+         new_role: "player",
+         temp_password: nil,
+         created_username: nil
+       )}
     else
       {:ok,
        socket
@@ -50,6 +60,54 @@ defmodule RuleMavenWeb.AdminLive.Users do
     end
   end
 
+  def handle_event(
+        "create_user",
+        %{"username" => username, "email" => email, "role" => role},
+        socket
+      ) do
+    case Users.create_user_with_temp_password(%{
+           username: String.trim(username),
+           email: String.trim(email),
+           role: role
+         }) do
+      {:ok, user, password} ->
+        users = Users.list_users()
+
+        {:noreply,
+         assign(socket,
+           users: users,
+           temp_password: password,
+           created_username: user.username,
+           new_username: "",
+           new_email: "",
+           new_role: "player"
+         )
+         |> put_flash(:info, "Created #{user.username}")}
+
+      {:error, changeset, _password} ->
+        msg =
+          changeset.errors
+          |> Enum.map(fn {field, {msg, _}} -> "#{field}: #{msg}" end)
+          |> Enum.join(", ")
+
+        {:noreply, put_flash(socket, :error, "Failed: #{msg}")}
+    end
+  end
+
+  def handle_event("dismiss_temp_password", _params, socket) do
+    {:noreply, assign(socket, temp_password: nil, created_username: nil)}
+  end
+
+  def handle_event("form_change", params, socket) do
+    socket =
+      Enum.reduce([:new_username, :new_email, :new_role], socket, fn field, acc ->
+        key = Atom.to_string(field)
+        if Map.has_key?(params, key), do: assign(acc, field, params[key]), else: acc
+      end)
+
+    {:noreply, socket}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -57,6 +115,84 @@ defmodule RuleMavenWeb.AdminLive.Users do
       <.link navigate={~p"/admin"} style="color:var(--blue);font-size:0.75rem">&larr; Back to admin</.link>
 
       <h1 style="font-size:1.3rem;font-weight:700;margin:0.3rem 0">Manage Users</h1>
+
+      <!-- Temp password display -->
+      <%= if @temp_password do %>
+        <div style="background:var(--bg-surface);border:2px solid var(--green);border-radius:0.5rem;padding:1rem;margin-bottom:1rem;text-align:center">
+          <div style="font-size:0.85rem;font-weight:700;color:var(--text);margin-bottom:0.25rem">
+            ✅ Account created: <strong>{@created_username}</strong>
+          </div>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.75rem">
+            Share this temp password with the user. They'll use it to log in.
+          </p>
+          <div style="display:flex;gap:0.35rem;justify-content:center;align-items:center;margin-bottom:0.75rem">
+            <code style="background:var(--bg);padding:0.35rem 0.75rem;border:1px solid var(--border);border-radius:0.3rem;font-size:1rem;font-weight:700;font-family:monospace;letter-spacing:0.05em">{@temp_password}</code>
+            <button
+              type="button"
+              id="copy-temp-password"
+              phx-hook="ClipboardCopy"
+              data-clipboard-text={@temp_password}
+              style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.3rem;padding:0.35rem 0.6rem;font-size:0.7rem;cursor:pointer;color:var(--text);font-weight:600"
+            >📋 Copy</button>
+          </div>
+          <button
+            type="button"
+            phx-click="dismiss_temp_password"
+            style="background:var(--accent);color:#fff;border:none;padding:0.3rem 1.5rem;border-radius:0.375rem;font-size:0.75rem;font-weight:600;cursor:pointer"
+          >Done</button>
+        </div>
+      <% end %>
+
+      <!-- Create user form -->
+      <%= if !@temp_password do %>
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;margin-bottom:1rem">
+          <h2 style="font-size:0.85rem;font-weight:600;color:var(--text);margin:0 0 0.5rem">
+            Create New User
+          </h2>
+          <div phx-change="form_change" style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.15rem">Username</label>
+              <input
+                type="text"
+                name="new_username"
+                value={@new_username}
+                placeholder="username"
+                style="width:9rem;border:1px solid var(--border);border-radius:0.25rem;padding:0.3rem 0.5rem;font-size:0.78rem;background:var(--bg);color:var(--text)"
+              />
+            </div>
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.15rem">Email</label>
+              <input
+                type="email"
+                name="new_email"
+                value={@new_email}
+                placeholder="user@example.com"
+                style="width:12rem;border:1px solid var(--border);border-radius:0.25rem;padding:0.3rem 0.5rem;font-size:0.78rem;background:var(--bg);color:var(--text)"
+              />
+            </div>
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.15rem">Role</label>
+              <select
+                name="new_role"
+                value={@new_role}
+                style="border:1px solid var(--border);border-radius:0.25rem;padding:0.3rem 0.4rem;font-size:0.78rem;background:var(--bg);color:var(--text);cursor:pointer"
+              >
+                <option value="player">Player</option>
+                <option value="game_master">Game Master</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              phx-click="create_user"
+              phx-value-username={@new_username}
+              phx-value-email={@new_email}
+              phx-value-role={@new_role}
+              disabled={@new_username == "" || @new_email == ""}
+              style="background:var(--accent);color:#fff;border:none;padding:0.35rem 1rem;border-radius:0.375rem;font-size:0.75rem;font-weight:600;cursor:pointer;align-self:end"
+            >Create &amp; Generate Password</button>
+          </div>
+        </div>
+      <% end %>
 
       <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.75rem">
         Promote players to game masters, or demote them back. ({length(@users)} users)

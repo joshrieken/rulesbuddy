@@ -70,4 +70,91 @@ defmodule RuleMaven.UsersTest do
       refute Users.game_master?(player)
     end
   end
+
+  describe "create user with temp password" do
+    test "creates user with auto-generated temp password" do
+      {:ok, user, password} =
+        Users.create_user_with_temp_password(%{
+          username: "new_player",
+          email: "new@test.com"
+        })
+
+      assert user.username == "new_player"
+      assert user.email == "new@test.com"
+      assert user.role == "player"
+      assert String.length(password) >= 8
+    end
+
+    test "creates user with specified role" do
+      {:ok, user, _password} =
+        Users.create_user_with_temp_password(%{
+          username: "new_gm",
+          email: "new_gm@test.com",
+          role: "game_master"
+        })
+
+      assert user.role == "game_master"
+    end
+
+    test "generated password is usable for login" do
+      {:ok, _user, password} =
+        Users.create_user_with_temp_password(%{
+          username: "login_test",
+          email: "login_test@test.com"
+        })
+
+      {:ok, authenticated} = Users.authenticate("login_test", password)
+      assert authenticated.username == "login_test"
+    end
+
+    test "returns error for missing username" do
+      {:error, changeset, _password} =
+        Users.create_user_with_temp_password(%{
+          email: "no_user@test.com"
+        })
+
+      assert changeset.errors[:username]
+    end
+
+    test "returns error for missing email" do
+      {:error, changeset, _password} =
+        Users.create_user_with_temp_password(%{
+          username: "no_email"
+        })
+
+      assert changeset.errors[:email]
+    end
+
+    test "returns error for duplicate username" do
+      {:ok, existing, _} =
+        Users.create_user_with_temp_password(%{
+          username: "duplicate_me",
+          email: "dup_existing@test.com"
+        })
+
+      {:error, changeset, _password} =
+        Users.create_user_with_temp_password(%{
+          username: existing.username,
+          email: "dup_new@test.com"
+        })
+
+      assert changeset.errors[:username]
+    end
+
+    test "generated passwords are unique" do
+      {:ok, _, pw1} =
+        Users.create_user_with_temp_password(%{
+          username: "unique1",
+          email: "u1@test.com"
+        })
+
+      {:ok, _, pw2} =
+        Users.create_user_with_temp_password(%{
+          username: "unique2",
+          email: "u2@test.com"
+        })
+
+      assert pw1 != pw2
+    end
+  end
 end

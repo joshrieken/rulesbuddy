@@ -23,6 +23,20 @@ defmodule RuleMaven.Users do
     |> Repo.insert()
   end
 
+  @doc """
+  Creates a user with an auto-generated temp password.
+  Returns {:ok, user, password} or {:error, changeset, password}.
+  Admin uses this to manually create accounts for known users.
+  """
+  def create_user_with_temp_password(attrs) do
+    password = generate_temp_password()
+
+    case create_user(Map.put(attrs, :password, password)) do
+      {:ok, user} -> {:ok, user, password}
+      {:error, changeset} -> {:error, changeset, password}
+    end
+  end
+
   def update_user(%User{} = user, attrs) do
     user
     |> User.changeset(attrs)
@@ -56,4 +70,8 @@ defmodule RuleMaven.Users do
   end
 
   def game_master?(user), do: User.game_master?(user)
+
+  defp generate_temp_password do
+    :crypto.strong_rand_bytes(10) |> Base.encode32(padding: false)
+  end
 end
