@@ -89,6 +89,8 @@ defmodule RuleMavenWeb.GameLive.Show do
         id: g.primary.id,
         role: :user,
         content: g.primary.question,
+        cleaned_question: g.primary.cleaned_question,
+        refused: g.primary.refused,
         timestamp: g.primary.inserted_at
       }
 
@@ -133,6 +135,8 @@ defmodule RuleMavenWeb.GameLive.Show do
             id: f.id,
             role: :user,
             content: f.question,
+            cleaned_question: f.cleaned_question,
+            refused: f.refused,
             followup: true,
             timestamp: f.inserted_at
           }
@@ -671,7 +675,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <div style="padding:0.25rem 0.75rem 0.5rem;border-bottom:1px solid var(--border-subtle);margin-bottom:0.25rem">
             </div>
           <% end %>
-          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user end) |> Enum.filter(fn {msg, _} -> @search_query == "" || String.contains?(String.downcase(msg.content), String.downcase(@search_query)) end) do %>
+          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user && !msg[:refused] end) |> Enum.filter(fn {msg, _} -> @search_query == "" || String.contains?(String.downcase(msg.content), String.downcase(@search_query)) end) do %>
             <button
               type="button"
               id={"sidebar-q-#{idx}"}
@@ -846,7 +850,14 @@ defmodule RuleMavenWeb.GameLive.Show do
                     ⚐ not covered
                   </div>
                 <% end %>
-                <div>{render_markdown(msg.content)}</div>
+                <div>
+                  <%= if msg.role == :user && msg[:cleaned_question] && msg[:cleaned_question] != msg.content do %>
+                    <div style="font-size:0.72rem;opacity:0.65;margin-bottom:0.1rem;font-style:italic">
+                      {msg.cleaned_question}
+                    </div>
+                  <% end %>
+                  {render_markdown(msg.content)}
+                </div>
 
                 <%= if msg[:cited_passage] do %>
                   <div style={"margin-top:0.75rem;padding:0.5rem 0 0 0;border-top:1px solid #{if msg.role == :user, do: "rgba(255,255,255,0.3)", else: "var(--border-strong)"};font-size:0.78rem;line-height:1.45;#{if msg.role == :user, do: "color:rgba(255,255,255,0.9)", else: "color:var(--text)"}"}>
@@ -880,6 +891,39 @@ defmodule RuleMavenWeb.GameLive.Show do
                         style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.3rem;padding:0.15rem 0.35rem;font-size:0.6rem;color:var(--text-secondary);cursor:pointer"
                       >{q}</button>
                     <% end %>
+                  </div>
+                <% end %>
+
+                <!-- Refusal: suggest other questions -->
+                <%= if msg[:refused] do %>
+                  <div style="margin-top:0.5rem;padding:0.5rem;background:var(--bg-subtle);border-radius:0.4rem;font-size:0.7rem;color:var(--text-secondary);line-height:1.5">
+                    Try asking about:
+                    <div style="margin-top:0.3rem;display:flex;flex-wrap:wrap;gap:0.25rem">
+                      <button
+                        type="button"
+                        phx-click="ask_suggestion"
+                        phx-value-q="What is the setup?"
+                        style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.25rem;padding:0.15rem 0.4rem;font-size:0.65rem;color:var(--text);cursor:pointer"
+                      >Setup</button>
+                      <button
+                        type="button"
+                        phx-click="ask_suggestion"
+                        phx-value-q="How do turns work?"
+                        style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.25rem;padding:0.15rem 0.4rem;font-size:0.65rem;color:var(--text);cursor:pointer"
+                      >Turn order</button>
+                      <button
+                        type="button"
+                        phx-click="ask_suggestion"
+                        phx-value-q="How does scoring work?"
+                        style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.25rem;padding:0.15rem 0.4rem;font-size:0.65rem;color:var(--text);cursor:pointer"
+                      >Scoring</button>
+                      <button
+                        type="button"
+                        phx-click="ask_suggestion"
+                        phx-value-q="What are the win conditions?"
+                        style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.25rem;padding:0.15rem 0.4rem;font-size:0.65rem;color:var(--text);cursor:pointer"
+                      >Win conditions</button>
+                    </div>
                   </div>
                 <% end %>
 
@@ -952,61 +996,87 @@ defmodule RuleMavenWeb.GameLive.Show do
                 class="flex items-center gap-1 mt-0.5"
                 style="padding-left:0.25rem"
               >
-                <button
-                  type="button"
-                  phx-click="retry_question"
-                  phx-value-id={msg.id}
-                  disabled={@loading}
-                  style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
-                  title="Re-ask"
-                >↻</button>
-                <button
-                  :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
-                  type="button"
-                  phx-click="toggle_question_visibility"
-                  phx-value-id={msg.id}
-                  title={
-                    if msg[:visibility] == "community",
-                      do: "Make private",
-                      else: "Make community-visible"
-                  }
-                  style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
-                >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
-                <button
-                  :if={!msg[:history]}
-                  type="button"
-                  phx-click="pin_question"
-                  phx-value-id={msg.id}
-                  style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:pinned], do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
-                  title={if msg[:pinned], do: "Pinned", else: "Pin"}
-                >★</button>
-                <%= if @confirm_delete_id == msg.id do %>
-                  <span class="text-xs" style="color:var(--red)">Delete?</span>
-                  <button
-                    type="button"
-                    phx-click="confirm_delete_question"
-                    phx-value-id={msg.id}
-                    style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer"
-                  >Yes</button>
-                  <button
-                    type="button"
-                    phx-click="cancel_delete_question"
-                    style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
-                  >No</button>
+                <%= if msg[:refused] do %>
+                  <%= if @confirm_delete_id == msg.id do %>
+                    <span class="text-xs" style="color:var(--red)">Delete?</span>
+                    <button
+                      type="button"
+                      phx-click="confirm_delete_question"
+                      phx-value-id={msg.id}
+                      style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer"
+                    >Yes</button>
+                    <button
+                      type="button"
+                      phx-click="cancel_delete_question"
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                    >No</button>
+                  <% else %>
+                    <button
+                      :if={!msg[:history]}
+                      type="button"
+                      phx-click="delete_question"
+                      phx-value-id={msg.id}
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                      title="Delete"
+                    >✕</button>
+                  <% end %>
                 <% else %>
+                  <button
+                    type="button"
+                    phx-click="retry_question"
+                    phx-value-id={msg.id}
+                    disabled={@loading}
+                    style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                    title="Re-ask"
+                  >↻</button>
+                  <button
+                    :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
+                    type="button"
+                    phx-click="toggle_question_visibility"
+                    phx-value-id={msg.id}
+                    title={
+                      if msg[:visibility] == "community",
+                        do: "Make private",
+                        else: "Make community-visible"
+                    }
+                    style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
+                  >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
                   <button
                     :if={!msg[:history]}
                     type="button"
-                    phx-click="delete_question"
+                    phx-click="pin_question"
                     phx-value-id={msg.id}
-                    style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
-                    title="Delete"
-                  >✕</button>
-                <% end %>
-                <%= if RuleMaven.Users.game_master?(@current_user) && (msg[:llm_provider] || msg[:llm_model]) do %>
-                  <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem">{msg[
-                    :llm_provider
-                  ]} &middot; {msg[:llm_model]}</span>
+                    style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:pinned], do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
+                    title={if msg[:pinned], do: "Pinned", else: "Pin"}
+                  >★</button>
+                  <%= if @confirm_delete_id == msg.id do %>
+                    <span class="text-xs" style="color:var(--red)">Delete?</span>
+                    <button
+                      type="button"
+                      phx-click="confirm_delete_question"
+                      phx-value-id={msg.id}
+                      style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer"
+                    >Yes</button>
+                    <button
+                      type="button"
+                      phx-click="cancel_delete_question"
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                    >No</button>
+                  <% else %>
+                    <button
+                      :if={!msg[:history]}
+                      type="button"
+                      phx-click="delete_question"
+                      phx-value-id={msg.id}
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                      title="Delete"
+                    >✕</button>
+                  <% end %>
+                  <%= if RuleMaven.Users.game_master?(@current_user) && (msg[:llm_provider] || msg[:llm_model]) do %>
+                    <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem">{msg[
+                      :llm_provider
+                    ]} &middot; {msg[:llm_model]}</span>
+                  <% end %>
                 <% end %>
               </div>
             </div>
