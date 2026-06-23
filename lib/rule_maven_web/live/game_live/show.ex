@@ -400,12 +400,9 @@ defmodule RuleMavenWeb.GameLive.Show do
             end
 
             # Clear old conversation from interface
-            grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-            conversation = build_current_conversation(grouped)
-
             socket =
               assign(socket,
-                conversation: conversation,
+                conversation: [],
                 question: "",
                 loading: true,
                 confirm_delete_id: nil,
