@@ -9,8 +9,8 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 
 | Module | File | Lines | Responsibility | Key Functions |
 |--------|------|-------|----------------|---------------|
-| `Games` | `games.ex` | 660 | Game/Document CRUD, questions, followup chains, chunk retrieval, community pool | `get_game!/1`, `create_game/1`, `create_document/1`, `grouped_questions/1`, `find_parent_question_id/3`, `community_questions/2`, `find_similar_question_in_pool/2`, `question_threads/1`, `retrieve_chunks/3`, `chunk_document/1` |
-| `LLM` | `llm.ex` | 503 | LLM API calls (multi-provider), chat, question generation, pool/FAQ cache | `ask/4`, `chat/3`, `suggest_questions/3`, `provider/0`, `model/0`, `stats/1` |
+| `Games` | `games.ex` | 759 | Game/Document CRUD, questions, followup chains, chunk retrieval, community pool | `get_game!/1`, `create_game/1`, `create_document/1`, `grouped_questions/1`, `find_parent_question_id/3`, `community_questions/2`, `find_similar_question_in_pool/2`, `question_threads/1`, `retrieve_chunks/3`, `chunk_document/1` |
+| `LLM` | `llm.ex` | 513 | LLM API calls (multi-provider), chat, question generation, pool/FAQ cache | `ask/4`, `chat/3`, `suggest_questions/3`, `provider/0`, `model/0`, `stats/1` |
 | `LLM.Log` | `llm/log.ex` | — | LLM request/response logging | `log_llm/4` |
 | `LLMProxy` | `llm_proxy.ex` | 33 | Routes LLM/embed calls through proxy when `llm_proxy_url` DB setting is configured | `chat_url/0`, `embed_url/0`, `enabled?/0` |
 | `CheatSheet` | `cheat_sheet.ex` | 711 | Cheatsheet generation (async Oban), versions, HTML wrapping | `save_version/3`, `generate_async/5`, `generate_content/3`, `status/1`, `wrap_html_for_serve/2` |
@@ -35,7 +35,7 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 |--------|------|----------------|
 | `Game` | `games/game.ex` | Game name, BGG linkage, expansion relationships (`parent_id`) |
 | `Document` | `games/document.ex` | Rulebook text (`full_text`), label, status, PDF/HTML paths |
-| `Chunk` | `games/chunk.ex` | Text chunks with embeddings, linked to Document |
+| `Chunk` | `games/chunk.ex` | Text chunks with embeddings, linked to Document. `page_number` from PDF page. |
 | `QuestionLog` | `games/question_log.ex` | Asked questions, answers, citations, pinned status, history chain |
 
 ## LiveViews (UI pages — `lib/rule_maven_web/live/`)
@@ -43,7 +43,7 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 | Module | File | Lines | Route | Responsibility |
 |--------|------|-------|-------|----------------|
 | `GameLive.Index` | `game_live/index.ex` | 609 | `/` | Game list, search, delete |
-| `GameLive.Show` | `game_live/show.ex` | 1038 | `/games/:id` | Ask questions, view answers, conversation UI, followup chains, community pool, search |
+| `GameLive.Show` | `game_live/show.ex` | 1192 | `/games/:id` | Ask questions, view answers, conversation UI, followup chains, community pool, search |
 | `GameLive.Form` | `game_live/form.ex` | 1965 | `/games/new`, `/games/:id/edit` | Create/edit game, add rulebook (text/PDF/upload), suggested questions |
 | `GameLive.Review` | `game_live/review.ex` | 243 | `/games/:id/review` | Review document chunks, approve/reject |
 | `GameLive.Import` | `game_live/import.ex` | 328 | `/games/import` | Import games via BGG search |
@@ -81,7 +81,7 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 | `EmbedChunksWorker` | `embed_chunks_worker.ex` | Embed document chunks (called after chunk creation) |
 | `FaqClusterWorker` | `faq_cluster_worker.ex` | Cluster similar questions into FAQ candidates |
 | `DirectPromotionWorker` | `direct_promotion_worker.ex` | Auto-promote exact-match Q&A to FAQ |
-| `AskWorker` | `ask_worker.ex` | 70 | Background LLM ask via Oban, PubSub result broadcast |
+| `AskWorker` | `ask_worker.ex` | 98 | Background LLM ask via Oban, PubSub result broadcast |
 | `FaqClusterJob` | `faq_cluster_job.ex` | Oban job struct for FAQ clustering |
 
 ## Test Files

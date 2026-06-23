@@ -12,8 +12,8 @@ GameLive.Show (form submit with visibility)
     → Faq.check_faq_cache/3 (embedding check against FAQ entries, expansion-aware)
       → HIT: return cached answer ("faq" provider)
     → MISS: LLM.chat/3 → parse response → return cited answer with followup detection
-  → Games.log_question_update/2 (save answer, citation, provider, parent_question_id if followup)
-  → LiveView: prepend to conversation (with followup nesting), scroll bottom
+  → Games.log_question_update/2 (save answer, citation, provider, parent_question_id if followup, cited_page parsed from citation)
+  → LiveView: prepend to conversation (with followup nesting, page citation), scroll bottom
   → Oban.insert(DirectPromotionWorker) (auto-promote exact-match to FAQ)
 ```
 
