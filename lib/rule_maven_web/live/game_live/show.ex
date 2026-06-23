@@ -21,6 +21,7 @@ defmodule RuleMavenWeb.GameLive.Show do
        visibility: "private",
        search_query: "",
        community_questions: [],
+       refused_questions: [],
        faq_count: 0,
        refresh: 0,
        show_onboarding: false
@@ -73,12 +74,13 @@ defmodule RuleMavenWeb.GameLive.Show do
     {:noreply, assign(socket, suggestions: suggestions, suggestions_open: false)}
   end
 
-  # Build flat conversation list from grouped questions including followup chains.
-  # Only builds the most recent root thread — past threads are hidden.
+  # Build flat conversation from the most recent non-refused root thread.
   defp build_current_conversation(grouped) do
-    case grouped do
-      [current | _rest] -> build_conversation([current])
-      [] -> []
+    current = Enum.find(grouped, &(!&1.primary.refused))
+
+    case current do
+      nil -> []
+      g -> build_conversation([g])
     end
   end
 
@@ -296,12 +298,14 @@ defmodule RuleMavenWeb.GameLive.Show do
         grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
         conversation = build_current_conversation(grouped)
         community = Games.community_questions(game, socket.assigns.current_user.id)
+        refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
         refresh = socket.assigns.refresh + 1
 
         {:noreply,
          assign(socket,
            conversation: conversation,
            community_questions: community,
+           refused_questions: refused_qs,
            refresh: refresh
          )}
     end
@@ -461,6 +465,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_current_conversation(grouped)
     community = Games.community_questions(game, socket.assigns.current_user.id)
+    refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
 
     # Inject followups and cited_page from broadcast into matching message
     conversation =
@@ -483,6 +488,7 @@ defmodule RuleMavenWeb.GameLive.Show do
        conversation: conversation,
        loading: loading,
        community_questions: community,
+       refused_questions: refused_qs,
        refresh: socket.assigns.refresh + 1
      )
      |> push_event("scroll_bottom", %{})}
@@ -672,6 +678,29 @@ defmodule RuleMavenWeb.GameLive.Show do
               >
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
                   {String.slice(q.question, 0, 55)}{if String.length(q.question) > 55, do: "…"}
+                </span>
+              </button>
+            <% end %>
+            <div style="padding:0.25rem 0.75rem 0.5rem;border-bottom:1px solid var(--border-subtle);margin-bottom:0.25rem">
+            </div>
+          <% end %>
+
+          <!-- Refused questions -->
+          <%= if @refused_questions != [] do %>
+            <div style="padding:0.35rem 0.75rem 0.15rem;font-size:0.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;opacity:0.6">
+              Not covered
+            </div>
+            <%= for q <- @refused_questions do %>
+              <button
+                type="button"
+                phx-click="ask_suggestion"
+                phx-value-q={q.question}
+                style="text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
+                onmouseover="this.style.background='var(--bg-subtle)';this.style.opacity='0.8'"
+                onmouseout="this.style.background='none';this.style.opacity='0.5'"
+              >
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
+                  ⚐ {String.slice(q.question, 0, 52)}{if String.length(q.question) > 52, do: "…"}
                 </span>
               </button>
             <% end %>

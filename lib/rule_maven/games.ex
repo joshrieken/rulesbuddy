@@ -381,6 +381,28 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Returns refused (not covered) root questions for a game.
+  """
+  def refused_questions(%Game{} = game, exclude_user_id \\ nil) do
+    query =
+      from q in QuestionLog,
+        where: q.game_id == ^game.id,
+        where: q.refused == true,
+        where: is_nil(q.parent_question_id),
+        order_by: [desc: q.inserted_at],
+        limit: 50
+
+    query =
+      if exclude_user_id do
+        from q in query, where: q.user_id != ^exclude_user_id
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  @doc """
   Searches questions by text match for a game.
   """
   def search_questions(%Game{} = game, query_text) do
