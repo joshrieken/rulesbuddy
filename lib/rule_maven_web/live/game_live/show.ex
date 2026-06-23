@@ -36,7 +36,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-    conversation = build_conversation(grouped)
+    conversation = build_current_conversation(grouped)
     sources = Games.list_documents(game)
     expansions = Games.expansions_with_documents(game)
     community = Games.community_questions(game, socket.assigns.current_user.id)
@@ -73,7 +73,15 @@ defmodule RuleMavenWeb.GameLive.Show do
     {:noreply, assign(socket, suggestions: suggestions, suggestions_open: false)}
   end
 
-  # Build flat conversation list from grouped questions including followup chains
+  # Build flat conversation list from grouped questions including followup chains.
+  # Only builds the most recent root thread — past threads are hidden.
+  defp build_current_conversation(grouped) do
+    case grouped do
+      [current | _rest] -> build_conversation([current])
+      [] -> []
+    end
+  end
+
   defp build_conversation(grouped) do
     grouped
     |> Enum.flat_map(fn g ->
@@ -198,7 +206,7 @@ defmodule RuleMavenWeb.GameLive.Show do
              socket
              |> assign(
                question: "",
-               conversation: convo ++ [user_msg],
+               conversation: [user_msg],
                loading: true,
                confirm_delete_id: nil
              )
@@ -237,7 +245,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-    conversation = build_conversation(grouped)
+    conversation = build_current_conversation(grouped)
 
     {:noreply,
      assign(socket,
@@ -279,7 +287,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         Games.update_question_visibility(q, new_vis)
 
         grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-        conversation = build_conversation(grouped)
+        conversation = build_current_conversation(grouped)
         community = Games.community_questions(game, socket.assigns.current_user.id)
         refresh = socket.assigns.refresh + 1
 
@@ -317,7 +325,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-    conversation = build_conversation(grouped)
+    conversation = build_current_conversation(grouped)
 
     {:noreply, assign(socket, conversation: conversation)}
   end
@@ -444,7 +452,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     # Rebuild conversation from DB so answer updates survive refresh
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-    conversation = build_conversation(grouped)
+    conversation = build_current_conversation(grouped)
     community = Games.community_questions(game, socket.assigns.current_user.id)
 
     # Inject followups and cited_page from broadcast into matching message
