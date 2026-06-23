@@ -61,7 +61,8 @@ defmodule RuleMaven.LLM do
            provider: "pool",
            model: "cached",
            faq_hit: false,
-           pool_hit: true
+           pool_hit: true,
+           question_embedding: question_embedding
          }}
 
       faq_hit ->
@@ -71,7 +72,8 @@ defmodule RuleMaven.LLM do
            cited_passage: faq_hit.canonical_answer,
            provider: "faq",
            model: "cached",
-           faq_hit: true
+           faq_hit: true,
+           question_embedding: question_embedding
          }}
 
       true ->
