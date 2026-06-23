@@ -104,6 +104,10 @@ defmodule RuleMavenWeb.GameLive.Show do
           end)
       end
 
+    if pending_count > 0 do
+      Process.send_after(self(), :check_stale, 120_000)
+    end
+
     {:noreply, assign(socket, suggestions: suggestions, suggestions_open: false)}
   end
 
@@ -733,6 +737,46 @@ defmodule RuleMavenWeb.GameLive.Show do
        pending_count: max(0, socket.assigns.pending_count - 1)
      )
      |> push_event("scroll_bottom", %{})}
+  end
+
+  def handle_info(:check_stale, socket) do
+    stale_cutoff = NaiveDateTime.utc_now() |> NaiveDateTime.add(-120, :second)
+
+    {conversation, stale_count} =
+      Enum.reduce(socket.assigns.conversation, {[], 0}, fn msg, {acc, count} ->
+        if msg[:pending] && msg.role == :assistant && msg.content == "Thinking..." &&
+             not is_nil(msg.timestamp) &&
+             NaiveDateTime.compare(msg.timestamp, stale_cutoff) != :gt do
+          {[Map.delete(msg, :pending) | acc], count + 1}
+        else
+          {[msg | acc], count}
+        end
+      end)
+
+    if stale_count > 0 do
+      conversation = Enum.reverse(conversation)
+      pending_count = max(0, socket.assigns.pending_count - stale_count)
+
+      threads =
+        Enum.map(socket.assigns.threads, fn t ->
+          if t.pending && not is_nil(t.inserted_at) &&
+               NaiveDateTime.compare(t.inserted_at, stale_cutoff) != :gt do
+            %{t | pending: false}
+          else
+            t
+          end
+        end)
+
+      {:noreply,
+       assign(socket,
+         conversation: conversation,
+         threads: threads,
+         pending_count: pending_count,
+         refresh: socket.assigns.refresh + 1
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
