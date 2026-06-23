@@ -36,7 +36,8 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, socket) do
+  def handle_params(params, _uri, socket) do
+    id = params["id"]
     game = Games.get_game!(id)
 
     if connected?(socket) do
@@ -46,12 +47,17 @@ defmodule RuleMavenWeb.GameLive.Show do
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     threads = build_thread_summaries(grouped)
 
+    # Prefer URL query param ?t=THREAD_ID, then socket assign, then select first
     active_thread_id =
-      case socket.assigns.active_thread_id do
-        id when not is_nil(id) ->
+      cond do
+        t = params["t"] ->
+          tid = String.to_integer(t)
+          if Enum.any?(threads, &(&1.id == tid)), do: tid, else: select_active_thread(threads)
+
+        id = socket.assigns.active_thread_id ->
           if Enum.any?(threads, &(&1.id == id)), do: id, else: select_active_thread(threads)
 
-        _ ->
+        true ->
           select_active_thread(threads)
       end
 
@@ -217,6 +223,26 @@ defmodule RuleMavenWeb.GameLive.Show do
       [user_msg, assistant_msg | history_msgs] ++ followup_msgs
     end)
     |> Enum.sort_by(& &1.timestamp, {:asc, DateTime})
+    |> mark_pending_thinking()
+  end
+
+  # Mark recent "Thinking..." assistant messages as pending so they show
+  # animated pulse instead of "No answer received" after DB rebuild.
+  defp mark_pending_thinking(messages) do
+    recent = NaiveDateTime.utc_now() |> NaiveDateTime.add(-120, :second)
+
+    Enum.map(messages, fn
+      %{role: :assistant, content: "Thinking...", timestamp: ts} = msg
+      when not is_nil(ts) ->
+        if NaiveDateTime.compare(ts, recent) == :gt do
+          Map.put(msg, :pending, true)
+        else
+          msg
+        end
+
+      msg ->
+        msg
+    end)
   end
 
   @impl true
@@ -248,18 +274,11 @@ defmodule RuleMavenWeb.GameLive.Show do
   @impl true
   def handle_event("switch_thread", %{"id" => id_str}, socket) do
     {id, _} = Integer.parse(id_str)
-    game = socket.assigns.game
-    grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-    conversation = build_conversation_for_thread(grouped, id)
 
     {:noreply,
      socket
-     |> assign(
-       conversation: conversation,
-       active_thread_id: id,
-       sidebar_open: false
-     )
-     |> push_event("scroll_bottom", %{})}
+     |> assign(active_thread_id: id, sidebar_open: false)
+     |> push_patch(to: ~p"/games/#{socket.assigns.game.id}?t=#{id}")}
   end
 
   @impl true
@@ -293,7 +312,6 @@ defmodule RuleMavenWeb.GameLive.Show do
             :ok ->
               %{game: game, included_expansions: included} = socket.assigns
               expansion_ids = Map.keys(included)
-              now = DateTime.utc_now()
 
               recent =
                 convo
@@ -312,16 +330,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                   visibility: visibility
                 })
 
-              user_msg = %{id: question_log.id, role: :user, content: question, timestamp: now}
-
-              thinking_msg = %{
-                id: question_log.id,
-                role: :assistant,
-                content: "Thinking...",
-                pending: true,
-                timestamp: now
-              }
-
               %{
                 game_id: game.id,
                 question_log_id: question_log.id,
@@ -333,28 +341,10 @@ defmodule RuleMavenWeb.GameLive.Show do
               |> RuleMaven.Workers.AskWorker.new()
               |> Oban.insert()
 
-              # Add new thread to threads list and switch active to it
-              new_thread = %{
-                id: question_log.id,
-                question: question,
-                pending: true,
-                refused: false,
-                inserted_at: now
-              }
-
-              threads = [new_thread | socket.assigns.threads]
-
               {:noreply,
                socket
-               |> assign(
-                 question: "",
-                 conversation: [user_msg, thinking_msg],
-                 threads: threads,
-                 active_thread_id: question_log.id,
-                 pending_count: socket.assigns.pending_count + 1,
-                 pending: Map.put(socket.assigns.pending, question_log.id, true),
-                 confirm_delete_id: nil
-               )
+               |> assign(question: "", active_thread_id: question_log.id)
+               |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")
                |> push_event("scroll_bottom", %{})}
 
             {:error, reason} ->
@@ -518,7 +508,6 @@ defmodule RuleMavenWeb.GameLive.Show do
           :ok ->
             %{game: game, included_expansions: included} = socket.assigns
             expansion_ids = Map.keys(included)
-            dt_now = DateTime.utc_now()
 
             old_q =
               game
@@ -529,13 +518,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
             visibility = if old_q, do: old_q.visibility, else: "private"
 
-            old_was_pending? =
-              Enum.any?(socket.assigns.threads, fn
-                %{id: ^id, pending: true} -> true
-                _ -> false
-              end)
-
-            # Remove old thread, collect recent context from current conversation
+            # Collect recent Q&A for followup context (from current visible conversation)
             remaining_convo =
               Enum.reject(socket.assigns.conversation, fn
                 %{id: ^id} -> true
@@ -559,24 +542,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                 visibility: visibility
               })
 
-            new_thread = %{
-              id: question_log.id,
-              question: question,
-              pending: true,
-              refused: false,
-              inserted_at: dt_now
-            }
-
-            threads =
-              [new_thread | Enum.reject(socket.assigns.threads, &(&1.id == id))]
-
-            pending_count =
-              if old_was_pending? do
-                socket.assigns.pending_count
-              else
-                socket.assigns.pending_count + 1
-              end
-
             %{
               game_id: game.id,
               question_log_id: question_log.id,
@@ -589,25 +554,13 @@ defmodule RuleMavenWeb.GameLive.Show do
             |> Oban.insert()
 
             {:noreply,
-             assign(socket,
-               conversation: [
-                 %{id: question_log.id, role: :user, content: question, timestamp: dt_now},
-                 %{
-                   id: question_log.id,
-                   role: :assistant,
-                   content: "Thinking...",
-                   pending: true,
-                   timestamp: dt_now
-                 }
-               ],
-               threads: threads,
+             socket
+             |> assign(
                active_thread_id: question_log.id,
                question: "",
-               pending_count: pending_count,
-               pending: Map.put(socket.assigns.pending, question_log.id, true),
-               confirm_delete_id: nil,
                retry_cooldowns: Map.put(cooldowns, id, now)
-             )}
+             )
+             |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")}
 
           {:error, reason} ->
             {:noreply, put_flash(socket, :error, reason)}
