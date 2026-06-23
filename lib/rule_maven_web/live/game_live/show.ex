@@ -38,9 +38,20 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_current_conversation(grouped)
+    thinking? = Enum.any?(conversation, &(&1.role == :assistant && &1.content == "Thinking..."))
+
+    # Defensive: if no conversation but there are pending questions in DB, show loading
+    {conversation, thinking?} =
+      if conversation == [] && grouped != [] do
+        {[%{role: :assistant, content: "Thinking...", timestamp: DateTime.utc_now()}], true}
+      else
+        {conversation, thinking?}
+      end
+
     sources = Games.list_documents(game)
     expansions = Games.expansions_with_documents(game)
     community = Games.community_questions(game, socket.assigns.current_user.id)
+    refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
     faq_count = RuleMaven.Faq.faq_count(game)
 
     socket =
@@ -52,10 +63,11 @@ defmodule RuleMavenWeb.GameLive.Show do
         included_expansions: %{},
         source_count: length(sources),
         question: "",
-        loading: false,
+        loading: thinking?,
         community_questions: community,
+        refused_questions: refused_qs,
         faq_count: faq_count,
-        show_onboarding: conversation == [] && sources != []
+        show_onboarding: conversation == [] && sources != [] && !thinking?
       )
 
     suggestions =
