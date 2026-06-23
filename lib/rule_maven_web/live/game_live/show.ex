@@ -389,6 +389,15 @@ defmodule RuleMavenWeb.GameLive.Show do
       if question != "" do
         case check_rate_limit(socket) do
           :ok ->
+            # Delete the old question before re-asking
+            socket.assigns.game
+            |> Games.recent_questions(100)
+            |> Enum.find(&(&1.id == id))
+            |> case do
+              nil -> :ok
+              q -> Games.delete_question(q)
+            end
+
             socket =
               assign(socket,
                 question: "",
@@ -721,9 +730,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               Not covered
             </div>
             <%= for q <- @refused_questions do %>
-              <div
-                style="text-align:left;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
-              >
+              <div style="text-align:left;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
                   ⚐ {String.slice(q.question, 0, 52)}{if String.length(q.question) > 52, do: "…"}
                 </span>
@@ -927,7 +934,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <% end %>
                 <div>
                   <%= if msg.role == :assistant && msg.content == "Thinking..." && !msg[:thinking] do %>
-                    <div style="font-size:0.6rem;opacity:0.5;margin-bottom:0.1rem;color:var(--text-muted)">No answer received</div>
+                    <div style="font-size:0.6rem;opacity:0.5;margin-bottom:0.1rem;color:var(--text-muted)">
+                      No answer received
+                    </div>
                   <% end %>
                   {render_markdown(msg.content)}
                 </div>
@@ -1076,24 +1085,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                 style="padding-left:0.25rem"
               >
                 <%= if msg.content == "Thinking..." do %>
-                  <button type="button" phx-click="retry_question" phx-value-id={msg.id} disabled={@loading} style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer" title="Re-ask">↻</button>
-                  <%= if @confirm_delete_id == msg.id do %>
-                    <span class="text-xs" style="color:var(--red)">Delete?</span>
-                    <button type="button" phx-click="confirm_delete_question" phx-value-id={msg.id} style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer">Yes</button>
-                    <button type="button" phx-click="cancel_delete_question" style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer">No</button>
-                  <% else %>
-                    <button type="button" phx-click="delete_question" phx-value-id={msg.id} style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer" title="Delete">✕</button>
-                  <% end %>
-                <% else %>
-                  <%= if msg[:refused] do %>
-                    <%= if @confirm_delete_id == msg.id do %>
-                      <span class="text-xs" style="color:var(--red)">Delete?</span>
-                      <button type="button" phx-click="confirm_delete_question" phx-value-id={msg.id} style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer">Yes</button>
-                      <button type="button" phx-click="cancel_delete_question" style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer">No</button>
-                    <% else %>
-                      <button :if={!msg[:history]} type="button" phx-click="delete_question" phx-value-id={msg.id} style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer" title="Delete">✕</button>
-                    <% end %>
-                  <% else %>
                   <button
                     type="button"
                     phx-click="retry_question"
@@ -1102,26 +1093,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                     style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
                     title="Re-ask"
                   >↻</button>
-                  <button
-                    :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
-                    type="button"
-                    phx-click="toggle_question_visibility"
-                    phx-value-id={msg.id}
-                    title={
-                      if msg[:visibility] == "community",
-                        do: "Make private",
-                        else: "Make community-visible"
-                    }
-                    style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
-                  >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
-                  <button
-                    :if={!msg[:history]}
-                    type="button"
-                    phx-click="pin_question"
-                    phx-value-id={msg.id}
-                    style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:pinned], do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
-                    title={if msg[:pinned], do: "Pinned", else: "Pin"}
-                  >★</button>
                   <%= if @confirm_delete_id == msg.id do %>
                     <span class="text-xs" style="color:var(--red)">Delete?</span>
                     <button
@@ -1137,7 +1108,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                     >No</button>
                   <% else %>
                     <button
-                      :if={!msg[:history]}
                       type="button"
                       phx-click="delete_question"
                       phx-value-id={msg.id}
@@ -1145,12 +1115,89 @@ defmodule RuleMavenWeb.GameLive.Show do
                       title="Delete"
                     >✕</button>
                   <% end %>
-                  <%= if RuleMaven.Users.game_master?(@current_user) && (msg[:llm_provider] || msg[:llm_model]) do %>
-                    <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem">{msg[
-                      :llm_provider
-                    ]} &middot; {msg[:llm_model]}</span>
+                <% else %>
+                  <%= if msg[:refused] do %>
+                    <%= if @confirm_delete_id == msg.id do %>
+                      <span class="text-xs" style="color:var(--red)">Delete?</span>
+                      <button
+                        type="button"
+                        phx-click="confirm_delete_question"
+                        phx-value-id={msg.id}
+                        style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer"
+                      >Yes</button>
+                      <button
+                        type="button"
+                        phx-click="cancel_delete_question"
+                        style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                      >No</button>
+                    <% else %>
+                      <button
+                        :if={!msg[:history]}
+                        type="button"
+                        phx-click="delete_question"
+                        phx-value-id={msg.id}
+                        style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                        title="Delete"
+                      >✕</button>
+                    <% end %>
+                  <% else %>
+                    <button
+                      type="button"
+                      phx-click="retry_question"
+                      phx-value-id={msg.id}
+                      disabled={@loading}
+                      style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                      title="Re-ask"
+                    >↻</button>
+                    <button
+                      :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
+                      type="button"
+                      phx-click="toggle_question_visibility"
+                      phx-value-id={msg.id}
+                      title={
+                        if msg[:visibility] == "community",
+                          do: "Make private",
+                          else: "Make community-visible"
+                      }
+                      style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
+                    >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
+                    <button
+                      :if={!msg[:history]}
+                      type="button"
+                      phx-click="pin_question"
+                      phx-value-id={msg.id}
+                      style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:pinned], do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
+                      title={if msg[:pinned], do: "Pinned", else: "Pin"}
+                    >★</button>
+                    <%= if @confirm_delete_id == msg.id do %>
+                      <span class="text-xs" style="color:var(--red)">Delete?</span>
+                      <button
+                        type="button"
+                        phx-click="confirm_delete_question"
+                        phx-value-id={msg.id}
+                        style="color:var(--red);background:none;border:none;font-size:0.6rem;font-weight:600;cursor:pointer"
+                      >Yes</button>
+                      <button
+                        type="button"
+                        phx-click="cancel_delete_question"
+                        style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                      >No</button>
+                    <% else %>
+                      <button
+                        :if={!msg[:history]}
+                        type="button"
+                        phx-click="delete_question"
+                        phx-value-id={msg.id}
+                        style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                        title="Delete"
+                      >✕</button>
+                    <% end %>
+                    <%= if RuleMaven.Users.game_master?(@current_user) && (msg[:llm_provider] || msg[:llm_model]) do %>
+                      <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem">{msg[
+                        :llm_provider
+                      ]} &middot; {msg[:llm_model]}</span>
+                    <% end %>
                   <% end %>
-                <% end %>
                 <% end %>
               </div>
               <!-- Admin debug: raw LLM response -->
