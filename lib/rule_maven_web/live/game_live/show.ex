@@ -931,11 +931,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                   </div>
                 <% end %>
                 <div>
-                  <%= if msg.role == :user && msg[:cleaned_question] && msg[:cleaned_question] != msg.content do %>
-                    <div style="font-size:0.72rem;opacity:0.65;margin-bottom:0.1rem;font-style:italic">
-                      {msg.cleaned_question}
-                    </div>
-                  <% end %>
                   {render_markdown(msg.content)}
                 </div>
 
