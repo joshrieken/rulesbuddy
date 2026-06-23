@@ -9,7 +9,7 @@ Progressive disclosure: scan this file to locate target modules. Load only what 
 
 | Module | File | Lines | Responsibility | Key Functions |
 |--------|------|-------|----------------|---------------|
-| `Games` | `games.ex` | 759 | Game/Document CRUD, questions, followup chains, chunk retrieval, community pool | `get_game!/1`, `create_game/1`, `create_document/1`, `grouped_questions/1`, `find_parent_question_id/3`, `community_questions/2`, `find_similar_question_in_pool/2`, `question_threads/1`, `retrieve_chunks/3`, `chunk_document/1` |
+| `Games` | `games.ex` | 783 | Game/Document CRUD, questions, followup chains, chunk retrieval, community pool | `get_game!/1`, `create_game/1`, `create_document/1`, `log_question/1`, `log_question_update/2`, `grouped_questions/1`, `find_parent_question_id/3`, `community_questions/2`, `find_similar_question_in_pool/2`, `question_threads/1`, `retrieve_chunks/3`, `chunk_document/1` |
 | `LLM` | `llm.ex` | 513 | LLM API calls (multi-provider), chat, question generation, pool/FAQ cache | `ask/4`, `chat/3`, `suggest_questions/3`, `provider/0`, `model/0`, `stats/1` |
 | `LLM.Log` | `llm/log.ex` | — | LLM request/response logging | `log_llm/4` |
 | `LLMProxy` | `llm_proxy.ex` | 33 | Routes LLM/embed calls through proxy when `llm_proxy_url` DB setting is configured | `chat_url/0`, `embed_url/0`, `enabled?/0` |

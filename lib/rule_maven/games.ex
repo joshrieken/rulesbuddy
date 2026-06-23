@@ -211,17 +211,9 @@ defmodule RuleMaven.Games do
   end
 
   def log_question_update(%QuestionLog{} = q, attrs) do
-    case q
-         |> QuestionLog.changeset(attrs)
-         |> Repo.update() do
-      {:ok, updated} ->
-        updated
-
-      {:error, changeset} ->
-        require Logger
-        Logger.error("Failed to update question log #{q.id}: #{inspect(changeset.errors)}")
-        q
-    end
+    q
+    |> QuestionLog.changeset(attrs)
+    |> Repo.update()
   end
 
   def question_count(%Game{} = game) do

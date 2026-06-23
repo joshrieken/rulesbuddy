@@ -53,22 +53,41 @@ defmodule RuleMaven.Workers.AskWorker do
               update_attrs
             end
 
-          Games.log_question_update(ql, update_attrs)
+          case Games.log_question_update(ql, update_attrs) do
+            {:ok, _updated} ->
+              Phoenix.PubSub.broadcast(
+                RuleMaven.PubSub,
+                "game:#{game_id}",
+                {:ask_complete,
+                 %{
+                   question_log_id: question_log_id,
+                   faq_hit: llm_result[:faq_hit] || false,
+                   followup: followup?,
+                   followups: if(refused?, do: [], else: llm_result[:followups] || []),
+                   cited_page: cited_page,
+                   refused: refused?,
+                   raw_response: llm_result[:raw_response]
+                 }}
+              )
 
-          Phoenix.PubSub.broadcast(
-            RuleMaven.PubSub,
-            "game:#{game_id}",
-            {:ask_complete,
-             %{
-               question_log_id: question_log_id,
-               faq_hit: llm_result[:faq_hit] || false,
-               followup: followup?,
-               followups: if(refused?, do: [], else: llm_result[:followups] || []),
-               cited_page: cited_page,
-               refused: refused?,
-               raw_response: llm_result[:raw_response]
-             }}
-          )
+            {:error, changeset} ->
+              require Logger
+
+              Logger.error(
+                "AskWorker DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
+              )
+
+              Phoenix.PubSub.broadcast(
+                RuleMaven.PubSub,
+                "game:#{game_id}",
+                {:ask_error,
+                 %{
+                   question_log_id: question_log_id,
+                   question: question,
+                   error: "Failed to save answer"
+                 }}
+              )
+          end
         end
 
         :ok
@@ -78,13 +97,20 @@ defmodule RuleMaven.Workers.AskWorker do
         Logger.error("AskWorker failed for game #{game_id}: #{reason}")
 
         if ql = get_question_log!(question_log_id) do
-          Games.log_question_update(ql, %{answer: "⚠️ #{reason}"})
+          case Games.log_question_update(ql, %{answer: "⚠️ #{reason}"}) do
+            {:ok, _updated} ->
+              Phoenix.PubSub.broadcast(
+                RuleMaven.PubSub,
+                "game:#{game_id}",
+                {:ask_error,
+                 %{question_log_id: question_log_id, question: question, error: reason}}
+              )
 
-          Phoenix.PubSub.broadcast(
-            RuleMaven.PubSub,
-            "game:#{game_id}",
-            {:ask_error, %{question_log_id: question_log_id, question: question, error: reason}}
-          )
+            {:error, changeset} ->
+              Logger.error(
+                "AskWorker error DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
+              )
+          end
         end
 
         :ok

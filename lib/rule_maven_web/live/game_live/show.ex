@@ -367,7 +367,21 @@ defmodule RuleMavenWeb.GameLive.Show do
                          pending: true,
                          timestamp: DateTime.utc_now()
                        }
-                     ]
+                     ],
+                     threads: [
+                       %{
+                         id: question_log.id,
+                         question: question,
+                         pending: true,
+                         refused: false,
+                         inserted_at: DateTime.utc_now()
+                       }
+                       | socket.assigns.threads
+                     ],
+                     community_questions:
+                       Games.community_questions(game, socket.assigns.current_user.id),
+                     refused_questions:
+                       Games.refused_questions(game, socket.assigns.current_user.id)
                    )
                    |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")
                    |> push_event("scroll_bottom", %{})}
@@ -467,6 +481,7 @@ defmodule RuleMavenWeb.GameLive.Show do
            threads: threads,
            community_questions: community,
            refused_questions: refused_qs,
+           pending_count: Enum.count(threads, & &1.pending),
            refresh: socket.assigns.refresh + 1
          )}
     end
@@ -504,8 +519,14 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_conversation_for_thread(grouped, socket.assigns.active_thread_id)
+    threads = build_thread_summaries(grouped)
 
-    {:noreply, assign(socket, conversation: conversation)}
+    {:noreply,
+     assign(socket,
+       conversation: conversation,
+       threads: threads,
+       pending_count: Enum.count(threads, & &1.pending)
+     )}
   end
 
   @impl true
@@ -598,7 +619,11 @@ defmodule RuleMavenWeb.GameLive.Show do
                    active_thread_id: question_log.id,
                    question: "",
                    pending_count: socket.assigns.pending_count + 1,
-                   retry_cooldowns: Map.put(cooldowns, id, now)
+                   retry_cooldowns: Map.put(cooldowns, id, now),
+                   community_questions:
+                     Games.community_questions(game, socket.assigns.current_user.id),
+                   refused_questions:
+                     Games.refused_questions(game, socket.assigns.current_user.id)
                  )
                  |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")}
 
@@ -688,19 +713,23 @@ defmodule RuleMavenWeb.GameLive.Show do
               |> Map.put(:followup, data[:followup] || false)
 
             %{id: ^question_log_id, role: :assistant} = msg ->
-              msg
-              |> Map.delete(:pending)
-              |> Map.put(:content, ql.answer)
-              |> Map.put(:cited_passage, ql.cited_passage)
-              |> Map.put(:cited_page, data[:cited_page] || ql.cited_page)
-              |> Map.put(:followups, data[:followups] || [])
-              |> Map.put(:refused, ql.refused)
-              |> Map.put(:raw_response, ql.raw_response)
-              |> Map.put(:llm_provider, ql.llm_provider)
-              |> Map.put(:llm_model, ql.llm_model)
-              |> Map.put(:faq_hit, ql.llm_provider == "faq")
-              |> Map.put(:pool_hit, ql.llm_provider == "pool")
-              |> Map.put(:visibility, ql.visibility)
+              if ql.answer == "Thinking..." do
+                msg
+              else
+                msg
+                |> Map.delete(:pending)
+                |> Map.put(:content, ql.answer)
+                |> Map.put(:cited_passage, ql.cited_passage)
+                |> Map.put(:cited_page, data[:cited_page] || ql.cited_page)
+                |> Map.put(:followups, data[:followups] || [])
+                |> Map.put(:refused, ql.refused)
+                |> Map.put(:raw_response, ql.raw_response)
+                |> Map.put(:llm_provider, ql.llm_provider)
+                |> Map.put(:llm_model, ql.llm_model)
+                |> Map.put(:faq_hit, ql.llm_provider == "faq")
+                |> Map.put(:pool_hit, ql.llm_provider == "pool")
+                |> Map.put(:visibility, ql.visibility)
+              end
 
             msg ->
               msg
@@ -1204,7 +1233,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               ]}
               style={"display:flex;flex-direction:column;align-items:#{if msg.role == :user, do: "flex-end", else: "flex-start"}"}
             >
-              <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if is_followup, do: ";margin-left:2rem;font-size:0.85rem;opacity:0.92", else: ""}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
+              <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if is_followup && msg.role == :user, do: ";font-size:0.85rem;opacity:0.92", else: ""}#{if is_followup && msg.role != :user, do: ";margin-left:2rem;font-size:0.85rem;opacity:0.92", else: ""}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
                 <%= if is_followup do %>
                   <div style="font-size:0.6rem;opacity:0.6;margin-bottom:0.15rem">↳ followup</div>
                 <% end %>
