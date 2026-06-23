@@ -905,7 +905,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             </div>
           <% end %>
 
-          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reject(fn {msg, _} -> msg[:thinking] || msg.content == "Thinking..." end) do %>
+          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reject(fn {msg, _} -> msg[:thinking] end) |> Enum.reject(fn {msg, _} -> msg.content == "Thinking..." && msg.role == :assistant && @loading end) do %>
             <% is_followup = msg.role == :user && msg[:followup] %>
             <div
               id={"chat-msg-#{idx}"}
@@ -1013,11 +1013,11 @@ defmodule RuleMavenWeb.GameLive.Show do
                   💬 Community answer &mdash; from question pool
                 </div>
 
-                <!-- Thumbs up/down (LLM answers only, not FAQ/pool/refused/thinking) -->
+                <!-- Thumbs up/down (LLM answers only, not FAQ/pool/refused/thinking/loading) -->
                 <div
                   :if={
                     msg.role == :assistant && !msg[:faq_hit] && !msg[:pool_hit] && !msg[:refused] &&
-                      !msg[:thinking]
+                      !msg[:thinking] && msg.content != "Thinking..."
                   }
                   style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center"
                 >
@@ -1067,7 +1067,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               <div
                 :if={
                   RuleMaven.Users.game_master?(@current_user) && msg.role == :assistant &&
-                    !msg[:thinking]
+                    !msg[:thinking] && msg.content != "Thinking..."
                 }
                 class="flex items-center gap-1 mt-0.5"
                 style="padding-left:0.25rem"
