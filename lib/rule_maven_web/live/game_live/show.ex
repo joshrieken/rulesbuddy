@@ -756,6 +756,24 @@ defmodule RuleMavenWeb.GameLive.Show do
               </span>
             </button>
           <% end %>
+
+          <!-- Refused current-thread questions (dimmed) -->
+          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reverse() |> Enum.filter(fn {msg, _} -> msg.role == :user && msg[:refused] end) do %>
+            <button
+              type="button"
+              id={"sidebar-q-#{idx}"}
+              phx-click="toggle_sidebar"
+              phx-hook="ScrollToMessage"
+              data-target={"chat-msg-#{idx}"}
+              style="text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
+              onmouseover="this.style.background='var(--bg-subtle)';this.style.opacity='0.8'"
+              onmouseout="this.style.background='none';this.style.opacity='0.5'"
+            >
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
+                ⚐ {String.slice(msg.content, 0, 52)}{if String.length(msg.content) > 52, do: "…"}
+              </span>
+            </button>
+          <% end %>
           <div
             :if={@conversation == []}
             style="padding:0.5rem 0.75rem;color:var(--text);font-size:0.8rem"
