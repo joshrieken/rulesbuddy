@@ -918,13 +918,12 @@ defmodule RuleMavenWeb.GameLive.Show do
           <!-- Refused questions -->
           <%= if @refused_questions != [] do %>
             <div style="padding:0.25rem 0.75rem">
-              <button
-                type="button"
+              <div
                 phx-click="toggle_refused"
-                style="font-size:0.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;opacity:0.6;cursor:pointer;user-select:none;background:none;border:none;padding:0;text-align:left;width:100%"
+                style="font-size:0.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;opacity:0.6;cursor:pointer;user-select:none"
               >
                 Not covered ({length(@refused_questions)}) {if @refused_open, do: "▾", else: "▸"}
-              </button>
+              </div>
               <div :if={@refused_open} style="margin-top:0.25rem">
                 <%= for q <- @refused_questions do %>
                   <%= if @search_query == "" || String.contains?(String.downcase(q.question), String.downcase(@search_query)) do %>
