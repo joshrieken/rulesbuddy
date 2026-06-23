@@ -104,7 +104,9 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   # Build flat conversation from the most recent non-refused root thread.
   defp build_current_conversation(grouped) do
-    current = Enum.find(grouped, &(!&1.primary.refused))
+    current =
+      Enum.find(grouped, &(!&1.primary.refused)) ||
+        List.first(grouped)
 
     case current do
       nil -> []
