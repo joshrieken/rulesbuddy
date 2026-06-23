@@ -245,7 +245,7 @@ defmodule RuleMavenWeb.GameLive.Show do
              socket
              |> assign(
                question: "",
-               conversation: [user_msg],
+               conversation: socket.assigns.conversation ++ [user_msg],
                loading: true,
                confirm_delete_id: nil
              )
@@ -392,25 +392,36 @@ defmodule RuleMavenWeb.GameLive.Show do
           :ok ->
             # Delete the old question before re-asking
             game = socket.assigns.game
-            game
-            |> Games.recent_questions(100)
-            |> Enum.find(&(&1.id == id))
-            |> case do
-              nil -> :ok
-              q -> Games.delete_question(q)
-            end
 
-            # Clear old conversation, show placeholder thinking
+            old_q =
+              game
+              |> Games.recent_questions(100)
+              |> Enum.find(&(&1.id == id))
+
+            if old_q, do: Games.delete_question(old_q)
+
+            visibility = if old_q, do: old_q.visibility, else: "private"
+
+            # Clear old conversation, show user question + thinking placeholder
             socket =
               assign(socket,
-                conversation: [%{id: nil, role: :assistant, content: "Thinking...", thinking: true, timestamp: DateTime.utc_now()}],
+                conversation: [
+                  %{id: nil, role: :user, content: question, timestamp: DateTime.utc_now()},
+                  %{
+                    id: nil,
+                    role: :assistant,
+                    content: "Thinking...",
+                    thinking: true,
+                    timestamp: DateTime.utc_now()
+                  }
+                ],
                 question: "",
                 loading: true,
                 confirm_delete_id: nil,
                 retry_cooldowns: Map.put(cooldowns, id, now)
               )
 
-            send(self(), {:ask_question, question})
+            send(self(), {:ask_question, question, visibility})
             Process.send_after(self(), :loading_timeout, 45_000)
             {:noreply, socket}
 
@@ -548,8 +559,8 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     {:noreply,
      socket
-      |> assign(conversation: socket.assigns.conversation ++ [error_msg], loading: false)
-      |> push_event("scroll_bottom", %{})}
+     |> assign(conversation: socket.assigns.conversation ++ [error_msg], loading: false)
+     |> push_event("scroll_bottom", %{})}
   end
 
   def handle_info(:loading_timeout, socket) do
@@ -1305,7 +1316,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               id="ask-input"
               phx-hook="FocusInput"
             />
-            <input type="hidden" name="visibility" value="private" />
+            <input type="hidden" name="visibility" value={@visibility} />
             <button
               type="submit"
               disabled={@loading || @source_count == 0}

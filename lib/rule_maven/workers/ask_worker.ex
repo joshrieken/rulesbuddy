@@ -63,7 +63,9 @@ defmodule RuleMaven.Workers.AskWorker do
             update_attrs
           end
 
-        Games.log_question_update(get_question_log!(question_log_id), update_attrs)
+        if ql = get_question_log!(question_log_id) do
+          Games.log_question_update(ql, update_attrs)
+        end
 
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
@@ -86,9 +88,9 @@ defmodule RuleMaven.Workers.AskWorker do
         require Logger
         Logger.error("AskWorker failed for game #{game_id}: #{reason}")
 
-        Games.log_question_update(get_question_log!(question_log_id), %{
-          answer: "⚠️ #{reason}"
-        })
+        if ql = get_question_log!(question_log_id) do
+          Games.log_question_update(ql, %{answer: "⚠️ #{reason}"})
+        end
 
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
@@ -100,11 +102,23 @@ defmodule RuleMaven.Workers.AskWorker do
     end
   end
 
-  defp get_question_log!(id) do
+  defp get_question_log(id) do
     import Ecto.Query
     alias RuleMaven.Games.QuestionLog
 
-    RuleMaven.Repo.one!(from q in QuestionLog, where: q.id == ^id)
+    RuleMaven.Repo.one(from q in QuestionLog, where: q.id == ^id)
+  end
+
+  defp get_question_log!(id) do
+    case get_question_log(id) do
+      nil ->
+        require Logger
+        Logger.warning("AskWorker: question_log #{id} not found, likely deleted by retry")
+        nil
+
+      q ->
+        q
+    end
   end
 
   defp parse_cited_page(nil), do: nil
