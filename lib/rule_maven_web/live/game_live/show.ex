@@ -38,12 +38,28 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
     conversation = build_current_conversation(grouped)
-    thinking? = Enum.any?(conversation, &(&1.role == :assistant && &1.content == "Thinking..."))
 
-    # Defensive: if no conversation but there are pending questions in DB, show loading
+    # Only treat Thinking... as loading if it's recent (within 2 min)
+    recent = NaiveDateTime.utc_now() |> NaiveDateTime.add(-120, :second)
+
+    thinking? =
+      Enum.any?(conversation, fn m ->
+        m.role == :assistant && m.content == "Thinking..." &&
+          (is_nil(m.timestamp) || NaiveDateTime.compare(m.timestamp, recent) == :gt)
+      end)
+
+    # Defensive: if no conversation but there are recent pending questions, show loading
     {conversation, thinking?} =
       if conversation == [] && grouped != [] do
-        {[%{id: nil, role: :assistant, content: "Thinking...", faq_hit: true, timestamp: DateTime.utc_now()}], true}
+        {[
+           %{
+             id: nil,
+             role: :assistant,
+             content: "Thinking...",
+             thinking: true,
+             timestamp: DateTime.utc_now()
+           }
+         ], true}
       else
         {conversation, thinking?}
       end
@@ -874,7 +890,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             </div>
           <% end %>
 
-          <%= for {msg, idx} <- Enum.with_index(@conversation) do %>
+          <%= for {msg, idx} <- @conversation |> Enum.with_index() |> Enum.reject(fn {msg, _} -> msg[:thinking] || msg.content == "Thinking..." end) do %>
             <% is_followup = msg.role == :user && msg[:followup] %>
             <div
               id={"chat-msg-#{idx}"}
@@ -973,7 +989,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
                 <!-- FAQ badge -->
                 <div
-                  :if={msg[:faq_hit]}
+                  :if={msg[:faq_hit] && !msg[:thinking]}
                   style="margin-top:0.5rem;font-size:0.7rem;font-weight:600;color:var(--green)"
                 >
                   ✅ FAQ &mdash; instant answer
@@ -987,9 +1003,12 @@ defmodule RuleMavenWeb.GameLive.Show do
                   💬 Community answer &mdash; from question pool
                 </div>
 
-                <!-- Thumbs up/down (LLM answers only, not FAQ/pool/refused) -->
+                <!-- Thumbs up/down (LLM answers only, not FAQ/pool/refused/thinking) -->
                 <div
-                  :if={msg.role == :assistant && !msg[:faq_hit] && !msg[:pool_hit] && !msg[:refused]}
+                  :if={
+                    msg.role == :assistant && !msg[:faq_hit] && !msg[:pool_hit] && !msg[:refused] &&
+                      !msg[:thinking]
+                  }
                   style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center"
                 >
                   <% q_text = find_question_for_answer(@conversation, msg) %>
@@ -1036,7 +1055,10 @@ defmodule RuleMavenWeb.GameLive.Show do
 
               <!-- Message actions (admin only) -->
               <div
-                :if={RuleMaven.Users.game_master?(@current_user) && msg.role == :assistant}
+                :if={
+                  RuleMaven.Users.game_master?(@current_user) && msg.role == :assistant &&
+                    !msg[:thinking]
+                }
                 class="flex items-center gap-1 mt-0.5"
                 style="padding-left:0.25rem"
               >
