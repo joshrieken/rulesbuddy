@@ -31,7 +31,8 @@ defmodule RuleMavenWeb.GameLive.Show do
        faq_count: 0,
        refresh: 0,
        show_onboarding: false,
-       refused_open: false
+       refused_open: false,
+       stale_timer: nil
      )}
   end
 
@@ -105,10 +106,18 @@ defmodule RuleMavenWeb.GameLive.Show do
       end
 
     if pending_count > 0 do
-      Process.send_after(self(), :check_stale, 120_000)
-    end
+      if socket.assigns.stale_timer, do: Process.cancel_timer(socket.assigns.stale_timer)
 
-    {:noreply, assign(socket, suggestions: suggestions, suggestions_open: false)}
+      timer = Process.send_after(self(), :check_stale, 120_000)
+
+      {:noreply,
+       assign(socket, suggestions: suggestions, suggestions_open: false, stale_timer: timer)}
+    else
+      if socket.assigns.stale_timer, do: Process.cancel_timer(socket.assigns.stale_timer)
+
+      {:noreply,
+       assign(socket, suggestions: suggestions, suggestions_open: false, stale_timer: nil)}
+    end
   end
 
   # Pick the first non-refused thread, or the first thread, or nil.
@@ -569,7 +578,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             {:noreply, put_flash(socket, :error, reason)}
         end
       else
-        {:noreply, socket}
+        {:noreply, assign(socket, stale_timer: nil)}
       end
     else
       {:noreply, put_flash(socket, :error, "Please wait a moment before retrying.")}
@@ -772,7 +781,8 @@ defmodule RuleMavenWeb.GameLive.Show do
          conversation: conversation,
          threads: threads,
          pending_count: pending_count,
-         refresh: socket.assigns.refresh + 1
+         refresh: socket.assigns.refresh + 1,
+         stale_timer: nil
        )}
     else
       {:noreply, socket}
