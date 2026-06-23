@@ -29,9 +29,11 @@ defmodule RuleMaven.Workers.AskWorker do
         cited_page = parse_cited_page(passage)
         refused? = refused?(answer)
 
+        cleaned = llm_result[:cleaned_question] |> to_string() |> String.trim()
+
         update_attrs = %{
           answer: answer,
-          question: llm_result[:cleaned_question] || question,
+          question: if(cleaned != "", do: cleaned, else: question),
           cited_passage: passage,
           cited_page: cited_page,
           refused: refused?,
@@ -52,18 +54,13 @@ defmodule RuleMaven.Workers.AskWorker do
 
         # Re-embed if question was cleaned/changed
         update_attrs =
-          case llm_result[:cleaned_question] do
-            nil ->
-              update_attrs
-
-            cq when cq != question ->
-              case RuleMaven.Embed.embed(cq) do
-                {:ok, vec} -> Map.put(update_attrs, :question_embedding, vec)
-                {:error, _} -> update_attrs
-              end
-
-            _ ->
-              update_attrs
+          if cleaned != "" && cleaned != question do
+            case RuleMaven.Embed.embed(cleaned) do
+              {:ok, vec} -> Map.put(update_attrs, :question_embedding, vec)
+              {:error, _} -> update_attrs
+            end
+          else
+            update_attrs
           end
 
         Games.log_question_update(get_question_log!(question_log_id), update_attrs)
