@@ -400,10 +400,10 @@ defmodule RuleMavenWeb.GameLive.Show do
               q -> Games.delete_question(q)
             end
 
-            # Clear old conversation from interface
+            # Clear old conversation, show placeholder thinking
             socket =
               assign(socket,
-                conversation: [],
+                conversation: [%{id: nil, role: :assistant, content: "Thinking...", thinking: true, timestamp: DateTime.utc_now()}],
                 question: "",
                 loading: true,
                 confirm_delete_id: nil,
