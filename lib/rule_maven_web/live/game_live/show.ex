@@ -721,18 +721,13 @@ defmodule RuleMavenWeb.GameLive.Show do
               Not covered
             </div>
             <%= for q <- @refused_questions do %>
-              <button
-                type="button"
-                phx-click="ask_suggestion"
-                phx-value-q={q.question}
-                style="text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
-                onmouseover="this.style.background='var(--bg-subtle)';this.style.opacity='0.8'"
-                onmouseout="this.style.background='none';this.style.opacity='0.5'"
+              <div
+                style="text-align:left;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
               >
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
                   ⚐ {String.slice(q.question, 0, 52)}{if String.length(q.question) > 52, do: "…"}
                 </span>
-              </button>
+              </div>
             <% end %>
             <div style="padding:0.25rem 0.75rem 0.5rem;border-bottom:1px solid var(--border-subtle);margin-bottom:0.25rem">
             </div>
