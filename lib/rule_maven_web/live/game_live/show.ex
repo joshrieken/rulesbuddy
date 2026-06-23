@@ -390,7 +390,8 @@ defmodule RuleMavenWeb.GameLive.Show do
         case check_rate_limit(socket) do
           :ok ->
             # Delete the old question before re-asking
-            socket.assigns.game
+            game = socket.assigns.game
+            game
             |> Games.recent_questions(100)
             |> Enum.find(&(&1.id == id))
             |> case do
@@ -398,8 +399,13 @@ defmodule RuleMavenWeb.GameLive.Show do
               q -> Games.delete_question(q)
             end
 
+            # Clear old conversation from interface
+            grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
+            conversation = build_current_conversation(grouped)
+
             socket =
               assign(socket,
+                conversation: conversation,
                 question: "",
                 loading: true,
                 confirm_delete_id: nil,
