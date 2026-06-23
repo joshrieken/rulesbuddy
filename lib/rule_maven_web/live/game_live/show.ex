@@ -619,18 +619,33 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
   end
 
-  def handle_info({:ask_error, %{question: _question, error: reason}}, socket) do
-    error_msg = %{
-      id: nil,
-      role: :assistant,
-      content: "⚠️ #{reason}",
-      timestamp: DateTime.utc_now()
-    }
+  def handle_info({:ask_error, data}, socket) do
+    question_log_id = data[:question_log_id]
+
+    conversation =
+      if question_log_id do
+        # Replace pending thinking message with error, remove pending user message
+        Enum.reject(socket.assigns.conversation, fn
+          %{id: ^question_log_id, role: :user} -> true
+          _ -> false
+        end)
+        |> Enum.map(fn
+          %{id: ^question_log_id} = msg ->
+            msg
+            |> Map.delete(:pending)
+            |> Map.put(:content, "⚠️ #{data.error}")
+
+          msg ->
+            msg
+        end)
+      else
+        socket.assigns.conversation
+      end
 
     {:noreply,
      socket
      |> assign(
-       conversation: socket.assigns.conversation ++ [error_msg],
+       conversation: conversation,
        pending_count: max(0, socket.assigns.pending_count - 1)
      )
      |> push_event("scroll_bottom", %{})}

@@ -95,7 +95,7 @@ defmodule RuleMaven.Workers.AskWorker do
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
           "game:#{game_id}",
-          {:ask_error, %{question: question, error: reason}}
+          {:ask_error, %{question_log_id: question_log_id, question: question, error: reason}}
         )
 
         :ok
