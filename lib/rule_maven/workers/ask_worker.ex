@@ -52,17 +52,7 @@ defmodule RuleMaven.Workers.AskWorker do
             update_attrs
           end
 
-        # Re-embed if question was cleaned/changed
-        update_attrs =
-          if cleaned != "" && cleaned != question do
-            case RuleMaven.Embed.embed(cleaned) do
-              {:ok, vec} -> Map.put(update_attrs, :question_embedding, vec)
-              {:error, _} -> update_attrs
-            end
-          else
-            update_attrs
-          end
-
+        # Use embedding from LLM.ask (already computed, skip redundant re-embed)
         if ql = get_question_log!(question_log_id) do
           Games.log_question_update(ql, update_attrs)
         end

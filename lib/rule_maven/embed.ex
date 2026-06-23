@@ -40,7 +40,12 @@ defmodule RuleMaven.Embed do
           []
         end
 
-    case Req.post(url, json: body, headers: headers, receive_timeout: 60_000) do
+    case Req.post(url,
+           json: body,
+           headers: headers,
+           receive_timeout: 15_000,
+           connect_options: [timeout: 10_000]
+         ) do
       {:ok, %{status: 200, body: %{"data" => data}}} ->
         vectors =
           data

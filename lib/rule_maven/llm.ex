@@ -35,10 +35,13 @@ defmodule RuleMaven.LLM do
     user_id = Keyword.get(opts, :user_id)
 
     # Step 0: embed the question (used for pool check + FAQ check + logging)
+    # Skip embedding if nothing to match against — saves ~500ms-2s API call
     question_embedding =
-      case RuleMaven.Embed.embed(question) do
-        {:ok, vec} -> vec
-        {:error, _} -> nil
+      if embed_worthwhile?(game.id) do
+        case RuleMaven.Embed.embed(question) do
+          {:ok, vec} -> vec
+          {:error, _} -> nil
+        end
       end
 
     pool_hit =
@@ -112,6 +115,30 @@ defmodule RuleMaven.LLM do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp embed_worthwhile?(game_id) do
+    import Ecto.Query
+    alias RuleMaven.Faq.FaqEntry
+    alias RuleMaven.Games.QuestionLog
+
+    faq_count =
+      RuleMaven.Repo.aggregate(
+        from(f in FaqEntry, where: f.game_id == ^game_id and f.status == "published"),
+        :count
+      )
+
+    pool_count =
+      RuleMaven.Repo.aggregate(
+        from(q in QuestionLog,
+          where:
+            q.game_id == ^game_id and q.visibility == "community" and
+              not is_nil(q.question_embedding)
+        ),
+        :count
+      )
+
+    faq_count > 0 or pool_count > 0
   end
 
   defp check_faq_cache(game_id, expansion_ids, question_embedding) do
