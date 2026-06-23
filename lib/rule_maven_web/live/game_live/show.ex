@@ -925,7 +925,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <%= if is_followup do %>
                   <div style="font-size:0.6rem;opacity:0.6;margin-bottom:0.15rem">↳ followup</div>
                 <% end %>
-                <%= if msg[:refused] do %>
+                <%= if msg.role == :assistant && msg[:refused] do %>
                   <div style="font-size:0.6rem;opacity:0.55;margin-bottom:0.15rem;color:var(--text-muted)">
                     ⚐ not covered
                   </div>
