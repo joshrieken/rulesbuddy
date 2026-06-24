@@ -22,6 +22,15 @@ defmodule RuleMaven.Workers.AskWorker do
 
     game = Games.get_game!(game_id)
 
+    if prompt_injection?(question) do
+      if ql = get_question_log!(question_log_id) do
+        Games.log_question_update(ql, %{answer: "⚠️ This looks like a prompt injection attempt. Only rules questions are accepted.", refused: true})
+        RuleMaven.PubSub.broadcast_ask_complete(game_id, question_log_id)
+      end
+
+      :ok
+    else
+
     case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context, user_id: user_id) do
       {:ok, %{answer: raw_answer} = llm_result} ->
         answer =
@@ -151,6 +160,33 @@ defmodule RuleMaven.Workers.AskWorker do
 
         :ok
     end
+    end  # end prompt_injection? else
+  end
+
+  @injection_patterns ~w[
+    ignore\ all\ previous
+    ignore\ previous\ instructions
+    disregard\ your\ instructions
+    forget\ your\ instructions
+    override\ your\ instructions
+    you\ are\ now
+    new\ persona
+    act\ as\ a
+    pretend\ you\ are
+    pretend\ to\ be
+    jailbreak
+    dan\ mode
+    system\ prompt
+    reveal\ your\ instructions
+    repeat\ your\ instructions
+    what\ are\ your\ instructions
+    ignore\ the\ above
+    ignore\ the\ system
+  ]
+
+  defp prompt_injection?(text) do
+    lower = String.downcase(text)
+    Enum.any?(@injection_patterns, fn pattern -> String.contains?(lower, pattern) end)
   end
 
   defp get_question_log(id) do
