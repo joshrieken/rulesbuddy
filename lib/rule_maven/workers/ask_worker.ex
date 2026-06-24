@@ -177,19 +177,12 @@ defmodule RuleMaven.Workers.AskWorker do
     "forget all previous",
     "forget previous instructions",
     "override your instructions",
-    "override the above",
     "bypass your instructions",
-    "bypass restrictions",
     "bypass your rules",
     "cancel previous instructions",
-    "supersede previous",
     "your new instructions",
-    "updated instructions:",
-    "new instructions:",
 
     # ── role / persona change ─────────────────────────────────────────────────
-    "act as a",
-    "act as an",
     "you are now a",
     "you are now an",
     "you will now act as",
@@ -199,15 +192,9 @@ defmodule RuleMaven.Workers.AskWorker do
     "pretend to be",
     "roleplay as",
     "role play as",
-    "behave as a",
-    "simulate being",
     "impersonate",
-    "imagine you are a",
-    "imagine you're a",
     "from now on you are",
     "from now on act as",
-    "you are no longer",
-    "switch to",
 
     # ── system / prompt extraction ────────────────────────────────────────────
     "system prompt",
@@ -226,8 +213,6 @@ defmodule RuleMaven.Workers.AskWorker do
     "your base instructions",
     "your hidden instructions",
     "your secret instructions",
-    "initial prompt",
-    "original prompt",
 
     # ── named jailbreak modes ─────────────────────────────────────────────────
     "jailbreak",
@@ -237,13 +222,8 @@ defmodule RuleMaven.Workers.AskWorker do
     "unrestricted mode",
     "evil mode",
     "do anything now",
-    "no restrictions",
-    "without restrictions",
     "break character",
-    "unlock mode",
-    "admin mode",
     "sudo mode",
-    "override mode",
 
     # ── token / markup injection ──────────────────────────────────────────────
     "[inst]",
@@ -262,8 +242,6 @@ defmodule RuleMaven.Workers.AskWorker do
     "in all future responses",
     "for the rest of this conversation",
     "for all future responses",
-    "from this point forward",
-    "beginning now",
 
     # ── authority spoofing ────────────────────────────────────────────────────
     "your creator says",
