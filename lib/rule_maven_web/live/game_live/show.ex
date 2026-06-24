@@ -143,8 +143,12 @@ defmodule RuleMavenWeb.GameLive.Show do
         answer: g.primary.answer,
         pending: pending?,
         refused: g.primary.refused,
+        favorited: g.primary.favorited,
         inserted_at: g.primary.inserted_at
       }
+    end)
+    |> Enum.sort_by(fn t -> {if(t.favorited, do: 0, else: 1), t.inserted_at} end, fn
+      {fa, ta}, {fb, tb} -> fa < fb || (fa == fb && DateTime.compare(ta, tb) != :lt)
     end)
     |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
   end
@@ -183,6 +187,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         visibility: g.primary.visibility,
         refused: g.primary.refused,
         feedback: g.primary.feedback,
+        favorited: g.primary.favorited,
         raw_response: g.primary.raw_response,
         timestamp: g.primary.inserted_at
       }
@@ -527,6 +532,38 @@ defmodule RuleMavenWeb.GameLive.Show do
     else
       socket = assign(socket, suggestions_open: false)
       handle_event("ask", %{"question" => q}, socket)
+    end
+  end
+
+  @impl true
+  @impl true
+  def handle_event("favorite_question", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    q = Enum.find(socket.assigns.conversation, &(&1.id == id))
+
+    if q do
+      case Games.toggle_favorite(Games.get_question_log!(id)) do
+        {:ok, updated} ->
+          conversation =
+            Enum.map(socket.assigns.conversation, fn m ->
+              if m.id == id, do: Map.put(m, :favorited, updated.favorited), else: m
+            end)
+
+          threads =
+            Enum.map(socket.assigns.threads, fn t ->
+              if t.id == id, do: %{t | favorited: updated.favorited}, else: t
+            end)
+            |> Enum.sort_by(fn t -> {if(t.favorited, do: 0, else: 1), t.inserted_at} end, fn
+              {fa, ta}, {fb, tb} -> fa < fb || (fa == fb && DateTime.compare(ta, tb) != :lt)
+            end)
+
+          {:noreply, assign(socket, conversation: conversation, threads: threads)}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -1114,15 +1151,20 @@ defmodule RuleMavenWeb.GameLive.Show do
                 onmouseout={"this.style.background='none';#{if t.refused, do: "this.style.opacity='0.6'", else: ""}"}
               >
                 <% thread_error = !t.pending && is_binary(t.answer) && String.starts_with?(t.answer, "⚠️") %>
-                <%= if t.pending do %>
-                  <span class="animate-pulse" style="color:var(--accent);font-size:0.55rem">●</span>
-                <% end %>
-                <%= if thread_error do %>
-                  <span style="color:var(--red, #e53e3e);font-size:0.65rem" title="Failed — click to retry">⚠</span>
-                <% end %>
-                <span style="word-break:break-word;white-space:normal;display:block">
-                  {t.question}
-                </span>
+                <div style="display:flex;align-items:baseline;gap:0.25rem">
+                  <%= if t.favorited do %>
+                    <span style="color:#e05c2a;font-size:0.6rem;flex-shrink:0">♥</span>
+                  <% end %>
+                  <%= if t.pending do %>
+                    <span class="animate-pulse" style="color:var(--accent);font-size:0.5rem;flex-shrink:0">●</span>
+                  <% end %>
+                  <%= if thread_error do %>
+                    <span style="color:var(--red, #e53e3e);font-size:0.6rem;flex-shrink:0" title="Failed — click to retry">⚠</span>
+                  <% end %>
+                  <span style="word-break:break-word;white-space:normal">
+                    {t.question}
+                  </span>
+                </div>
                 <%= if t[:refused] do %>
                   <span style="display:block;font-size:0.65rem;color:var(--text-muted);margin-top:0.1rem;font-style:italic">
                     Not covered by rulebook
@@ -1596,6 +1638,14 @@ defmodule RuleMavenWeb.GameLive.Show do
                       }
                       style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:visibility] == "community", do: "color:var(--accent)", else: "color:var(--text-muted)"}"}
                     >{if msg[:visibility] == "community", do: "🌐", else: "🔒"}</button>
+                    <button
+                      :if={!msg[:history]}
+                      type="button"
+                      phx-click="favorite_question"
+                      phx-value-id={msg.id}
+                      style={"background:none;border:none;font-size:0.65rem;cursor:pointer;#{if msg[:favorited], do: "color:#e05c2a", else: "color:var(--text-muted)"}"}
+                      title={if msg[:favorited], do: "Unfavorite", else: "Favorite — moves to top of list"}
+                    >{if msg[:favorited], do: "♥", else: "♡"}</button>
                     <button
                       :if={!msg[:history]}
                       type="button"

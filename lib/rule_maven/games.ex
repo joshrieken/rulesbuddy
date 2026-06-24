@@ -290,6 +290,10 @@ defmodule RuleMaven.Games do
     |> Enum.sort_by(& &1.primary.inserted_at, {:desc, DateTime})
   end
 
+  def toggle_favorite(%QuestionLog{} = q) do
+    q |> QuestionLog.changeset(%{favorited: !q.favorited}) |> Repo.update()
+  end
+
   def pin_question(%QuestionLog{} = q) do
     Repo.update_all(
       from(ql in QuestionLog,

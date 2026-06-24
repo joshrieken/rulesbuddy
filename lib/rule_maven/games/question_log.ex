@@ -7,6 +7,7 @@ defmodule RuleMaven.Games.QuestionLog do
     field :answer, :string
     field :cited_passage, :string
     field :pinned, :boolean, default: false
+    field :favorited, :boolean, default: false
     field :llm_provider, :string
     field :llm_model, :string
     field :cited_page, :integer
@@ -48,7 +49,8 @@ defmodule RuleMaven.Games.QuestionLog do
       :parent_question_id,
       :refused,
       :cleaned_question,
-      :raw_response
+      :raw_response,
+      :favorited
     ])
     |> validate_required([:question, :answer, :game_id])
   end

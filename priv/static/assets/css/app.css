@@ -733,7 +733,7 @@
    Base Styles
    ============================ */
 html {
-  font-size: 125%; /* 20px base — scales all rem units */
+  font-size: 112.5%; /* 18px base — scales all rem units */
   line-height: 1.6;
   -webkit-text-size-adjust: 100%;
   font-family: var(--font-body);
