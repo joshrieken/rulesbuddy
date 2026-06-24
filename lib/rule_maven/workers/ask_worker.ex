@@ -23,7 +23,9 @@ defmodule RuleMaven.Workers.AskWorker do
     game = Games.get_game!(game_id)
 
     case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context, user_id: user_id) do
-      {:ok, %{answer: answer} = llm_result} ->
+      {:ok, %{answer: raw_answer} = llm_result} ->
+        answer = if is_nil(raw_answer) || String.trim(raw_answer) == "", do: "⚠️ The AI returned an empty response. Please retry.", else: raw_answer
+
         if ql = get_question_log!(question_log_id) do
           passage = llm_result[:cited_passage]
           followup? = llm_result[:followup] || false
@@ -96,8 +98,20 @@ defmodule RuleMaven.Workers.AskWorker do
         require Logger
         Logger.error("AskWorker failed for game #{game_id}: #{reason}")
 
+        friendly =
+          cond do
+            is_binary(reason) && String.contains?(reason, "timeout") ->
+              "⚠️ The AI took too long to respond. Please retry."
+            is_binary(reason) && String.contains?(reason, "rate") ->
+              "⚠️ Too many requests — please wait a moment and retry."
+            is_binary(reason) && String.contains?(reason, "context") ->
+              "⚠️ Question too long for the AI to process. Try a shorter question."
+            true ->
+              "⚠️ Something went wrong. Please retry."
+          end
+
         if ql = get_question_log!(question_log_id) do
-          case Games.log_question_update(ql, %{answer: "⚠️ #{reason}"}) do
+          case Games.log_question_update(ql, %{answer: friendly}) do
             {:ok, _updated} ->
               Phoenix.PubSub.broadcast(
                 RuleMaven.PubSub,

@@ -71,6 +71,21 @@ Hooks.FocusInput = {
   }
 };
 
+Hooks.KeyboardSubmit = {
+  mounted() {
+    this._handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        this.el.dispatchEvent(new Event("submit", { bubbles: true }));
+      }
+    };
+    this.el.addEventListener("keydown", this._handler);
+  },
+  destroyed() {
+    this.el.removeEventListener("keydown", this._handler);
+  }
+};
+
 Hooks.Refocus = {
   mounted() {
     // Restore saved search from localStorage

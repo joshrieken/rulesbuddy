@@ -24,14 +24,14 @@ defmodule RuleMavenWeb.GameLive.Show do
        suggestions: [],
        suggestions_open: true,
        sidebar_open: false,
+       included_expansions: %{},
        visibility: "private",
        search_query: "",
        community_questions: [],
-       refused_questions: [],
+       active_community_question: nil,
        faq_count: 0,
        refresh: 0,
        show_onboarding: false,
-       refused_open: false,
        stale_timer: nil
      )}
   end
@@ -70,7 +70,6 @@ defmodule RuleMavenWeb.GameLive.Show do
     sources = Games.list_documents(game)
     expansions = Games.expansions_with_documents(game)
     community = Games.community_questions(game, socket.assigns.current_user.id)
-    refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
     faq_count = RuleMaven.Faq.faq_count(game)
 
     socket =
@@ -81,13 +80,13 @@ defmodule RuleMavenWeb.GameLive.Show do
         active_thread_id: active_thread_id,
         sources: sources,
         expansions: expansions,
-        included_expansions: %{},
+        included_expansions: socket.assigns.included_expansions,
         source_count: length(sources),
         question: "",
         pending_count: pending_count,
         pending: %{},
         community_questions: community,
-        refused_questions: refused_qs,
+        active_community_question: nil,
         faq_count: faq_count,
         show_onboarding: conversation == [] && sources != [] && pending_count == 0
       )
@@ -141,6 +140,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       %{
         id: g.primary.id,
         question: g.primary.question,
+        answer: g.primary.answer,
         pending: pending?,
         refused: g.primary.refused,
         inserted_at: g.primary.inserted_at
@@ -248,7 +248,8 @@ defmodule RuleMavenWeb.GameLive.Show do
         if DateTime.compare(ts, recent) == :gt do
           Map.put(msg, :pending, true)
         else
-          msg
+          # Stale: never got an answer; show error immediately on load
+          %{msg | content: "⚠️ This question timed out. You can retry it."}
         end
 
       msg ->
@@ -271,10 +272,6 @@ defmodule RuleMavenWeb.GameLive.Show do
     {:noreply, assign(socket, included_expansions: included)}
   end
 
-  @impl true
-  def handle_event("toggle_refused", _params, socket) do
-    {:noreply, assign(socket, refused_open: !socket.assigns.refused_open)}
-  end
 
   @impl true
   def handle_event("toggle_sidebar", _params, socket) do
@@ -287,8 +284,28 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     {:noreply,
      socket
-     |> assign(active_thread_id: id, sidebar_open: false)
+     |> assign(active_thread_id: id, sidebar_open: false, active_community_question: nil)
      |> push_patch(to: ~p"/games/#{socket.assigns.game.id}?t=#{id}")}
+  end
+
+  @impl true
+  def handle_event("switch_community", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+
+    cq =
+      Enum.find(socket.assigns.community_questions, &(&1.id == id)) ||
+        get_question_log_by_id(id)
+
+    if cq do
+      {:noreply,
+       assign(socket,
+         active_community_question: cq,
+         active_thread_id: nil,
+         sidebar_open: false
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -323,8 +340,12 @@ defmodule RuleMavenWeb.GameLive.Show do
               %{game: game, included_expansions: included} = socket.assigns
               expansion_ids = Map.keys(included)
 
+              # Scope context to active thread only (not entire mixed history)
+              active_tid = socket.assigns.active_thread_id
+
               recent =
                 convo
+                |> Enum.filter(fn m -> is_nil(active_tid) || m.id == active_tid end)
                 |> Enum.reject(& &1[:pending])
                 |> build_recent_pairs()
 
@@ -379,9 +400,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                        | socket.assigns.threads
                      ],
                      community_questions:
-                       Games.community_questions(game, socket.assigns.current_user.id),
-                     refused_questions:
-                       Games.refused_questions(game, socket.assigns.current_user.id)
+                       Games.community_questions(game, socket.assigns.current_user.id)
                    )
                    |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")
                    |> push_event("scroll_bottom", %{})}
@@ -473,14 +492,12 @@ defmodule RuleMavenWeb.GameLive.Show do
         conversation = build_conversation_for_thread(grouped, socket.assigns.active_thread_id)
         threads = build_thread_summaries(grouped)
         community = Games.community_questions(game, socket.assigns.current_user.id)
-        refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
 
         {:noreply,
          assign(socket,
            conversation: conversation,
            threads: threads,
            community_questions: community,
-           refused_questions: refused_qs,
            pending_count: Enum.count(threads, & &1.pending),
            refresh: socket.assigns.refresh + 1
          )}
@@ -490,6 +507,11 @@ defmodule RuleMavenWeb.GameLive.Show do
   @impl true
   def handle_event("search", %{"query" => query}, socket) do
     {:noreply, assign(socket, search_query: query)}
+  end
+
+  @impl true
+  def handle_event("clear_search", _params, socket) do
+    {:noreply, assign(socket, search_query: "")}
   end
 
   @impl true
@@ -551,6 +573,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             expansion_ids = Map.keys(included)
 
             old_q = find_question_log(game, id)
+            was_pending = old_q && old_q.answer == "Thinking..."
 
             if old_q, do: Games.delete_question(old_q)
 
@@ -565,8 +588,12 @@ defmodule RuleMavenWeb.GameLive.Show do
                 _ -> false
               end)
 
+            # Scope context to the retried thread only
+            retried_tid = id
+
             recent =
               remaining_convo
+              |> Enum.filter(fn m -> m.id == retried_tid end)
               |> Enum.reject(& &1[:pending])
               |> build_recent_pairs()
 
@@ -618,12 +645,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                    threads: threads,
                    active_thread_id: question_log.id,
                    question: "",
-                   pending_count: socket.assigns.pending_count + 1,
+                   pending_count: if(was_pending, do: socket.assigns.pending_count, else: socket.assigns.pending_count + 1),
                    retry_cooldowns: Map.put(cooldowns, id, now),
                    community_questions:
-                     Games.community_questions(game, socket.assigns.current_user.id),
-                   refused_questions:
-                     Games.refused_questions(game, socket.assigns.current_user.id)
+                     Games.community_questions(game, socket.assigns.current_user.id)
                  )
                  |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")}
 
@@ -684,6 +709,20 @@ defmodule RuleMavenWeb.GameLive.Show do
     RuleMaven.Repo.one(from q in QuestionLog, where: q.id == ^id)
   end
 
+  defp format_relative_time(%DateTime{} = dt) do
+    diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+
+    cond do
+      diff < 60 -> "just now"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      diff < 7 * 86400 -> "#{div(diff, 86400)}d ago"
+      true -> Calendar.strftime(dt, "%b %-d")
+    end
+  end
+
+  defp format_relative_time(_), do: ""
+
   @impl true
   def handle_info({:ask_complete, data}, socket) do
     question_log_id = data.question_log_id
@@ -692,15 +731,28 @@ defmodule RuleMavenWeb.GameLive.Show do
     ql = get_question_log_by_id(question_log_id)
 
     if ql do
-      # Update thread status in threads list
+      # Update thread status in threads list (only when answer is actually ready)
       threads =
-        Enum.map(socket.assigns.threads, fn
-          %{id: ^question_log_id} = t ->
-            %{t | pending: false, refused: ql.refused, question: ql.question}
+        if ql.answer != "Thinking..." do
+          updated =
+            Enum.map(socket.assigns.threads, fn
+              %{id: ^question_log_id} = t ->
+                %{t | pending: false, refused: ql.refused, question: ql.question, answer: ql.answer}
 
-          t ->
-            t
-        end)
+              t ->
+                t
+            end)
+
+          # If followup, rebuild threads from DB to move it under parent (remove orphan root)
+          if ql.parent_question_id do
+            grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
+            build_thread_summaries(grouped)
+          else
+            updated
+          end
+        else
+          socket.assigns.threads
+        end
 
       # Targeted update if this thread is currently active
       conversation =
@@ -738,17 +790,9 @@ defmodule RuleMavenWeb.GameLive.Show do
           socket.assigns.conversation
         end
 
-      updated? =
-        conversation != socket.assigns.conversation ||
-          threads != socket.assigns.threads
-
-      pending_count =
-        if updated?,
-          do: max(0, socket.assigns.pending_count - 1),
-          else: socket.assigns.pending_count
+      pending_count = Enum.count(threads, & &1.pending)
 
       community = Games.community_questions(game, socket.assigns.current_user.id)
-      refused_qs = Games.refused_questions(game, socket.assigns.current_user.id)
 
       {:noreply,
        socket
@@ -757,7 +801,6 @@ defmodule RuleMavenWeb.GameLive.Show do
          threads: threads,
          pending_count: pending_count,
          community_questions: community,
-         refused_questions: refused_qs,
          refresh: socket.assigns.refresh + 1
        )
        |> push_event("scroll_bottom", %{})}
@@ -768,6 +811,12 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   def handle_info({:ask_error, data}, socket) do
     question_log_id = data[:question_log_id]
+    known_ids = Enum.map(socket.assigns.threads, & &1.id)
+
+    # No-op if question_log_id not in current threads (deleted or from another session)
+    if question_log_id && question_log_id not in known_ids do
+      {:noreply, socket}
+    else
 
     threads =
       if question_log_id do
@@ -794,21 +843,15 @@ defmodule RuleMavenWeb.GameLive.Show do
         socket.assigns.conversation
       end
 
-    updated? =
-      conversation != socket.assigns.conversation || threads != socket.assigns.threads
-
     {:noreply,
      socket
      |> assign(
        conversation: conversation,
        threads: threads,
-       pending_count:
-         if(updated?,
-           do: max(0, socket.assigns.pending_count - 1),
-           else: socket.assigns.pending_count
-         )
+       pending_count: Enum.count(threads, & &1.pending)
      )
      |> push_event("scroll_bottom", %{})}
+    end
   end
 
   def handle_info(:check_stale, socket) do
@@ -827,7 +870,6 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     if stale_count > 0 do
       conversation = Enum.reverse(conversation)
-      pending_count = max(0, socket.assigns.pending_count - stale_count)
 
       threads =
         Enum.map(socket.assigns.threads, fn t ->
@@ -839,6 +881,8 @@ defmodule RuleMavenWeb.GameLive.Show do
           end
         end)
 
+      pending_count = Enum.count(threads, & &1.pending)
+
       {:noreply,
        assign(socket,
          conversation: conversation,
@@ -848,7 +892,15 @@ defmodule RuleMavenWeb.GameLive.Show do
          stale_timer: nil
        )}
     else
-      {:noreply, socket}
+      # No stale found — re-arm if questions still pending (they're < 120s old now)
+      timer =
+        if socket.assigns.pending_count > 0 do
+          Process.send_after(self(), :check_stale, 120_000)
+        else
+          nil
+        end
+
+      {:noreply, assign(socket, stale_timer: timer)}
     end
   end
 
@@ -984,7 +1036,12 @@ defmodule RuleMavenWeb.GameLive.Show do
           style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
         >
           <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
-            <span>Questions</span>
+            <span>
+              Questions
+              <%= if @pending_count > 0 do %>
+                <span style="display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border-radius:9999px;font-size:0.55rem;font-weight:700;padding:0 0.3rem;min-width:1.1em;height:1.1em;vertical-align:middle;margin-left:0.25rem">{@pending_count}</span>
+              <% end %>
+            </span>
             <button
               type="button"
               phx-click="toggle_sidebar"
@@ -995,15 +1052,25 @@ defmodule RuleMavenWeb.GameLive.Show do
 
           <!-- Search -->
           <div style="padding:0.25rem 0.75rem 0.5rem">
-            <input
-              type="text"
-              name="query"
-              value={@search_query}
-              placeholder="Search questions..."
-              phx-change="search"
-              style="width:100%;border:1px solid var(--border);border-radius:0.4rem;padding:0.3rem 0.5rem;font-size:0.72rem;background:var(--bg);color:var(--text)"
-              autocomplete="off"
-            />
+            <form phx-change="search" phx-submit="search" style="position:relative;display:flex;align-items:center">
+              <input
+                type="text"
+                name="query"
+                value={@search_query}
+                placeholder="Search questions..."
+                phx-debounce="200"
+                style="width:100%;border:1px solid var(--border);border-radius:0.4rem;padding:0.3rem 1.6rem 0.3rem 0.5rem;font-size:0.72rem;background:var(--bg);color:var(--text)"
+                autocomplete="off"
+              />
+              <%= if @search_query != "" do %>
+                <button
+                  type="button"
+                  phx-click="clear_search"
+                  style="position:absolute;right:0.3rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;font-size:0.75rem;line-height:1"
+                  title="Clear"
+                >✕</button>
+              <% end %>
+            </form>
           </div>
 
           <!-- Community questions -->
@@ -1014,10 +1081,11 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%= for q <- @community_questions do %>
               <%= if @search_query == "" || String.contains?(String.downcase(q.question), String.downcase(@search_query)) do %>
                 <button
+                  id={"community-#{q.id}"}
                   type="button"
-                  phx-click="ask_suggestion"
-                  phx-value-q={q.question}
-                  disabled={@pending_count >= @max_concurrent}
+                  phx-click="switch_community"
+                  phx-value-id={q.id}
+                  class={"#{if @active_community_question && @active_community_question.id == q.id, do: "community-active", else: ""}"}
                   style="text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text-secondary);font-size:0.78rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%"
                   onmouseover="this.style.background='var(--bg-subtle)'"
                   onmouseout="this.style.background='none'"
@@ -1032,67 +1100,90 @@ defmodule RuleMavenWeb.GameLive.Show do
             </div>
           <% end %>
 
-          <!-- Refused questions -->
-          <%= if @refused_questions != [] do %>
-            <div style="padding:0.25rem 0.75rem">
-              <div
-                phx-click="toggle_refused"
-                style="font-size:0.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;opacity:0.6;cursor:pointer;user-select:none"
-              >
-                Not covered ({length(@refused_questions)}) {if @refused_open, do: "▾", else: "▸"}
-              </div>
-              <div :if={@refused_open} style="margin-top:0.25rem">
-                <%= for q <- @refused_questions do %>
-                  <%= if @search_query == "" || String.contains?(String.downcase(q.question), String.downcase(@search_query)) do %>
-                    <button
-                      type="button"
-                      phx-click="switch_thread"
-                      phx-value-id={q.id}
-                      style="display:block;text-align:left;background:none;border:none;cursor:pointer;padding:0.35rem 0.75rem;color:var(--text-muted);font-size:0.75rem;line-height:1.4;border-left:2px solid var(--border-subtle);width:100%;opacity:0.5"
-                      onmouseover="this.style.background='var(--bg-subtle)';this.style.opacity='0.8'"
-                      onmouseout="this.style.background='none';this.style.opacity='0.5'"
-                    >
-                      <span style="word-break:break-word;white-space:normal;display:block;line-height:1.3;text-align:left">
-                        ⚐ {q.question}
-                      </span>
-                    </button>
-                  <% end %>
-                <% end %>
-              </div>
-            </div>
-            <div style="padding:0.25rem 0.75rem 0.5rem;border-bottom:1px solid var(--border-subtle);margin-bottom:0.25rem">
-            </div>
-          <% end %>
-
-          <!-- Thread list (exclude refused — they appear in dropdown above) -->
-          <% non_refused = Enum.reject(@threads, & &1.refused) %>
-          <%= for t <- non_refused do %>
+          <!-- Thread list: all questions, refused deemphasized, newest first -->
+          <%= for t <- @threads do %>
             <%= if @search_query == "" || String.contains?(String.downcase(t.question), String.downcase(@search_query)) do %>
               <button
+                id={"thread-#{t.id}"}
                 type="button"
                 phx-click="switch_thread"
                 phx-value-id={t.id}
-                style={"display:block;text-align:left;background:none;border:none;cursor:pointer;padding:0.45rem 0.75rem;color:var(--text);font-size:0.9rem;line-height:1.45;border-left:2px solid #{if @active_thread_id == t.id, do: "var(--accent)", else: "transparent"};width:100%"}
-                onmouseover="this.style.background='var(--bg-subtle)'"
-                onmouseout="this.style.background='none'"
+                style={"display:block;text-align:left;background:none;border:none;cursor:pointer;padding:0.45rem 0.75rem;font-size:#{if t.refused, do: "0.8rem", else: "0.9rem"};line-height:1.45;border-left:2px solid #{if @active_thread_id == t.id, do: "var(--accent)", else: "transparent"};width:100%;color:#{if t.refused, do: "var(--text-muted)", else: "var(--text)"};opacity:#{if t.refused, do: "0.6", else: "1"}"}
+                onmouseover={"this.style.background='var(--bg-subtle)';#{if t.refused, do: "this.style.opacity='0.9'", else: ""}"}
+                onmouseout={"this.style.background='none';#{if t.refused, do: "this.style.opacity='0.6'", else: ""}"}
               >
+                <% thread_error = !t.pending && is_binary(t.answer) && String.starts_with?(t.answer, "⚠️") %>
                 <%= if t.pending do %>
                   <span class="animate-pulse" style="color:var(--accent);font-size:0.55rem">●</span>
                 <% end %>
-                <span style="word-break:break-word;white-space:normal">
+                <%= if thread_error do %>
+                  <span style="color:var(--red, #e53e3e);font-size:0.65rem" title="Failed — click to retry">⚠</span>
+                <% end %>
+                <span style="word-break:break-word;white-space:normal;display:block">
                   {t.question}
                 </span>
+                <%= if t[:refused] do %>
+                  <span style="display:block;font-size:0.65rem;color:var(--text-muted);margin-top:0.1rem;font-style:italic">
+                    Not covered by rulebook
+                  </span>
+                <% else %>
+                  <%= if t.inserted_at do %>
+                    <span style="display:block;font-size:0.65rem;color:var(--text-muted);margin-top:0.1rem;opacity:0.7">
+                      {format_relative_time(t.inserted_at)}
+                    </span>
+                  <% end %>
+                <% end %>
               </button>
             <% end %>
           <% end %>
+          <%= if @search_query != "" && Enum.all?(@threads, fn t -> not String.contains?(String.downcase(t.question), String.downcase(@search_query)) end) && Enum.all?(@community_questions, fn q -> not String.contains?(String.downcase(q.question), String.downcase(@search_query)) end) do %>
+            <div style="padding:0.5rem 0.75rem;color:var(--text-muted);font-size:0.78rem;font-style:italic">
+              No matching questions
+            </div>
+          <% end %>
           <div
-            :if={non_refused == [] && @community_questions == []}
+            :if={@threads == [] && @community_questions == []}
             style="padding:0.5rem 0.75rem;color:var(--text);font-size:0.8rem"
           >
             No questions yet
           </div>
         </div>
 
+        <!-- Community Q view (read-only) -->
+        <%= if @active_community_question do %>
+          <div style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:1rem;background:var(--bg);max-width:48rem;margin:0 auto;width:100%;min-width:0">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+              <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em">Community Q&amp;A</span>
+              <span style="font-size:0.65rem;color:var(--text-muted)">— read-only</span>
+            </div>
+            <div style="background:var(--bg-subtle);border-radius:0.5rem;padding:0.75rem 1rem;color:var(--text)">
+              <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.1rem;color:var(--text-muted)">Question</div>
+              <div style="font-size:0.95rem">{@active_community_question.question}</div>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem 1rem;color:var(--text)">
+              <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-muted)">Answer</div>
+              <div style="font-size:0.9rem;line-height:1.6;white-space:pre-wrap">{@active_community_question.answer}</div>
+              <%= if @active_community_question.cited_passage do %>
+                <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border-subtle);font-size:0.78rem;color:var(--text-muted)">
+                  <div style="font-weight:600;margin-bottom:0.25rem">Source
+                    <%= if @active_community_question.cited_page do %>
+                      — p. {@active_community_question.cited_page}
+                    <% end %>
+                  </div>
+                  <div style="font-style:italic;line-height:1.4">{@active_community_question.cited_passage}</div>
+                </div>
+              <% end %>
+            </div>
+            <div style="margin-top:0.25rem">
+              <button
+                type="button"
+                phx-click="ask_suggestion"
+                phx-value-q={@active_community_question.question}
+                style="font-size:0.8rem;color:var(--accent);background:none;border:1px solid var(--accent);border-radius:0.3rem;padding:0.3rem 0.65rem;cursor:pointer"
+              >Ask this yourself</button>
+            </div>
+          </div>
+        <% else %>
         <!-- Messages -->
         <div
           id="chat-messages"
@@ -1224,6 +1315,16 @@ defmodule RuleMavenWeb.GameLive.Show do
 
           <%= for {msg, idx} <- @conversation |> Enum.with_index() do %>
             <% is_followup = msg.role == :user && msg[:followup] %>
+            <%= if msg[:history] do %>
+              <details style="width:100%;margin-bottom:0.1rem">
+                <summary style="font-size:0.72rem;color:var(--text-muted);cursor:pointer;list-style:none;padding:0.15rem 0.5rem;border-radius:0.25rem;background:var(--bg-subtle);display:inline-block">
+                  <span>▸ Previous attempt</span>
+                </summary>
+                <div style="margin-top:0.25rem;padding:0.5rem;border-left:2px solid var(--border-subtle);opacity:0.8">
+                  <div style="font-size:0.82rem;color:var(--text)">{render_markdown(msg.content)}</div>
+                </div>
+              </details>
+            <% else %>
             <div
               id={"chat-msg-#{idx}"}
               class={[
@@ -1245,9 +1346,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <div>
                   <%= if msg.role == :assistant && msg.content == "Thinking..." do %>
                     <%= if msg[:pending] do %>
-                      <div class="animate-pulse" style="color:var(--text-secondary)">
-                        Thinking...
-                      </div>
+                      <span class="typing-indicator">
+                        <span></span><span></span><span></span>
+                      </span>
                     <% else %>
                       <div style="font-size:0.6rem;opacity:0.5;margin-bottom:0.1rem;color:var(--text-muted)">
                         No answer received
@@ -1435,7 +1536,19 @@ defmodule RuleMavenWeb.GameLive.Show do
                     >✕</button>
                   <% end %>
                 <% else %>
-                  <%= if msg[:refused] do %>
+                  <% is_error = is_binary(msg.content) && String.starts_with?(msg.content, "⚠️") %>
+                  <%= if msg[:refused] || is_error do %>
+                    <!-- error/refused: retry + delete only -->
+                    <%= if is_error do %>
+                      <button
+                        type="button"
+                        phx-click="retry_question"
+                        phx-value-id={msg.id}
+                        disabled={@pending_count >= @max_concurrent}
+                        style="color:var(--text-muted);background:none;border:none;font-size:0.6rem;cursor:pointer"
+                        title="Re-ask"
+                      >↻</button>
+                    <% end %>
                     <%= if @confirm_delete_id == msg.id do %>
                       <span class="text-xs" style="color:var(--red)">Delete?</span>
                       <button
@@ -1460,6 +1573,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       >✕</button>
                     <% end %>
                   <% else %>
+                    <!-- normal answer: full actions -->
                     <button
                       type="button"
                       phx-click="retry_question"
@@ -1527,8 +1641,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                 </details>
               <% end %>
             </div>
+            <% end %><!-- end history else -->
           <% end %>
         </div>
+      <% end %><!-- end active_community_question else -->
       </div>
 
       <!-- Input -->
@@ -1581,14 +1697,22 @@ defmodule RuleMavenWeb.GameLive.Show do
               <% end %>
             </div>
           <% end %>
-          <form phx-submit="ask" class="flex gap-2">
+          <form phx-submit="ask" class="flex gap-2" phx-hook="KeyboardSubmit" id="ask-form">
+            <button
+              type="button"
+              phx-click="toggle_visibility"
+              title={if @visibility == "private", do: "Private — click to make public", else: "Public — click to make private"}
+              style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:2rem;padding:0.4rem 0.6rem;cursor:pointer;font-size:0.85rem;color:var(--text-muted)"
+            >
+              {if @visibility == "private", do: "🔒", else: "🌐"}
+            </button>
             <input
               type="text"
               name="question"
               value={@question}
               placeholder={
                 if @source_count > 0,
-                  do: "Ask a rules question...",
+                  do: "Ask a rules question…",
                   else: "Add rulebook text to start asking..."
               }
               class="flex-1 border rounded-full px-4 py-2.5 text-sm"
@@ -1604,9 +1728,14 @@ defmodule RuleMavenWeb.GameLive.Show do
               disabled={@pending_count >= @max_concurrent || @source_count == 0}
               style="background:var(--accent);color:white;border:none;padding:0.5rem 1.25rem;border-radius:2rem;font-weight:600;font-size:0.85rem;cursor:pointer"
             >
-              {if @pending_count >= @max_concurrent, do: "Wait...", else: "Send"}
+              {if @pending_count >= @max_concurrent, do: "Wait…", else: "Send"}
             </button>
           </form>
+          <%= if @pending_count >= @max_concurrent do %>
+            <div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin-top:0.3rem">
+              {@pending_count} of {@max_concurrent} questions in progress — please wait for one to finish
+            </div>
+          <% end %>
         </div>
       </div>
     </div>
