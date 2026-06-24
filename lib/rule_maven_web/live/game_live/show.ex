@@ -182,6 +182,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         pool_hit: g.primary.llm_provider == "pool",
         visibility: g.primary.visibility,
         refused: g.primary.refused,
+        feedback: g.primary.feedback,
         raw_response: g.primary.raw_response,
         timestamp: g.primary.inserted_at
       }
@@ -1452,7 +1453,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <div
                   :if={
                     msg.role == :assistant && !msg[:faq_hit] && !msg[:pool_hit] && !msg[:refused] &&
-                      msg.content != "Thinking..." && !msg[:pending]
+                      msg.content != "Thinking..." && !msg[:pending] &&
+                      not String.starts_with?(msg.content, "⚠️")
                   }
                   style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center"
                 >
