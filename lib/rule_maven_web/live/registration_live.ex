@@ -153,6 +153,7 @@ defmodule RuleMavenWeb.RegistrationLive do
             type="text"
             name="code"
             value={@invite_code}
+            autofocus={@invite_code == ""}
             placeholder="Enter your invite code"
             style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.45rem 0.6rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
             autocomplete="off"
@@ -168,6 +169,7 @@ defmodule RuleMavenWeb.RegistrationLive do
             type="text"
             name="username"
             value={@username}
+            autofocus={@invite_code != ""}
             placeholder="Choose a username"
             style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.45rem 0.6rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
             autocomplete="off"
