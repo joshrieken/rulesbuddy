@@ -24,6 +24,14 @@ defmodule RuleMaven.Settings do
     |> Repo.insert_or_update()
   end
 
+  @doc "Deletes a setting by key. No-op if not set."
+  def delete(key) do
+    case Repo.get(AppSetting, key) do
+      nil -> :ok
+      existing -> Repo.delete(existing)
+    end
+  end
+
   @doc "Returns all settings as a map."
   def all do
     Repo.all(AppSetting)

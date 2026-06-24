@@ -1,7 +1,10 @@
 defmodule RuleMavenWeb.AdminLive.Threads do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Faq, Games, Users}
+  alias RuleMaven.{Games, Users}
+  alias RuleMaven.Games.QuestionLog
+  alias RuleMaven.Repo
+  import Ecto.Query
 
   @impl true
   def mount(_params, _session, socket) do
@@ -31,7 +34,7 @@ defmodule RuleMavenWeb.AdminLive.Threads do
 
     if thread do
       followups = thread.followups
-      answer = Faq.build_consolidated_answer(thread.root, followups)
+      answer = build_consolidated_answer(thread.root, followups)
 
       {:noreply,
        assign(socket,
@@ -66,26 +69,30 @@ defmodule RuleMavenWeb.AdminLive.Threads do
 
   def handle_event("merge_thread", _params, socket) do
     thread = socket.assigns.merge_thread_root
+    root = thread.root
 
-    case Faq.consolidate_thread(thread.root, thread.followups, %{
-           question: socket.assigns.merge_question,
-           answer: socket.assigns.merge_answer
-         }) do
-      {:ok, _faq} ->
-        threads = Games.all_question_threads()
+    Repo.update_all(
+      from(q in QuestionLog, where: q.id == ^root.id),
+      set: [
+        visibility: "community",
+        canonical_question: socket.assigns.merge_question,
+        canonical_answer: socket.assigns.merge_answer
+      ]
+    )
 
-        {:noreply,
-         assign(socket,
-           threads: threads,
-           merge_thread_root: nil,
-           merge_question: "",
-           merge_answer: ""
-         )
-         |> put_flash(:info, "Thread consolidated into FAQ!")}
+    RuleMaven.Workers.EmbedQuestionWorker.enqueue(root.id)
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to create FAQ entry.")}
-    end
+    threads = Games.all_question_threads()
+
+    {:noreply,
+     assign(socket,
+       threads: threads,
+       merge_thread_root: nil,
+       merge_question: "",
+       merge_answer: ""
+     )
+     |> put_flash(:info, "Thread promoted to community!")}
+
   end
 
   @impl true
@@ -178,7 +185,7 @@ defmodule RuleMavenWeb.AdminLive.Threads do
                 phx-click="prepare_merge"
                 phx-value-id={root.id}
                 style="background:var(--accent);color:#fff;border:none;padding:0.25rem 0.6rem;border-radius:0.3rem;font-size:0.65rem;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0"
-              >Merge → FAQ</button>
+              >Promote to Community<br/>(Merge thread)</button>
             </div>
           </div>
         <% end %>
@@ -191,5 +198,19 @@ defmodule RuleMavenWeb.AdminLive.Threads do
       <% end %>
     </div>
     """
+  end
+
+  defp build_consolidated_answer(root, followups) do
+    parts = ["**Original:** #{root.answer}"]
+
+    parts =
+      if followups != [] do
+        fu = Enum.map_join(followups, "\n\n", fn f -> "**Q: #{f.question}**\nA: #{f.answer}" end)
+        parts ++ ["**Follow-ups:**\n#{fu}"]
+      else
+        parts
+      end
+
+    Enum.join(parts, "\n\n---\n\n")
   end
 end

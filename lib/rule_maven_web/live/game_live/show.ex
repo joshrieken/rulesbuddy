@@ -29,7 +29,7 @@ defmodule RuleMavenWeb.GameLive.Show do
        search_query: "",
        community_questions: [],
        active_community_question: nil,
-       faq_count: 0,
+       community_count: 0,
        refresh: 0,
        show_onboarding: false,
        stale_timer: nil
@@ -70,7 +70,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     sources = Games.list_documents(game)
     expansions = Games.expansions_with_documents(game)
     community = Games.community_questions(game, socket.assigns.current_user.id)
-    faq_count = RuleMaven.Faq.faq_count(game)
+    community_count = RuleMaven.Faq.community_count(game)
 
     socket =
       assign(socket,
@@ -87,13 +87,36 @@ defmodule RuleMavenWeb.GameLive.Show do
         pending: %{},
         community_questions: community,
         active_community_question: nil,
-        faq_count: faq_count,
+        community_count: community_count,
         show_onboarding: conversation == [] && sources != [] && pending_count == 0
       )
 
     suggestions =
       case RuleMaven.Settings.get("suggestions_#{game.id}") do
         nil ->
+          if sources != [] do
+            parent = self()
+
+            Task.start(fn ->
+              text = Games.document_full_text(game)
+
+              already_asked =
+                game
+                |> Games.recent_questions(100)
+                |> Enum.map(& &1.question)
+                |> Enum.uniq()
+
+              case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
+                {:ok, qs} ->
+                  RuleMaven.Settings.put("suggestions_#{game.id}", Jason.encode!(qs))
+                  send(parent, {:suggestions_ready, qs})
+
+                {:error, _} ->
+                  :ok
+              end
+            end)
+          end
+
           []
 
         json ->
@@ -182,13 +205,14 @@ defmodule RuleMavenWeb.GameLive.Show do
         llm_provider: g.primary.llm_provider,
         llm_model: g.primary.llm_model,
         pinned: g.primary.pinned,
-        faq_hit: g.primary.llm_provider == "faq",
+        faq_hit: false,
         pool_hit: g.primary.llm_provider == "pool",
         visibility: g.primary.visibility,
         refused: g.primary.refused,
         feedback: g.primary.feedback,
         favorited: g.primary.favorited,
         raw_response: g.primary.raw_response,
+        followups: parse_followups(g.primary.raw_response),
         also_asked: parse_also_asked(g.primary.raw_response),
         timestamp: g.primary.inserted_at
       }
@@ -206,6 +230,8 @@ defmodule RuleMavenWeb.GameLive.Show do
             pinned: h.pinned,
             refused: h.refused,
             raw_response: h.raw_response,
+            followups: parse_followups(h.raw_response),
+            also_asked: parse_also_asked(h.raw_response),
             timestamp: h.inserted_at,
             history: true
           }
@@ -234,6 +260,8 @@ defmodule RuleMavenWeb.GameLive.Show do
             pinned: f.pinned,
             refused: f.refused,
             raw_response: f.raw_response,
+            followups: parse_followups(f.raw_response),
+            also_asked: parse_also_asked(f.raw_response),
             timestamp: f.inserted_at
           }
 
@@ -843,7 +871,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                 |> Map.put(:raw_response, ql.raw_response)
                 |> Map.put(:llm_provider, ql.llm_provider)
                 |> Map.put(:llm_model, ql.llm_model)
-                |> Map.put(:faq_hit, ql.llm_provider == "faq")
                 |> Map.put(:pool_hit, ql.llm_provider == "pool")
                 |> Map.put(:visibility, ql.visibility)
               end
@@ -917,6 +944,10 @@ defmodule RuleMavenWeb.GameLive.Show do
      )
      |> push_event("scroll_bottom", %{})}
     end
+  end
+
+  def handle_info({:suggestions_ready, qs}, socket) do
+    {:noreply, assign(socket, suggestions: qs)}
   end
 
   def handle_info(:check_stale, socket) do
@@ -1050,13 +1081,13 @@ defmodule RuleMavenWeb.GameLive.Show do
               class="sidebar-toggle"
               style="background:none;border:1px solid var(--border);border-radius:0.3rem;padding:0.15rem 0.4rem;font-size:0.8rem;cursor:pointer;color:var(--text);display:none"
             >☰</button>
-            <%!-- FAQ --%>
-            <%= if @faq_count > 0 do %>
+            <%!-- Community --%>
+            <%= if @community_count > 0 do %>
               <.link
-                navigate={~p"/games/#{@game.id}/faq"}
+                navigate={~p"/games/#{@game.id}/review"}
                 style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
               >
-                FAQ ({@faq_count})
+                Community ({@community_count})
               </.link>
             <% end %>
             <%!-- Cheat Sheet --%>
@@ -1324,19 +1355,19 @@ defmodule RuleMavenWeb.GameLive.Show do
                     </div>
                   </div>
                 </div>
-                <%= if @faq_count > 0 do %>
+                <%= if @community_count > 0 do %>
                   <div style="display:flex;gap:0.75rem;align-items:flex-start">
                     <span style="font-size:1.1rem;flex-shrink:0">★</span>
                     <div>
                       <div style="font-weight:600;font-size:0.82rem;color:var(--text)">
-                        Browse the FAQ ({@faq_count} entries)
+                        Browse community answers ({@community_count})
                       </div>
                       <div style="font-size:0.72rem;color:var(--text-muted)">
                         <.link
-                          navigate={~p"/games/#{@game.id}/faq"}
+                          navigate={~p"/games/#{@game.id}/review"}
                           style="color:var(--accent);font-weight:600"
-                        >View official FAQ</.link>
-                        for curated answers to common questions.
+                        >View community Q&A</.link>
+                        — curated answers from other players.
                       </div>
                     </div>
                   </div>
@@ -1454,17 +1485,19 @@ defmodule RuleMavenWeb.GameLive.Show do
 
                 <!-- Followup suggestions -->
                 <%= if msg.role == :assistant && msg[:followups] != nil && msg[:followups] != [] do %>
-                  <div style="margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.3rem">
-                    <span style="font-size:0.6rem;color:var(--text-muted);align-self:center">Related:</span>
-                    <%= for q <- msg[:followups] do %>
-                      <button
-                        type="button"
-                        phx-click="ask_suggestion"
-                        phx-value-q={q}
-                        disabled={@pending_count >= @max_concurrent}
-                        style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.3rem;padding:0.15rem 0.35rem;font-size:0.6rem;color:var(--text-secondary);cursor:pointer"
-                      >{q}</button>
-                    <% end %>
+                  <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.5rem">
+                    <div style="color:var(--text-muted);font-weight:600;margin-bottom:0.4rem;font-size:0.72rem">You might also ask:</div>
+                    <div style="display:flex;flex-direction:column;gap:0.3rem">
+                      <%= for q <- msg[:followups] do %>
+                        <button
+                          type="button"
+                          phx-click="ask_suggestion"
+                          phx-value-q={q}
+                          disabled={@pending_count >= @max_concurrent}
+                          style="text-align:left;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.35rem;padding:0.3rem 0.5rem;font-size:0.82rem;color:var(--text);cursor:pointer;line-height:1.35"
+                        >{q}</button>
+                      <% end %>
+                    </div>
                   </div>
                 <% end %>
 
@@ -1523,13 +1556,6 @@ defmodule RuleMavenWeb.GameLive.Show do
                   </div>
                 <% end %>
 
-                <!-- FAQ badge -->
-                <div
-                  :if={msg[:faq_hit] && msg.content != "Thinking..."}
-                  style="margin-top:0.5rem;font-size:0.7rem;font-weight:600;color:var(--green)"
-                >
-                  ✅ FAQ &mdash; instant answer
-                </div>
 
                 <!-- Pool hit badge -->
                 <div
@@ -1542,7 +1568,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <!-- Thumbs up/down (LLM answers only) -->
                 <div
                   :if={
-                    msg.role == :assistant && !msg[:faq_hit] && !msg[:pool_hit] && !msg[:refused] &&
+                    msg.role == :assistant && !msg[:pool_hit] && !msg[:refused] &&
                       msg.content != "Thinking..." && !msg[:pending] &&
                       not String.starts_with?(msg.content, "⚠️")
                   }
@@ -1676,7 +1702,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       title="Re-ask"
                     >↻</button>
                     <button
-                      :if={!msg[:history] && !msg[:faq_hit] && !msg[:pool_hit]}
+                      :if={!msg[:history] && !msg[:pool_hit]}
                       type="button"
                       phx-click="toggle_question_visibility"
                       phx-value-id={msg.id}
@@ -1816,7 +1842,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   do: "Ask a rules question…",
                   else: "Add rulebook text to start asking..."
               }
-              maxlength={@max_question_length}
+              maxlength={600}
               class="flex-1 border rounded-full px-4 py-2.5 text-sm"
               style="background:var(--bg);color:var(--text);border-color:var(--border-strong)"
               disabled={@pending_count >= @max_concurrent || @source_count == 0}
@@ -1902,6 +1928,19 @@ defmodule RuleMavenWeb.GameLive.Show do
     |> Enum.filter(fn {a, b} -> a.role == :user && b.role == :assistant end)
     |> Enum.map(fn {user, asst} -> %{q: user.content, a: asst.content} end)
     |> Enum.take(-2)
+  end
+
+  defp parse_followups(nil), do: []
+  defp parse_followups(raw_response) do
+    case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)\s*---END-FOLLOWUPS---}s, raw_response) do
+      [_, qs] ->
+        qs
+        |> String.split("\n")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
+      nil -> []
+    end
   end
 
   defp parse_also_asked(nil), do: []

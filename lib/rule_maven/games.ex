@@ -80,14 +80,12 @@ defmodule RuleMaven.Games do
   def delete_game(%Game{} = game) do
     Repo.delete_all(from d in Document, where: d.game_id == ^game.id)
     Repo.delete_all(from q in QuestionLog, where: q.game_id == ^game.id)
-    Repo.delete_all(from f in "faq_entries", where: f.game_id == ^game.id)
     Repo.delete(game)
   end
 
   def delete_all_games do
     Repo.delete_all(Document)
     Repo.delete_all(QuestionLog)
-    Repo.delete_all("faq_entries")
     {count, _} = Repo.delete_all(Game)
     {count, nil}
   end
@@ -329,28 +327,13 @@ defmodule RuleMaven.Games do
 
     query =
       if user_id do
-        faq_ids = get_faq_source_ids(game.id)
-
         from q in base,
-          where: q.user_id == ^user_id or q.id in ^faq_ids
+          where: q.user_id == ^user_id or q.visibility == "community"
       else
         base
       end
 
     Repo.all(query)
-  end
-
-  defp get_faq_source_ids(game_id) do
-    import Ecto.Query
-
-    faq_ids =
-      Repo.all(
-        from f in RuleMaven.Faq.FaqEntry,
-          where: f.game_id == ^game_id and f.status == "published",
-          select: f.source_qa_ids
-      )
-
-    List.flatten(faq_ids) |> Enum.uniq()
   end
 
   def admin_list_questions(opts \\ []) do
@@ -400,12 +383,10 @@ defmodule RuleMaven.Games do
   Excludes questions by the given user_id when specified.
   """
   def community_questions(%Game{} = game, exclude_user_id \\ nil) do
-    faq_ids = get_faq_source_ids(game.id)
-
     query =
       from q in QuestionLog,
         where: q.game_id == ^game.id,
-        where: q.id in ^faq_ids,
+        where: q.visibility == "community",
         where: is_nil(q.parent_question_id),
         where: q.refused == false,
         order_by: [desc: q.inserted_at],
@@ -464,14 +445,12 @@ defmodule RuleMaven.Games do
   """
   def find_similar_question_in_pool(game_id, question_embedding, opts \\ []) do
     threshold = Keyword.get(opts, :threshold, 0.08)
-    user_id = Keyword.get(opts, :user_id)
-    faq_ids = get_faq_source_ids(game_id)
 
-    base =
+    # Canonical answers first (admin-curated), then any non-refused answer
+    Repo.one(
       from q in QuestionLog,
         where: q.game_id == ^game_id,
         where: not is_nil(q.question_embedding),
-        where: q.visibility == "community",
         where: q.refused == false,
         where:
           fragment(
@@ -479,22 +458,17 @@ defmodule RuleMaven.Games do
             q.question_embedding,
             ^Pgvector.new(question_embedding)
           ) <= ^threshold,
-        order_by:
-          fragment(
-            "cosine_distance(?, ?::vector)",
-            q.question_embedding,
-            ^Pgvector.new(question_embedding)
-          ),
+        order_by: [
+          asc: is_nil(q.canonical_answer),
+          asc:
+            fragment(
+              "cosine_distance(?, ?::vector)",
+              q.question_embedding,
+              ^Pgvector.new(question_embedding)
+            )
+        ],
         limit: 1
-
-    query =
-      if user_id do
-        from q in base, where: q.user_id == ^user_id or q.id in ^faq_ids
-      else
-        base
-      end
-
-    Repo.one(query)
+    )
   end
 
   @doc """

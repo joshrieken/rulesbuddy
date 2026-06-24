@@ -57,6 +57,7 @@ defmodule RuleMavenWeb.GameLive.Index do
        selected_idx: -1,
        display_count: 20,
        expanded_games: %{},
+       category_filter: nil,
        refresh_total: refresh_total,
        refresh_current: refresh_current,
        refresh_complete: refresh_complete,
@@ -220,6 +221,12 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
+  def handle_event("set_category_filter", %{"category" => category}, socket) do
+    filter = if category == "", do: nil, else: category
+    {:noreply, assign(socket, category_filter: filter, display_count: 20, selected_idx: -1)}
+  end
+
+  @impl true
   def handle_event("load_more", _params, socket) do
     {:noreply, assign(socket, display_count: socket.assigns.display_count + 20)}
   end
@@ -283,7 +290,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   defp visible_games(assigns) do
-    filtered = filtered_games(assigns.games, assigns.search)
+    filtered = filtered_games(assigns.games, assigns.search, assigns.category_filter)
     Enum.take(filtered, assigns.display_count)
   end
 
@@ -296,11 +303,23 @@ defmodule RuleMavenWeb.GameLive.Index do
     |> Enum.sort_by(&String.downcase(&1.name))
   end
 
-  defp filtered_games(_games, nil), do: []
+  defp filtered_games(_games, nil, _category), do: []
 
-  defp filtered_games(games, ""), do: games
+  defp filtered_games(games, search, category) do
+    games
+    |> apply_category_filter(category)
+    |> apply_search_filter(search)
+  end
 
-  defp filtered_games(games, search) do
+  defp apply_category_filter(games, nil), do: games
+
+  defp apply_category_filter(games, category) do
+    Enum.filter(games, fn g -> (g.category || "board_game") == category end)
+  end
+
+  defp apply_search_filter(games, ""), do: games
+
+  defp apply_search_filter(games, search) do
     search = String.downcase(search)
 
     Enum.filter(games, fn g ->
@@ -353,6 +372,31 @@ defmodule RuleMavenWeb.GameLive.Index do
           >✕</button>
         </div>
       </form>
+
+      <% present_categories =
+        @games
+        |> Enum.map(&(&1.category || "board_game"))
+        |> Enum.uniq()
+        |> Enum.sort() %>
+
+      <%= if length(present_categories) > 1 do %>
+        <div class="mb-4 flex gap-2 flex-wrap">
+          <button
+            type="button"
+            phx-click="set_category_filter"
+            phx-value-category=""
+            style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if is_nil(@category_filter), do: "var(--blue)", else: "transparent"};color:#{if is_nil(@category_filter), do: "white", else: "var(--blue)"}"}
+          >All</button>
+          <%= for cat <- present_categories do %>
+            <button
+              type="button"
+              phx-click="set_category_filter"
+              phx-value-category={cat}
+              style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if @category_filter == cat, do: "var(--blue)", else: "transparent"};color:#{if @category_filter == cat, do: "white", else: "var(--blue)"}"}
+            ><%= RuleMaven.Games.Category.label(cat) %></button>
+          <% end %>
+        </div>
+      <% end %>
 
       <div :if={RuleMaven.Users.game_master?(@current_user)} class="mb-4 flex gap-2 flex-wrap">
         <.button variant="primary" navigate={~p"/games/new"}>+ Add Game</.button>
@@ -429,7 +473,7 @@ defmodule RuleMavenWeb.GameLive.Index do
         </div>
       <% end %>
 
-      <% filtered = filtered_games(@games, @search) %>
+      <% filtered = filtered_games(@games, @search, @category_filter) %>
       <% display_games = visible_games(assigns) %>
 
       <%= if @search != nil do %>
@@ -578,6 +622,35 @@ defmodule RuleMavenWeb.GameLive.Index do
                       :if={Map.get(@source_counts, exp.id, 0) == 0}
                       style="display:inline-block;visibility:hidden;font-size:0.7rem;font-weight:600;padding:0.15rem 0.45rem;line-height:1.2"
                     >Ask</span>
+                    <.link
+                      :if={RuleMaven.Users.game_master?(@current_user)}
+                      navigate={~p"/games/#{exp.id}/edit"}
+                      style="background:var(--bg-subtle);color:var(--text-secondary);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
+                    >Edit</.link>
+                    <%= if RuleMaven.Users.game_master?(@current_user) do %>
+                      <%= if @delete_id == exp.id do %>
+                        <span class="text-xs" style="color:var(--red);padding:0.2rem 0">Delete?</span>
+                        <button
+                          type="button"
+                          phx-click="confirm_delete"
+                          phx-value-id={exp.id}
+                          style="background:var(--red-bg);color:var(--red);border:1px solid var(--red);font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.15rem 0.35rem;border-radius:0.3rem"
+                        >Yes</button>
+                        <button
+                          type="button"
+                          phx-click="cancel_delete"
+                          style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.15rem 0.35rem;border-radius:0.3rem"
+                        >No</button>
+                      <% else %>
+                        <button
+                          type="button"
+                          phx-click="delete_game"
+                          phx-value-id={exp.id}
+                          style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.15rem 0.4rem;border-radius:0.3rem"
+                          title="Delete expansion"
+                        >✕</button>
+                      <% end %>
+                    <% end %>
                   </div>
                 </div>
               <% end %>
@@ -626,9 +699,13 @@ defmodule RuleMavenWeb.GameLive.Index do
           </div>
         <% end %>
 
-        <%= if @games != [] && filtered_games(@games, @search) == [] do %>
+        <%= if @games != [] && filtered_games(@games, @search, @category_filter) == [] do %>
           <div class="text-center py-12 text-gray-500">
-            <p class="text-lg">No games match "{@search}"</p>
+            <%= if @category_filter do %>
+              <p class="text-lg">No games match "{@search}" in this category</p>
+            <% else %>
+              <p class="text-lg">No games match "{@search}"</p>
+            <% end %>
           </div>
         <% end %>
       <% end %>

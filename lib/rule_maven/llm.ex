@@ -50,29 +50,15 @@ defmodule RuleMaven.LLM do
           user_id: user_id
         )
 
-    faq_hit = question_embedding && check_faq_cache(game.id, expansion_ids, question_embedding)
-
     cond do
       pool_hit ->
         {:ok,
          %{
-           answer: pool_hit.answer,
+           answer: pool_hit.canonical_answer || pool_hit.answer,
            cited_passage: pool_hit.cited_passage,
            provider: "pool",
            model: "cached",
-           faq_hit: false,
            pool_hit: true,
-           question_embedding: question_embedding
-         }}
-
-      faq_hit ->
-        {:ok,
-         %{
-           answer: faq_hit.canonical_answer,
-           cited_passage: faq_hit.canonical_answer,
-           provider: "faq",
-           model: "cached",
-           faq_hit: true,
            question_embedding: question_embedding
          }}
 
@@ -121,58 +107,14 @@ defmodule RuleMaven.LLM do
 
   defp embed_worthwhile?(game_id) do
     import Ecto.Query
-    alias RuleMaven.Faq.FaqEntry
     alias RuleMaven.Games.QuestionLog
 
-    faq_count =
-      RuleMaven.Repo.aggregate(
-        from(f in FaqEntry, where: f.game_id == ^game_id and f.status == "published"),
-        :count
-      )
-
-    pool_count =
-      RuleMaven.Repo.aggregate(
-        from(q in QuestionLog,
-          where:
-            q.game_id == ^game_id and q.visibility == "community" and
-              not is_nil(q.question_embedding)
-        ),
-        :count
-      )
-
-    faq_count > 0 or pool_count > 0
-  end
-
-  defp check_faq_cache(game_id, expansion_ids, question_embedding) do
-    import Ecto.Query
-
-    threshold =
-      case RuleMaven.Settings.get("faq_similarity_threshold") do
-        nil -> 0.08
-        val -> 1.0 - String.to_float(val)
-      end
-
-    game_ids = [game_id | expansion_ids]
-
-    RuleMaven.Repo.one(
-      from f in RuleMaven.Faq.FaqEntry,
-        where:
-          f.game_id in ^game_ids and f.status == "published" and
-            not is_nil(f.question_embedding),
-        where:
-          fragment(
-            "cosine_distance(?, ?::vector)",
-            f.question_embedding,
-            ^Pgvector.new(question_embedding)
-          ) <= ^threshold,
-        order_by:
-          fragment(
-            "cosine_distance(?, ?::vector)",
-            f.question_embedding,
-            ^Pgvector.new(question_embedding)
-          ),
-        limit: 1
-    )
+    RuleMaven.Repo.aggregate(
+      from(q in QuestionLog,
+        where: q.game_id == ^game_id and not is_nil(q.question_embedding) and q.refused == false
+      ),
+      :count
+    ) > 0
   end
 
   @doc """
@@ -325,7 +267,7 @@ defmodule RuleMaven.LLM do
     2. Do NOT infer, extrapolate, or use general board game knowledge.
     3. If the text mentions a topic but does not give a rule for the specific situation asked, that counts as "not covered" — refuse.
     4. Do NOT say "the rulebook is unclear" followed by your best guess. Just refuse.
-    5. When refusing, do NOT include any FOLLOWUP, FOLLOWUPS, or CITATION markers. The response is ONLY the refusal phrase.
+    5. When refusing, still include the ---CLEANED--- block first (rephrase the question as normal), then the refusal phrase. Do NOT include any FOLLOWUP, FOLLOWUPS, or CITATION markers.
 
     CONFLICT RULES:
     5. If two sections of the text give different rules for the same thing, cite BOTH sections and state there is a conflict. Do NOT pick one.
@@ -408,19 +350,22 @@ defmodule RuleMaven.LLM do
 
     # Extract FOLLOWUPS — supports ---END-FOLLOWUPS--- and legacy (lookahead to ---CITATION---)
     {followups, cleaned} =
-      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)\n?---END-FOLLOWUPS---}s, cleaned) do
+      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)\s*---END-FOLLOWUPS---}s, cleaned) do
         [full, qs] ->
           q_list = parse_list_lines(qs)
           {q_list, String.replace(cleaned, full, "")}
         nil ->
-          case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?=\n?---CITATION---|$)}s, cleaned) do
+          case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?=\s*---CITATION---|\s*$)}s, cleaned) do
             [_, qs] ->
               q_list = parse_list_lines(qs)
-              {q_list, String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(?=\n?---CITATION---|$)}s, "")}
+              {q_list, String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(?=\s*---CITATION---|\s*$)}s, "")}
             nil ->
               {[], cleaned}
           end
       end
+
+    # Strip any leftover markers that failed to parse (safety net)
+    cleaned = Regex.replace(~r{---(?:FOLLOWUP[S]?|END-FOLLOWUPS?)---[^\n]*\n?}i, cleaned, "")
 
     # Extract ALSO-ASKED
     {also_asked, cleaned} =

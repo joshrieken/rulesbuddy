@@ -247,6 +247,8 @@ defmodule RuleMaven.Workers.AskWorker do
     String.trim(answer) == @refusal_phrase
   end
 
+  defp strip_game_name("", _), do: ""
+
   defp strip_game_name(question, game_name) when is_binary(question) and is_binary(game_name) do
     escaped = Regex.escape(game_name)
     # Strip " in Game Name" or " in Game Name?" suffix

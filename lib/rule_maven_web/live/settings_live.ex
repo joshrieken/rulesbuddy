@@ -16,9 +16,7 @@ defmodule RuleMavenWeb.SettingsLive do
        profile_email: user.email,
        profile_msg: nil,
        profile_error: nil,
-       current_password: "",
-       new_password: "",
-       confirm_password: "",
+
        password_msg: nil,
        password_error: nil,
        is_admin: admin?,
@@ -73,7 +71,7 @@ defmodule RuleMavenWeb.SettingsLive do
 
   def handle_event(
         "change_password",
-        %{"current" => current, "new" => new, "confirm" => confirm},
+        %{"current_password" => current, "new_password" => new, "confirm_password" => confirm},
         socket
       ) do
     cond do
@@ -88,9 +86,6 @@ defmodule RuleMavenWeb.SettingsLive do
           {:ok, _} ->
             {:noreply,
              assign(socket,
-               current_password: "",
-               new_password: "",
-               confirm_password: "",
                password_msg: "Password changed.",
                password_error: nil
              )}
@@ -303,35 +298,28 @@ defmodule RuleMavenWeb.SettingsLive do
             <!-- Change Password -->
             <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
               <h3 style="font-size:0.82rem;font-weight:600;margin:0 0 0.5rem 0">Change Password</h3>
-              <div style="display:flex;flex-direction:column;gap:0.5rem;max-width:20rem">
+              <form phx-submit="change_password" style="display:flex;flex-direction:column;gap:0.5rem;max-width:20rem">
                 <input
                   type="password"
                   name="current_password"
-                  value={@current_password}
                   placeholder="Current password"
                   style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.4rem 0.6rem;font-size:0.82rem;background:var(--bg);color:var(--text)"
                 />
                 <input
                   type="password"
                   name="new_password"
-                  value={@new_password}
                   placeholder="New password"
                   style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.4rem 0.6rem;font-size:0.82rem;background:var(--bg);color:var(--text)"
                 />
                 <input
                   type="password"
                   name="confirm_password"
-                  value={@confirm_password}
                   placeholder="Confirm new password"
                   style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.4rem 0.6rem;font-size:0.82rem;background:var(--bg);color:var(--text)"
                 />
                 <div style="display:flex;gap:0.5rem;align-items:center">
                   <button
-                    type="button"
-                    phx-click="change_password"
-                    phx-value-current={@current_password}
-                    phx-value-new={@new_password}
-                    phx-value-confirm={@confirm_password}
+                    type="submit"
                     style="background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);padding:0.35rem 1rem;border-radius:0.375rem;font-size:0.78rem;font-weight:600;cursor:pointer"
                   >Change Password</button>
                   <%= if @password_msg do %>
@@ -341,7 +329,7 @@ defmodule RuleMavenWeb.SettingsLive do
                     <span style="font-size:0.75rem;color:var(--red)">{@password_error}</span>
                   <% end %>
                 </div>
-              </div>
+              </form>
             </div>
           </div>
         </section>
