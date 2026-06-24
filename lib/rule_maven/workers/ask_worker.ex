@@ -38,6 +38,7 @@ defmodule RuleMaven.Workers.AskWorker do
                 faq_hit: false,
                 followup: false,
                 followups: [],
+                also_asked: [],
                 cited_page: nil,
                 refused: true,
                 raw_response: nil
@@ -118,6 +119,7 @@ defmodule RuleMaven.Workers.AskWorker do
                    faq_hit: llm_result[:faq_hit] || false,
                    followup: followup?,
                    followups: if(refused?, do: [], else: llm_result[:followups] || []),
+                   also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
                    cited_page: cited_page,
                    refused: refused?,
                    raw_response: llm_result[:raw_response]

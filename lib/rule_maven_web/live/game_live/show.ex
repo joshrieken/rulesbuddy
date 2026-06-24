@@ -189,6 +189,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         feedback: g.primary.feedback,
         favorited: g.primary.favorited,
         raw_response: g.primary.raw_response,
+        also_asked: parse_also_asked(g.primary.raw_response),
         timestamp: g.primary.inserted_at
       }
 
@@ -315,6 +316,10 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   @impl true
+  def handle_event("quick_ask", %{"question" => question}, socket) do
+    handle_event("ask", %{"question" => question}, socket)
+  end
+
   def handle_event("ask", %{"question" => question} = params, socket) do
     question = String.trim(question)
     visibility = params["visibility"] || socket.assigns.visibility
@@ -820,6 +825,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 |> Map.put(:cited_passage, ql.cited_passage)
                 |> Map.put(:cited_page, data[:cited_page] || ql.cited_page)
                 |> Map.put(:followups, data[:followups] || [])
+                |> Map.put(:also_asked, data[:also_asked] || parse_also_asked(ql.raw_response))
                 |> Map.put(:refused, ql.refused)
                 |> Map.put(:raw_response, ql.raw_response)
                 |> Map.put(:llm_provider, ql.llm_provider)
@@ -1449,6 +1455,24 @@ defmodule RuleMavenWeb.GameLive.Show do
                   </div>
                 <% end %>
 
+                <!-- Also asked: other questions from same message, answered separately -->
+                <%= if msg.role == :assistant && msg[:also_asked] != nil && msg[:also_asked] != [] do %>
+                  <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.5rem;font-size:0.72rem">
+                    <div style="color:var(--text-muted);font-weight:600;margin-bottom:0.4rem">You also asked — tap to ask separately:</div>
+                    <div style="display:flex;flex-direction:column;gap:0.3rem">
+                      <%= for q <- msg[:also_asked] do %>
+                        <button
+                          type="button"
+                          phx-click="quick_ask"
+                          phx-value-question={q}
+                          disabled={@pending_count >= @max_concurrent}
+                          style="text-align:left;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.35rem;padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--text);cursor:pointer;line-height:1.35"
+                        >{q}</button>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+
                 <!-- Refusal: suggest other questions -->
                 <%= if msg.role == :assistant && msg[:refused] do %>
                   <div style="margin-top:0.5rem;padding:0.5rem;background:var(--bg-subtle);border-radius:0.4rem;font-size:0.7rem;color:var(--text-secondary);line-height:1.5">
@@ -1864,6 +1888,19 @@ defmodule RuleMavenWeb.GameLive.Show do
     |> Enum.filter(fn {a, b} -> a.role == :user && b.role == :assistant end)
     |> Enum.map(fn {user, asst} -> %{q: user.content, a: asst.content} end)
     |> Enum.take(-2)
+  end
+
+  defp parse_also_asked(nil), do: []
+  defp parse_also_asked(raw_response) do
+    case Regex.run(~r{---ALSO-ASKED---\s*\n(.*?)\n?---END-ALSO-ASKED---}s, raw_response) do
+      [_, qs] ->
+        qs
+        |> String.split("\n")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
+      nil -> []
+    end
   end
 
   defp find_question_for_answer(conversation, assistant_msg) do

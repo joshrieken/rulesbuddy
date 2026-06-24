@@ -333,6 +333,15 @@ defmodule RuleMaven.LLM do
     CROSS-REFERENCE RULES:
     7. If one section refers to another (e.g. "see Section 4.3"), use that referenced section to answer. Reference chains are valid.
 
+    MULTIPLE QUESTIONS:
+    - If the user's message contains more than one distinct question (multiple question marks, numbered questions, "and also", "also,", "another thing:", etc.), answer ONLY the first question completely.
+    - After your ---CITATION--- section, if there were additional questions, add:
+      ---ALSO-ASKED---
+      - [exact text of additional question 2]
+      - [exact text of additional question 3]
+      ---END-ALSO-ASKED---
+    - If only one question was asked, do NOT include the ---ALSO-ASKED--- section.
+
     ANSWER FORMAT:
     - Start with ---CLEANED--- on its own line, followed immediately by the rephrased question on the next line, then ---END--- on its own line. Fix pronouns, add missing context, make it a standalone question. Keep it under 12 words. NEVER include the game name — the user is already playing it. WRONG: "How do turns work in Mansions of Madness?" RIGHT: "How do turns work?"
     - Use markdown for structure: **bold** for headings, bullet lists for steps.
@@ -350,7 +359,7 @@ defmodule RuleMaven.LLM do
   defp parse_response(body) do
     case body do
       %{"choices" => [%{"message" => %{"content" => text}} | _]} ->
-        {answer, passage, followup?, followups, cleaned_question} = extract_passage(text)
+        {answer, passage, followup?, followups, cleaned_question, also_asked} = extract_passage(text)
 
         {:ok,
          %{
@@ -359,6 +368,7 @@ defmodule RuleMaven.LLM do
            followup: followup?,
            followups: followups,
            cleaned_question: cleaned_question,
+           also_asked: also_asked,
            raw_response: text
          }}
 
@@ -411,6 +421,23 @@ defmodule RuleMaven.LLM do
           {[], cleaned}
       end
 
+    # Extract ALSO-ASKED (other questions the user asked that were not answered)
+    {also_asked, cleaned} =
+      case Regex.run(~r{---ALSO-ASKED---\s*\n(.*?)\n?---END-ALSO-ASKED---}s, cleaned) do
+        [full, qs] ->
+          q_list =
+            qs
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
+
+          {q_list, String.replace(cleaned, full, "")}
+
+        nil ->
+          {[], cleaned}
+      end
+
     case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
       [answer, passage] ->
         answer =
@@ -419,11 +446,11 @@ defmodule RuleMaven.LLM do
           |> String.replace(~r/---FOLLOWUPS?.*/s, "")
           |> strip_leading_question_echo()
 
-        {answer, String.trim(passage), followup?, followups, cleaned_question}
+        {answer, String.trim(passage), followup?, followups, cleaned_question, also_asked}
 
       _ ->
         {strip_markers(cleaned) |> strip_leading_question_echo(), nil, followup?, followups,
-         cleaned_question}
+         cleaned_question, also_asked}
     end
   end
 
