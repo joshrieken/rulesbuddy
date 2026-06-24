@@ -324,7 +324,7 @@ defmodule RuleMaven.LLM do
     7. If one section refers to another (e.g. "see Section 4.3"), use that referenced section to answer. Reference chains are valid.
 
     ANSWER FORMAT:
-    - Start with ---CLEANED--- followed by the user's question rephrased clearly and concisely. Fix pronouns, add missing context, make it a standalone question. Keep it under 15 words. Do NOT include the game name.
+    - Start with ---CLEANED--- on its own line, followed immediately by the rephrased question on the next line, then ---END--- on its own line. Fix pronouns, add missing context, make it a standalone question. Keep it under 12 words. NEVER include the game name — the user is already playing it. WRONG: "How do turns work in Mansions of Madness?" RIGHT: "How do turns work?"
     - Use markdown for structure: **bold** for headings, bullet lists for steps.
     - Keep answers concise — 1-3 sentences of prose plus optional list.
     - Before the citation, add a FOLLOWUP tag: ---FOLLOWUP: yes--- if this question is a followup to the recent conversation (references prior exchange, uses pronouns like "it"/"that"/"they"), otherwise ---FOLLOWUP: no---.
@@ -361,11 +361,18 @@ defmodule RuleMaven.LLM do
   end
 
   defp extract_passage(text) do
-    # Extract CLEANED question
+    # Extract CLEANED question (between ---CLEANED--- and ---END--- or next ---)
     {cleaned_question, text} =
-      case Regex.run(~r{---CLEANED---\s*(.*?)(?=\n?---)}s, text) do
-        [_, q] -> {String.trim(q), String.replace(text, ~r{---CLEANED---\s*.*?(?=\n?---)}s, "")}
-        nil -> {nil, text}
+      case Regex.run(~r{---CLEANED---\s*\n(.*?)\n---(?:END---)?}s, text) do
+        [full, q] ->
+          {String.trim(q), String.replace(text, full, "")}
+
+        nil ->
+          # Fallback: old format (no ---END---)
+          case Regex.run(~r{---CLEANED---\s*(.*?)(?=\n?---)}s, text) do
+            [_, q] -> {String.trim(q), String.replace(text, ~r{---CLEANED---\s*.*?(?=\n?---)}s, "")}
+            nil -> {nil, text}
+          end
       end
 
     # Extract FOLLOWUP tag

@@ -41,7 +41,11 @@ defmodule RuleMaven.Workers.AskWorker do
           cited_page = parse_cited_page(passage)
           refused? = refused?(answer)
 
-          cleaned = llm_result[:cleaned_question] |> to_string() |> String.trim()
+          cleaned =
+            llm_result[:cleaned_question]
+            |> to_string()
+            |> String.trim()
+            |> strip_game_name(game.name)
 
           update_attrs = %{
             answer: answer,
@@ -173,6 +177,18 @@ defmodule RuleMaven.Workers.AskWorker do
   defp refused?(answer) do
     String.trim(answer) == @refusal_phrase
   end
+
+  defp strip_game_name(question, game_name) when is_binary(question) and is_binary(game_name) do
+    escaped = Regex.escape(game_name)
+    # Strip " in Game Name" or " in Game Name?" suffix
+    question
+    |> String.replace(~r/ in #{escaped}\??$/i, "")
+    |> String.replace(~r/ \(#{escaped}\)\??$/i, "")
+    |> String.trim()
+    |> then(fn q -> if String.ends_with?(q, "?"), do: q, else: q <> "?" end)
+  end
+
+  defp strip_game_name(question, _), do: question
 
   defp strip_question_echo(answer, question) do
     q = String.trim(question)
