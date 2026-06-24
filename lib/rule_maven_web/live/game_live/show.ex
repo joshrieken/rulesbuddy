@@ -1651,9 +1651,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                       type="button"
                       phx-click="pin_question"
                       phx-value-id={msg.id}
-                      style={"background:none;border:none;font-size:0.6rem;cursor:pointer;filter:grayscale(1);#{if msg[:pinned], do: "opacity:0.85", else: "opacity:0.3"}"}
+                      style={"background:none;border:none;font-size:0.6rem;cursor:pointer;#{if msg[:pinned], do: "color:var(--text)", else: "color:var(--text-muted)"}"}
                       title={if msg[:pinned], do: "Pinned", else: "Pin"}
-                    >📌</button>
+                    >{if msg[:pinned], do: "◆", else: "◇"}</button>
                     <%= if @confirm_delete_id == msg.id do %>
                       <span class="text-xs" style="color:var(--red)">Delete?</span>
                       <button
