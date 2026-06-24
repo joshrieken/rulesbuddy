@@ -24,7 +24,16 @@ defmodule RuleMaven.Workers.AskWorker do
 
     case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context, user_id: user_id) do
       {:ok, %{answer: raw_answer} = llm_result} ->
-        answer = if is_nil(raw_answer) || String.trim(raw_answer) == "", do: "⚠️ The AI returned an empty response. Please retry.", else: raw_answer
+        answer =
+          cond do
+            is_nil(raw_answer) || String.trim(raw_answer) == "" ->
+              "⚠️ The AI returned an empty response. Please retry."
+
+            true ->
+              # Strip echo of original question from top of answer (exact or near-exact match)
+              stripped = strip_question_echo(raw_answer, question)
+              if String.trim(stripped) == "", do: raw_answer, else: stripped
+          end
 
         if ql = get_question_log!(question_log_id) do
           passage = llm_result[:cited_passage]
@@ -163,5 +172,24 @@ defmodule RuleMaven.Workers.AskWorker do
 
   defp refused?(answer) do
     String.trim(answer) == @refusal_phrase
+  end
+
+  defp strip_question_echo(answer, question) do
+    q = String.trim(question)
+
+    case String.split(answer, "\n", parts: 2) do
+      [first_line | rest] ->
+        fl = String.trim(first_line)
+
+        similar? =
+          String.downcase(fl) == String.downcase(q) ||
+            (String.ends_with?(fl, "?") &&
+               String.jaro_distance(String.downcase(fl), String.downcase(q)) > 0.82)
+
+        if similar?, do: String.trim(Enum.join(rest, "\n")), else: answer
+
+      _ ->
+        answer
+    end
   end
 end

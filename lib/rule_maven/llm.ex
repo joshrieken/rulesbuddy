@@ -396,12 +396,24 @@ defmodule RuleMaven.LLM do
 
     case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
       [answer, passage] ->
-        answer = answer |> String.trim() |> String.replace(~r/---FOLLOWUPS?.*/s, "")
+        answer =
+          answer
+          |> String.trim()
+          |> String.replace(~r/---FOLLOWUPS?.*/s, "")
+          |> strip_leading_question_echo()
+
         {answer, String.trim(passage), followup?, followups, cleaned_question}
 
       _ ->
-        {strip_markers(cleaned), nil, followup?, followups, cleaned_question}
+        {strip_markers(cleaned) |> strip_leading_question_echo(), nil, followup?, followups,
+         cleaned_question}
     end
+  end
+
+  # Strip LLM echoing the question as first line (e.g. "How does X work?\n\nAnswer...")
+  defp strip_leading_question_echo(text) do
+    # Match a standalone question line (ends with ?) followed by one or more blank lines
+    Regex.replace(~r/\A[^\n]+\?\s*\n\n+/s, text, "") |> String.trim_leading()
   end
 
   defp strip_markers(text) do
