@@ -353,6 +353,41 @@ defmodule RuleMaven.Games do
     List.flatten(faq_ids) |> Enum.uniq()
   end
 
+  def admin_list_questions(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    game_id = Keyword.get(opts, :game_id)
+    status = Keyword.get(opts, :status)
+    search = Keyword.get(opts, :search)
+
+    query =
+      from q in QuestionLog,
+        order_by: [desc: q.inserted_at],
+        limit: ^limit,
+        preload: [:game, :user]
+
+    query =
+      if game_id, do: from(q in query, where: q.game_id == ^game_id), else: query
+
+    query =
+      case status do
+        "pending" -> from(q in query, where: q.answer == "Thinking...")
+        "refused" -> from(q in query, where: q.refused == true)
+        "error" -> from(q in query, where: like(q.answer, "⚠️%"))
+        "answered" -> from(q in query, where: q.answer != "Thinking..." and q.refused == false and not like(q.answer, "⚠️%"))
+        _ -> query
+      end
+
+    query =
+      if search && search != "" do
+        term = "%#{search}%"
+        from(q in query, where: ilike(q.question, ^term) or ilike(q.answer, ^term))
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
   def delete_all_questions(%Game{} = game) do
     {count, _} =
       Repo.delete_all(from q in QuestionLog, where: q.game_id == ^game.id)
