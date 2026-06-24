@@ -290,6 +290,8 @@ defmodule RuleMaven.Games do
     |> Enum.sort_by(& &1.primary.inserted_at, {:desc, DateTime})
   end
 
+  def toggle_favorite(nil), do: {:error, :not_found}
+
   def toggle_favorite(%QuestionLog{} = q) do
     q |> QuestionLog.changeset(%{favorited: !q.favorited}) |> Repo.update()
   end

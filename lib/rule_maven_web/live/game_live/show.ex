@@ -542,7 +542,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     q = Enum.find(socket.assigns.conversation, &(&1.id == id))
 
     if q do
-      case Games.toggle_favorite(Games.get_question_log!(id)) do
+      case Games.toggle_favorite(get_question_log_by_id(id)) do
         {:ok, updated} ->
           conversation =
             Enum.map(socket.assigns.conversation, fn m ->
