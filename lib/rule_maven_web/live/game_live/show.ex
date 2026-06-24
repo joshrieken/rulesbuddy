@@ -991,7 +991,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:300px">{@game.name}</h1>
-            <%= if @game.bgg_id do %>
+            <%= if @game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(@game.category) do %>
               <.link
                 href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}"}
                 target="_blank"

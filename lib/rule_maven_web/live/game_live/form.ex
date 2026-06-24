@@ -1312,7 +1312,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%!-- Details tab --%>
           <div style={if @tab == "details", do: "display:block", else: "display:none"}>
             <div style="margin-bottom:1.25rem">
-              <label for="game_name" class="block text-sm font-medium mb-1">Game Name</label>
+              <label for="game_name" class="block text-sm font-medium mb-1">Name</label>
               <input
                 type="text"
                 name="game[name]"
@@ -1323,8 +1323,16 @@ defmodule RuleMavenWeb.GameLive.Form do
               />
             </div>
             <div style="margin-bottom:1.25rem">
+              <label for="game_category" class="block text-sm font-medium mb-1">Category</label>
+              <select name="game[category]" id="game_category" class="w-full border rounded px-3 py-2">
+                <%= for {label, value} <- RuleMaven.Games.Category.options() do %>
+                  <option value={value} selected={(@game_changeset.data.category || "board_game") == value}>{label}</option>
+                <% end %>
+              </select>
+            </div>
+            <div style="margin-bottom:1.25rem">
               <label for="game_bgg_id" class="block text-sm font-medium mb-1">BGG ID
-              <span class="text-gray-400">(optional)</span></label>
+              <span class="text-gray-400">(optional, board/card games)</span></label>
               <input
                 type="number"
                 name="game[bgg_id]"

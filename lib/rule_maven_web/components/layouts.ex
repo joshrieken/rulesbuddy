@@ -17,7 +17,7 @@ defmodule RuleMavenWeb.Layouts do
             <span class="header-icon">◆</span>
             <span class="header-title">Rule Maven</span>
           </a>
-          <span class="header-tagline">board game rules assistant</span>
+          <span class="header-tagline">rules &amp; reference assistant</span>
         </div>
       </header>
 

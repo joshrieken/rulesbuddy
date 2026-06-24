@@ -11,6 +11,7 @@ defmodule RuleMaven.Games.Game do
     field :playing_time, :integer
     field :image_url, :string
     field :bgg_data, :string
+    field :category, :string, default: "board_game"
 
     belongs_to :parent_game, RuleMaven.Games.Game, foreign_key: :parent_game_id
     has_many :expansions, RuleMaven.Games.Game, foreign_key: :parent_game_id
@@ -30,7 +31,8 @@ defmodule RuleMaven.Games.Game do
       :playing_time,
       :image_url,
       :parent_game_id,
-      :bgg_data
+      :bgg_data,
+      :category
     ])
     |> validate_required([:name])
   end

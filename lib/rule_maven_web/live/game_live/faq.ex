@@ -45,7 +45,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
         {@game.name} &mdash; Official FAQ
       </h1>
       <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 1rem">
-        Curated answers to the best questions. Reviewed and approved by game masters.
+        Curated answers to the best questions. Reviewed and approved by admins.
       </p>
 
       <div style="margin-bottom:1rem">

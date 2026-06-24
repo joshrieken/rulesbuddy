@@ -454,14 +454,15 @@ defmodule RuleMavenWeb.GameLive.Index do
               <div class="flex-1 min-w-0" style="pointer-events:none">
                 <h2 class="text-lg font-semibold">{game.name}</h2>
                 <p class="text-sm text-gray-500">
-                  {Map.get(@source_counts, game.id, 0)} source(s)
+                  <span style="font-size:0.7rem;font-weight:600;opacity:0.65">{RuleMaven.Games.Category.label(game.category)}</span>
+                  &middot; {Map.get(@source_counts, game.id, 0)} source(s)
                   <%= if game.year_published do %>
                     &middot; {game.year_published}
                   <% end %>
-                  <%= if game.min_players do %>
+                  <%= if game.min_players && RuleMaven.Games.Category.player_count_relevant?(game.category) do %>
                     &middot; {game.min_players}-{game.max_players}p
                   <% end %>
-                  <%= if game.playing_time do %>
+                  <%= if game.playing_time && RuleMaven.Games.Category.player_count_relevant?(game.category) do %>
                     &middot; ~{game.playing_time}m
                   <% end %>
                   <%= if expansion_count > 0 do %>
@@ -480,7 +481,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                   >{if expanded, do: "▲", else: "▼"} {expansion_count}</button>
                 <% end %>
                 <a
-                  :if={game.bgg_id}
+                  :if={game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(game.category)}
                   id={"bgg-link-#{game.id}"}
                   href={"https://boardgamegeek.com/boardgame/#{game.bgg_id}"}
                   target="_blank"
@@ -560,7 +561,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                   </div>
                   <div class="flex gap-1.5 flex-shrink-0 game-actions items-center">
                     <a
-                      :if={exp.bgg_id}
+                      :if={exp.bgg_id && RuleMaven.Games.Category.bgg_relevant?(exp.category)}
                       id={"bgg-link-exp-#{exp.id}"}
                       href={"https://boardgamegeek.com/boardgame/#{exp.bgg_id}"}
                       target="_blank"
@@ -610,7 +611,7 @@ defmodule RuleMavenWeb.GameLive.Index do
               Ask rulebook questions in plain English and get answers with exact citations.
             </p>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;line-height:1.5">
-              Add a board game below to get started.
+              Add a game or rulebook below to get started.
             </p>
             <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
               <.link

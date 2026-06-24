@@ -71,7 +71,7 @@ defmodule RuleMavenWeb.RegistrationLive do
         <div style="font-size:2.5rem;margin-bottom:0.4rem">◆</div>
         <h1 style="font-size:1.5rem;font-weight:700;color:var(--text)">Join Rule Maven</h1>
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.4rem;line-height:1.5">
-          Ask rules questions about your board games and get instant, cited answers from the rulebook.
+          Ask rules questions about your games and get instant, cited answers straight from the rulebook.
         </p>
         <p style="font-size:0.78rem;color:var(--text-muted);margin-top:0.5rem">
           Registration requires an invite code.
