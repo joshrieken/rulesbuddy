@@ -83,50 +83,53 @@ defmodule RuleMavenWeb.AdminLive.Invites do
       </div>
 
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:0.5rem">
-        <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
+          <colgroup>
+            <col style="width:10rem">
+            <col style="width:5rem">
+            <col style="width:6rem">
+            <col>
+            <col style="width:13rem">
+          </colgroup>
           <thead>
             <tr style="background:var(--bg-subtle);text-align:left">
-              <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Code</th>
-              <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Uses</th>
-              <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">Status</th>
-              <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border)">
-                Created by
-              </th>
-              <th style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border);width:100px">
-                Actions
-              </th>
+              <th style="padding:0.45rem 0.75rem;font-weight:600;color:var(--text-muted)">Code</th>
+              <th style="padding:0.45rem 0.75rem;font-weight:600;color:var(--text-muted)">Uses</th>
+              <th style="padding:0.45rem 0.75rem;font-weight:600;color:var(--text-muted)">Status</th>
+              <th style="padding:0.45rem 0.75rem;font-weight:600;color:var(--text-muted)">Created by</th>
+              <th style="padding:0.45rem 0.75rem;font-weight:600;color:var(--text-muted)">Actions</th>
             </tr>
           </thead>
           <tbody>
             <%= for code <- @invite_codes do %>
-              <tr style="background:var(--bg)">
-                <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);font-family:monospace;font-weight:600;font-size:0.8rem">
+              <tr style="border-top:1px solid var(--border-subtle)">
+                <td style="padding:0.45rem 0.75rem;font-family:monospace;font-weight:600;font-size:0.78rem">
                   {code.code}
                 </td>
-                <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle)">
+                <td style="padding:0.45rem 0.75rem;font-size:0.78rem;color:var(--text-secondary)">
                   {code.use_count}/{code.max_uses}
                 </td>
-                <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle)">
-                  <span style={"font-weight:600;#{if code.active, do: "color:var(--green)", else: "color:var(--text-muted)"}"}>
+                <td style="padding:0.45rem 0.75rem">
+                  <span style={"font-size:0.75rem;font-weight:600;#{if code.active, do: "color:var(--green)", else: "color:var(--text-muted)"}"}>
                     {if code.active, do: "Active", else: "Inactive"}
                   </span>
                 </td>
-                <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border-subtle);color:var(--text-muted)">
-                  {code.created_by && code.created_by.username}
+                <td style="padding:0.45rem 0.75rem;color:var(--text-muted);font-size:0.78rem;overflow:hidden">
+                  <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{code.created_by && code.created_by.username}</span>
                 </td>
-                <td style="padding:0.15rem 0.5rem;border-bottom:1px solid var(--border-subtle)">
-                  <div style="display:flex;gap:0.35rem;align-items:center">
+                <td style="padding:0.35rem 0.75rem">
+                  <div style="display:flex;gap:0.35rem;align-items:center;flex-wrap:wrap">
                     <%= if code.active do %>
                       <button
                         type="button"
                         onclick={"navigator.clipboard.writeText(window.location.origin + '/register?code=#{code.code}').then(() => { this.textContent = 'Copied!'; setTimeout(() => this.textContent = 'Copy link', 1500) })"}
-                        style="background:none;border:1px solid var(--border);color:var(--accent);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.6rem;font-weight:600;cursor:pointer"
+                        style="background:none;border:1px solid var(--border);color:var(--accent);padding:0.15rem 0.5rem;border-radius:0.25rem;font-size:0.7rem;font-weight:600;cursor:pointer;white-space:nowrap"
                       >Copy link</button>
                       <button
                         type="button"
                         phx-click="deactivate_invite"
                         phx-value-id={code.id}
-                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.6rem;font-weight:600;cursor:pointer"
+                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.5rem;border-radius:0.25rem;font-size:0.7rem;font-weight:600;cursor:pointer;white-space:nowrap"
                       >Deactivate</button>
                     <% end %>
                   </div>

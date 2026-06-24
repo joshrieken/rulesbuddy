@@ -110,24 +110,29 @@ defmodule RuleMavenWeb.AdminLive.Security do
   end
 
   defp category_label("instruction_override"), do: "Override"
-  defp category_label("role_change"), do: "Role"
+  defp category_label("role_change"), do: "Role change"
   defp category_label("prompt_extraction"), do: "Extraction"
   defp category_label("jailbreak"), do: "Jailbreak"
   defp category_label("token_injection"), do: "Token"
-  defp category_label("future_behavior"), do: "Future"
+  defp category_label("future_behavior"), do: "Future behavior"
   defp category_label("authority_spoofing"), do: "Authority"
+  defp category_label("encoding"), do: "Encoding"
+  defp category_label("authority_social"), do: "Social engineering"
+  defp category_label("fictional_framing"), do: "Fictional framing"
+  defp category_label("output_manipulation"), do: "Output manipulation"
   defp category_label(other), do: other
+
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div style="max-width:64rem;margin:0 auto;padding:1.25rem 1.5rem">
+    <div style="max-width:52rem;margin:0 auto;padding:1.25rem 1.5rem">
       <.link navigate={~p"/admin"} class="back-link">&larr; Back to admin</.link>
       <h1 style="font-size:1.5rem;font-weight:700;margin:0.25rem 0 1rem">Security</h1>
 
-      <!-- Tabs -->
+      <%!-- Tabs --%>
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.25rem">
-        <%= for {id, label} <- [{"blocked", "Blocked Questions (#{length(@blocked)})"}, {"patterns", "Injection Patterns (#{length(@patterns)})"}] do %>
+        <%= for {id, label} <- [{"blocked", "Blocked (#{length(@blocked)})"}, {"patterns", "Patterns (#{length(@patterns)})"}] do %>
           <button
             type="button"
             phx-click="tab"
@@ -137,13 +142,20 @@ defmodule RuleMavenWeb.AdminLive.Security do
         <% end %>
       </div>
 
-      <!-- Blocked Questions Tab -->
+      <%!-- Blocked Questions Tab --%>
       <%= if @tab == "blocked" do %>
         <%= if @blocked == [] do %>
           <p style="color:var(--text-muted);font-size:0.85rem">No blocked questions.</p>
         <% else %>
           <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
-            <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+            <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
+              <colgroup>
+                <col style="width:7rem">
+                <col style="width:6rem">
+                <col style="width:8rem">
+                <col>
+                <col style="width:9.5rem">
+              </colgroup>
               <thead>
                 <tr style="background:var(--bg-subtle);text-align:left">
                   <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">When</th>
@@ -159,30 +171,30 @@ defmodule RuleMavenWeb.AdminLive.Security do
                     <td style="padding:0.45rem 0.75rem;white-space:nowrap;color:var(--text-muted);font-size:0.75rem">
                       {Calendar.strftime(q.inserted_at, "%b %-d %H:%M")}
                     </td>
-                    <td style="padding:0.45rem 0.75rem;color:var(--text-secondary);font-size:0.75rem">
-                      {q.user && q.user.username || "—"}
+                    <td style="padding:0.45rem 0.75rem;font-size:0.75rem;overflow:hidden">
+                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{q.user && q.user.username || "—"}</span>
                     </td>
-                    <td style="padding:0.45rem 0.75rem;color:var(--text-secondary);font-size:0.75rem;white-space:nowrap">
-                      {q.game && q.game.name || "—"}
+                    <td style="padding:0.45rem 0.75rem;font-size:0.75rem;overflow:hidden">
+                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{q.game && q.game.name || "—"}</span>
                     </td>
-                    <td style="padding:0.45rem 0.75rem;max-width:28rem">
-                      <span style="font-size:0.8rem;color:var(--text)">{q.question}</span>
+                    <td style="padding:0.45rem 0.75rem;overflow:hidden">
+                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.8rem;color:var(--text)">{q.question}</span>
                     </td>
-                    <td style="padding:0.45rem 0.75rem;white-space:nowrap">
-                      <div style="display:flex;gap:0.4rem">
+                    <td style="padding:0.45rem 0.75rem">
+                      <div style="display:flex;gap:0.35rem">
                         <button
                           type="button"
                           phx-click="unblock"
                           phx-value-id={q.id}
-                          style="background:none;border:1px solid var(--green);color:var(--green);padding:0.15rem 0.4rem;border-radius:0.25rem;font-size:0.7rem;font-weight:600;cursor:pointer"
-                          title="Unblock and re-queue for answering"
+                          style="background:none;border:1px solid var(--green);color:var(--green);padding:0.15rem 0.5rem;border-radius:0.25rem;font-size:0.7rem;font-weight:600;cursor:pointer;white-space:nowrap"
+                          title="Unblock and re-queue"
                         >↻ Unblock</button>
                         <button
                           type="button"
                           phx-click="delete_blocked"
                           phx-value-id={q.id}
                           style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.4rem;border-radius:0.25rem;font-size:0.7rem;cursor:pointer"
-                        >✕ Delete</button>
+                        >✕</button>
                       </div>
                     </td>
                   </tr>
@@ -193,53 +205,64 @@ defmodule RuleMavenWeb.AdminLive.Security do
         <% end %>
       <% end %>
 
-      <!-- Patterns Tab -->
+      <%!-- Patterns Tab --%>
       <%= if @tab == "patterns" do %>
-        <!-- Add pattern form -->
-        <form phx-submit="add_pattern" phx-change="form_change" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;padding:0.75rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem">
-          <div>
-            <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">Pattern (lowercase)</label>
-            <input
-              type="text"
-              name="pattern"
-              value={@new_pattern}
-              placeholder="e.g. ignore all previous"
-              style="border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text);width:18rem"
-            />
+        <%!-- Add pattern form --%>
+        <form phx-submit="add_pattern" phx-change="form_change" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;margin-bottom:1.25rem">
+          <div style="display:grid;grid-template-columns:1fr 10rem 1fr;gap:0.75rem;margin-bottom:0.6rem">
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Pattern <span style="font-weight:400;opacity:0.7">(lowercase substring)</span></label>
+              <input
+                type="text"
+                name="pattern"
+                value={@new_pattern}
+                placeholder="e.g. ignore all previous"
+                style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.35rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text);box-sizing:border-box"
+              />
+            </div>
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Category</label>
+              <select
+                name="category"
+                style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.35rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text);box-sizing:border-box"
+              >
+                <%= for cat <- ~w[instruction_override role_change prompt_extraction jailbreak token_injection future_behavior authority_spoofing encoding authority_social fictional_framing output_manipulation] do %>
+                  <option value={cat} selected={@new_category == cat}>{category_label(cat)}</option>
+                <% end %>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Note <span style="font-weight:400;opacity:0.7">(optional)</span></label>
+              <input
+                type="text"
+                name="note"
+                value={@new_note}
+                placeholder="Why this pattern?"
+                style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.35rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text);box-sizing:border-box"
+              />
+            </div>
           </div>
-          <div>
-            <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">Category</label>
-            <select
-              name="category"
-              style="border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text)"
-            >
-              <%= for cat <- ~w[instruction_override role_change prompt_extraction jailbreak token_injection future_behavior authority_spoofing] do %>
-                <option value={cat} selected={@new_category == cat}>{category_label(cat)}</option>
-              <% end %>
-            </select>
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <button
+              type="submit"
+              style="background:var(--accent);color:#fff;border:none;padding:0.35rem 1rem;border-radius:0.375rem;font-size:0.8rem;font-weight:600;cursor:pointer"
+            >+ Add pattern</button>
+            <%= if @add_error do %>
+              <span style="font-size:0.75rem;color:var(--red)">{@add_error}</span>
+            <% end %>
           </div>
-          <div>
-            <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">Note (optional)</label>
-            <input
-              type="text"
-              name="note"
-              value={@new_note}
-              placeholder="Why this pattern?"
-              style="border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text);width:14rem"
-            />
-          </div>
-          <button
-            type="submit"
-            style="background:var(--accent);color:#fff;border:none;padding:0.35rem 0.75rem;border-radius:0.375rem;font-size:0.8rem;font-weight:600;cursor:pointer"
-          >+ Add</button>
-          <%= if @add_error do %>
-            <p style="width:100%;font-size:0.72rem;color:var(--red);margin:0">{@add_error}</p>
-          <% end %>
         </form>
 
-        <!-- Patterns table -->
+        <%!-- Patterns table --%>
         <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
-          <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+          <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
+            <colgroup>
+              <col>
+              <col style="width:8.5rem">
+              <col style="width:8rem">
+              <col style="width:4.5rem">
+              <col style="width:7rem">
+            </colgroup>
             <thead>
               <tr style="background:var(--bg-subtle);text-align:left">
                 <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Pattern</th>
@@ -251,30 +274,34 @@ defmodule RuleMavenWeb.AdminLive.Security do
             </thead>
             <tbody>
               <%= for p <- @patterns do %>
-                <tr style={"border-top:1px solid var(--border-subtle);#{if !p.enabled, do: "opacity:0.5"}"}>
-                  <td style="padding:0.45rem 0.75rem;font-family:monospace;font-size:0.75rem;color:var(--text)">{p.pattern}</td>
-                  <td style="padding:0.45rem 0.75rem">
-                    <span style="font-size:0.65rem;font-weight:600;padding:0.1rem 0.35rem;border-radius:0.2rem;background:var(--bg-subtle);color:var(--text-muted)">{category_label(p.category)}</span>
+                <tr style={"border-top:1px solid var(--border-subtle);#{if !p.enabled, do: "opacity:0.45"}"}>
+                  <td style="padding:0.45rem 0.75rem;overflow:hidden">
+                    <span style="display:block;font-family:monospace;font-size:0.75rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p.pattern}</span>
                   </td>
-                  <td style="padding:0.45rem 0.75rem;color:var(--text-muted);font-size:0.75rem">{p.note || ""}</td>
+                  <td style="padding:0.45rem 0.75rem;overflow:hidden">
+                    <span style="display:inline-block;font-size:0.65rem;font-weight:600;padding:0.1rem 0.35rem;border-radius:0.2rem;background:var(--bg-subtle);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{category_label(p.category)}</span>
+                  </td>
+                  <td style="padding:0.45rem 0.75rem;overflow:hidden">
+                    <span style="display:block;font-size:0.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p.note || ""}</span>
+                  </td>
                   <td style="padding:0.45rem 0.75rem">
                     <span style={"font-size:0.7rem;font-weight:600;#{if p.enabled, do: "color:var(--green)", else: "color:var(--text-muted)"}"}>
-                      {if p.enabled, do: "Active", else: "Disabled"}
+                      {if p.enabled, do: "On", else: "Off"}
                     </span>
                   </td>
-                  <td style="padding:0.45rem 0.75rem;white-space:nowrap">
+                  <td style="padding:0.45rem 0.75rem">
                     <div style="display:flex;gap:0.35rem">
                       <button
                         type="button"
                         phx-click="toggle_pattern"
                         phx-value-id={p.id}
-                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.7rem;cursor:pointer"
+                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.4rem;border-radius:0.25rem;font-size:0.7rem;cursor:pointer;white-space:nowrap"
                       >{if p.enabled, do: "Disable", else: "Enable"}</button>
                       <button
                         type="button"
                         phx-click="delete_pattern"
                         phx-value-id={p.id}
-                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.35rem;border-radius:0.25rem;font-size:0.7rem;cursor:pointer"
+                        style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:0.15rem 0.4rem;border-radius:0.25rem;font-size:0.7rem;cursor:pointer"
                         data-confirm="Delete this pattern?"
                       >✕</button>
                     </div>
@@ -284,7 +311,7 @@ defmodule RuleMavenWeb.AdminLive.Security do
             </tbody>
           </table>
         </div>
-        <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">Disabled patterns are loaded from DB but skipped during detection.</p>
+        <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">Disabled patterns are skipped during detection but kept for reference.</p>
       <% end %>
     </div>
     """
