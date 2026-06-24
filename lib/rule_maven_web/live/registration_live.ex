@@ -42,14 +42,14 @@ defmodule RuleMavenWeb.RegistrationLive do
 
     if map_size(errors) == 0 && code_valid? do
       case Users.create_user(%{username: username, email: email, password: password}) do
-        {:ok, _user} ->
+        {:ok, user} ->
           InviteCodes.use_code(code)
+          token = Phoenix.Token.sign(socket, "auto-login", user.id)
 
           {:noreply,
            socket
            |> assign(submitted: true)
-           |> put_flash(:info, "Account created! You can now log in.")
-           |> push_navigate(to: ~p"/login")}
+           |> redirect(to: "/auto-login?token=#{token}")}
 
         {:error, changeset} ->
           db_errors =

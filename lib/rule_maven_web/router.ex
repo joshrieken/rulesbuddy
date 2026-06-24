@@ -23,6 +23,7 @@ defmodule RuleMavenWeb.Router do
     get "/login", SessionController, :new
     post "/login", SessionController, :create
     get "/logout", AuthController, :logout
+    get "/auto-login", AuthController, :auto_login
     get "/games/:id/cheatsheet", CheatSheetController, :show
     get "/games/:id/cheatsheet/:version_id", CheatSheetController, :show_version
 
