@@ -165,7 +165,16 @@ defmodule RuleMavenWeb.AdminLive.Questions do
 
       <!-- Table -->
       <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
-        <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
+          <colgroup>
+            <col style="width:7rem">
+            <col style="width:7rem">
+            <col style="width:9rem">
+            <col>
+            <col style="width:5.5rem">
+            <col style="width:7rem">
+            <col style="width:7rem">
+          </colgroup>
           <thead>
             <tr style="background:var(--bg-subtle);text-align:left">
               <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted);white-space:nowrap">When</th>
@@ -191,14 +200,14 @@ defmodule RuleMavenWeb.AdminLive.Questions do
                 <td style="padding:0.45rem 0.75rem;white-space:nowrap;color:var(--text-secondary);font-size:0.75rem">
                   {q.game && q.game.name || "—"}
                 </td>
-                <td style="padding:0.45rem 0.75rem;max-width:22rem">
+                <td style="padding:0.45rem 0.75rem;overflow:hidden">
                   <button
                     type="button"
                     phx-click="expand"
                     phx-value-id={q.id}
                     style="background:none;border:none;text-align:left;cursor:pointer;padding:0;color:var(--text);font-size:0.8rem;width:100%"
                   >
-                    <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22rem">
+                    <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                       {q.question}
                     </span>
                   </button>

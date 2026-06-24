@@ -320,10 +320,22 @@ defmodule RuleMavenWeb.GameLive.Show do
     handle_event("ask", %{"question" => question}, socket)
   end
 
+  @max_question_length 600
+  @min_question_length 3
+
   def handle_event("ask", %{"question" => question} = params, socket) do
-    question = String.trim(question)
+    # Strip --- sequences so user input can't inject parser delimiters into LLM output
+    question = question |> String.replace("---", "") |> String.trim()
     visibility = params["visibility"] || socket.assigns.visibility
 
+    cond do
+      String.length(question) < @min_question_length ->
+        {:noreply, put_flash(socket, :error, "Please ask a complete question.")}
+
+      String.length(question) > @max_question_length ->
+        {:noreply, put_flash(socket, :error, "Question is too long (max #{@max_question_length} characters).")}
+
+      true ->
     if question != "" do
       convo = socket.assigns.conversation
 
@@ -428,6 +440,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     else
       {:noreply, socket}
     end
+    end  # cond true ->
   end
 
   @impl true
@@ -1803,6 +1816,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   do: "Ask a rules question…",
                   else: "Add rulebook text to start asking..."
               }
+              maxlength={@max_question_length}
               class="flex-1 border rounded-full px-4 py-2.5 text-sm"
               style="background:var(--bg);color:var(--text);border-color:var(--border-strong)"
               disabled={@pending_count >= @max_concurrent || @source_count == 0}

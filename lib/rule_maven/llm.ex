@@ -343,12 +343,12 @@ defmodule RuleMaven.LLM do
     - If only one question was asked, do NOT include the ---ALSO-ASKED--- section.
 
     ANSWER FORMAT:
-    - Start with ---CLEANED--- on its own line, followed immediately by the rephrased question on the next line, then ---END--- on its own line. Fix pronouns, add missing context, make it a standalone question. Keep it under 12 words. NEVER include the game name — the user is already playing it. WRONG: "How do turns work in Mansions of Madness?" RIGHT: "How do turns work?"
+    - Start with ---CLEANED--- on its own line, the rephrased question on the next line, then ---END-CLEANED--- on its own line. Fix pronouns, add missing context, make it a standalone question. Keep it under 12 words. NEVER include the game name — the user is already playing it. WRONG: "How do turns work in Mansions of Madness?" RIGHT: "How do turns work?"
     - Use markdown for structure: **bold** for headings, bullet lists for steps.
     - Keep answers concise — 1-3 sentences of prose plus optional list.
-    - Before the citation, add a FOLLOWUP tag: ---FOLLOWUP: yes--- if this question is a followup to the recent conversation (references prior exchange, uses pronouns like "it"/"that"/"they"), otherwise ---FOLLOWUP: no---.
-    - ALWAYS suggest 2-3 natural followup questions a player might ask next. Format: ---FOLLOWUPS--- each on its own line, no numbers. Do NOT skip this section.
-    - End with ---CITATION--- followed by the exact sentence(s) from the rulebook that support the answer. Preserve any [Page N] markers exactly as they appear in the source text.
+    - Before the citation, add a FOLLOWUP tag on its own line: ---FOLLOWUP: yes--- if this question is a followup to the recent conversation (references prior exchange, uses pronouns like "it"/"that"/"they"), otherwise ---FOLLOWUP: no---.
+    - ALWAYS suggest 2-3 natural followup questions a player might ask next. Format: ---FOLLOWUPS--- (each on its own line, no numbers), then ---END-FOLLOWUPS---. Do NOT skip this section.
+    - Then: ---CITATION--- followed by the exact sentence(s) from the rulebook that support the answer. Preserve any [Page N] markers exactly. End with ---END-CITATION---.
     - Never fabricate a citation.
 
     RULEBOOK:
@@ -381,21 +381,23 @@ defmodule RuleMaven.LLM do
   end
 
   defp extract_passage(text) do
-    # Extract CLEANED question (between ---CLEANED--- and ---END--- or next ---)
+    # Extract CLEANED question — supports both ---END-CLEANED--- and legacy ---END---
     {cleaned_question, text} =
-      case Regex.run(~r{---CLEANED---\s*\n(.*?)\n---(?:END---)?}s, text) do
+      case Regex.run(~r{---CLEANED---\s*\n(.*?)\n---END-CLEANED---}s, text) do
         [full, q] ->
           {String.trim(q), String.replace(text, full, "")}
-
         nil ->
-          # Fallback: old format (no ---END---)
-          case Regex.run(~r{---CLEANED---\s*(.*?)(?=\n?---)}s, text) do
-            [_, q] -> {String.trim(q), String.replace(text, ~r{---CLEANED---\s*.*?(?=\n?---)}s, "")}
-            nil -> {nil, text}
+          case Regex.run(~r{---CLEANED---\s*\n(.*?)\n---END---}s, text) do
+            [full, q] -> {String.trim(q), String.replace(text, full, "")}
+            nil ->
+              case Regex.run(~r{---CLEANED---\s*(.*?)(?=\n?---)}s, text) do
+                [_, q] -> {String.trim(q), String.replace(text, ~r{---CLEANED---\s*.*?(?=\n?---)}s, "")}
+                nil -> {nil, text}
+              end
           end
       end
 
-    # Extract FOLLOWUP tag
+    # Extract FOLLOWUP tag (self-contained single marker)
     {followup?, cleaned} =
       case Regex.run(~r{---FOLLOWUP:\s*(yes|no)---}i, text) do
         [_, "yes"] -> {true, String.replace(text, ~r{---FOLLOWUP:\s*yes---\s*}i, "")}
@@ -403,55 +405,62 @@ defmodule RuleMaven.LLM do
         nil -> {false, text}
       end
 
-    # Extract FOLLOWUPS
+    # Extract FOLLOWUPS — supports ---END-FOLLOWUPS--- and legacy (lookahead to ---CITATION---)
     {followups, cleaned} =
-      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?=\n?---CITATION---|$)}s, cleaned) do
-        [_, qs] ->
-          q_list =
-            qs
-            |> String.split("\n")
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
-            |> Enum.map(&String.replace(&1, ~r/^(\d+[\.\)]\s*|[-*]\s*)/, ""))
-
-          {q_list,
-           String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(?=\n?---CITATION---|$)}s, "")}
-
+      case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)\n?---END-FOLLOWUPS---}s, cleaned) do
+        [full, qs] ->
+          q_list = parse_list_lines(qs)
+          {q_list, String.replace(cleaned, full, "")}
         nil ->
-          {[], cleaned}
+          case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)(?=\n?---CITATION---|$)}s, cleaned) do
+            [_, qs] ->
+              q_list = parse_list_lines(qs)
+              {q_list, String.replace(cleaned, ~r{---FOLLOWUPS---\s*\n.*?(?=\n?---CITATION---|$)}s, "")}
+            nil ->
+              {[], cleaned}
+          end
       end
 
-    # Extract ALSO-ASKED (other questions the user asked that were not answered)
+    # Extract ALSO-ASKED
     {also_asked, cleaned} =
       case Regex.run(~r{---ALSO-ASKED---\s*\n(.*?)\n?---END-ALSO-ASKED---}s, cleaned) do
         [full, qs] ->
-          q_list =
-            qs
-            |> String.split("\n")
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
-            |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
-
-          {q_list, String.replace(cleaned, full, "")}
-
+          {parse_list_lines(qs), String.replace(cleaned, full, "")}
         nil ->
           {[], cleaned}
       end
 
-    case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
-      [answer, passage] ->
+    # Extract CITATION — supports ---END-CITATION--- and legacy (everything after ---CITATION---)
+    case Regex.run(~r{---CITATION---\s*\n?(.*?)\n?---END-CITATION---}s, cleaned) do
+      [full, passage] ->
         answer =
-          answer
+          String.replace(cleaned, full, "")
+          |> String.replace(~r/---(?:PASSAGE|CITATION)---.*$/s, "")
           |> String.trim()
-          |> String.replace(~r/---FOLLOWUPS?.*/s, "")
           |> strip_leading_question_echo()
-
         {answer, String.trim(passage), followup?, followups, cleaned_question, also_asked}
-
-      _ ->
-        {strip_markers(cleaned) |> strip_leading_question_echo(), nil, followup?, followups,
-         cleaned_question, also_asked}
+      nil ->
+        case String.split(cleaned, ~r{---CITATION---|---PASSAGE---}, parts: 2) do
+          [answer, passage] ->
+            answer =
+              answer
+              |> String.trim()
+              |> String.replace(~r/---FOLLOWUPS?.*/s, "")
+              |> strip_leading_question_echo()
+            {answer, String.trim(passage), followup?, followups, cleaned_question, also_asked}
+          _ ->
+            {strip_markers(cleaned) |> strip_leading_question_echo(), nil, followup?, followups,
+             cleaned_question, also_asked}
+        end
     end
+  end
+
+  defp parse_list_lines(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&String.replace(&1, ~r/^(\d+[\.\)]\s*|[-*]\s*)/, ""))
   end
 
   # Strip LLM echoing the question as first line (e.g. "How does X work?\n\nAnswer...")
