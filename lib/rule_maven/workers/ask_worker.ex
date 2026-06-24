@@ -57,8 +57,10 @@ defmodule RuleMaven.Workers.AskWorker do
             is_nil(raw_answer) || String.trim(raw_answer) == "" ->
               "⚠️ The AI returned an empty response. Please retry."
 
+            suspicious_output?(raw_answer) ->
+              "⚠️ The AI returned an unexpected response format. Please retry."
+
             true ->
-              # Strip echo of original question from top of answer (exact or near-exact match)
               stripped = strip_question_echo(raw_answer, question)
               if String.trim(stripped) == "", do: raw_answer, else: stripped
           end
@@ -199,6 +201,32 @@ defmodule RuleMaven.Workers.AskWorker do
 
       q ->
         q
+    end
+  end
+
+  # Detect if LLM output looks encoded/transformed rather than plain English prose
+  defp suspicious_output?(text) do
+    trimmed = String.trim(text)
+    len = String.length(trimmed)
+
+    return_early = len < 10
+    if return_early do
+      false
+    else
+      # Count characters outside normal prose range (letters, digits, spaces, common punctuation)
+      prose_chars = Regex.scan(~r/[a-zA-Z0-9 \t\n\r.,!?;:()\-'"\/\[\]%&*@#$€£°]/, trimmed) |> length()
+      non_prose_ratio = 1 - prose_chars / len
+
+      # Base64 blocks: long runs of base64 chars with no prose spaces
+      looks_base64 =
+        Regex.match?(~r/\A[A-Za-z0-9+\/=\n\r]{40,}\z/, trimmed) ||
+          Regex.match?(~r/(?:[A-Za-z0-9+\/]{40,}={0,2})/, trimmed)
+
+      # Hex dump: sequences of hex pairs
+      looks_hex = Regex.match?(~r/(?:[0-9a-fA-F]{2}\s){10,}/, trimmed)
+
+      # Very high proportion of non-prose characters
+      non_prose_ratio > 0.4 || looks_base64 || looks_hex
     end
   end
 
