@@ -24,12 +24,27 @@ defmodule RuleMaven.Workers.AskWorker do
 
     if RuleMaven.Security.prompt_injection?(question) do
       if ql = get_question_log!(question_log_id) do
-        Games.log_question_update(ql, %{
+        case Games.log_question_update(ql, %{
           answer: "⚠️ This question was blocked by the security filter.",
           refused: true,
           blocked: true
-        })
-        RuleMaven.PubSub.broadcast_ask_complete(game_id, question_log_id)
+        }) do
+          {:ok, _} ->
+            Phoenix.PubSub.broadcast(
+              RuleMaven.PubSub,
+              "game:#{game_id}",
+              {:ask_complete, %{
+                question_log_id: question_log_id,
+                faq_hit: false,
+                followup: false,
+                followups: [],
+                cited_page: nil,
+                refused: true,
+                raw_response: nil
+              }}
+            )
+          {:error, _} -> :ok
+        end
       end
 
       :ok
