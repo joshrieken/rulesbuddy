@@ -2481,7 +2481,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           </div>
 
           <div
-            :if={@tab in ["details", "rulebook", "manage"]}
+            :if={@tab in ["details", "manage"]}
             class="flex gap-3"
             style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)"
           >
