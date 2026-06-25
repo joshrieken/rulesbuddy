@@ -9,8 +9,6 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
       {:ok,
        assign(socket,
          page_title: "Game Catalog",
-         bgg_user: "",
-         bgg_pass: "",
          importing: false,
          error: nil,
          result: nil,
@@ -25,46 +23,45 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
   end
 
   @impl true
-  def handle_event("import", params, socket) do
-    bgg_user = String.trim(params["bgg_user"] || "")
-    bgg_pass = params["bgg_pass"] || ""
+  def handle_event("import", _params, socket) do
+    user = RuleMaven.Settings.get("bgg_user")
+    pass = RuleMaven.Settings.get("bgg_pass")
 
-    if bgg_user == "" or bgg_pass == "" do
-      {:noreply, assign(socket, error: "BGG username and password are both required.")}
+    if blank?(user) or blank?(pass) do
+      {:noreply,
+       assign(socket,
+         error: "Set the app's BGG username and password in Settings before importing."
+       )}
     else
-      socket =
-        assign(socket, importing: true, error: nil, result: nil, bgg_user: bgg_user)
-
-      send(self(), {:run_import, bgg_user, bgg_pass})
-      {:noreply, socket}
+      send(self(), {:run_import, user, pass})
+      {:noreply, assign(socket, importing: true, error: nil, result: nil)}
     end
   end
 
   @impl true
-  def handle_info({:run_import, bgg_user, bgg_pass}, socket) do
+  def handle_info({:run_import, user, pass}, socket) do
+    # The data-dump page is login-gated and the BGG API token does not unlock it,
+    # so authenticate with the app's stored BGG account to obtain session cookies.
     result =
-      with {:ok, cookies} <- BGG.login(bgg_user, bgg_pass),
+      with {:ok, cookies} <- BGG.login(user, pass),
            {:ok, csv} <- BGG.fetch_rank_dump(cookies) do
-        count = Games.import_rank_dump(csv)
-        {:ok, count}
+        {:ok, Games.import_rank_dump(csv)}
       end
 
     case result do
       {:ok, count} ->
         {:noreply,
          socket
-         |> assign(
-           importing: false,
-           result: count,
-           bgg_pass: "",
-           total_games: Games.count_games()
-         )
+         |> assign(importing: false, result: count, total_games: Games.count_games())
          |> put_flash(:info, "Imported/updated #{count} games from the BGG catalog.")}
 
       {:error, reason} ->
-        {:noreply, assign(socket, importing: false, bgg_pass: "", error: to_string(reason))}
+        {:noreply, assign(socket, importing: false, error: to_string(reason))}
     end
   end
+
+  defp blank?(nil), do: true
+  defp blank?(s), do: String.trim(s) == ""
 
   @impl true
   def render(assigns) do
@@ -76,10 +73,10 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
 
       <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 1rem;line-height:1.5">
         Bulk-import the full BoardGameGeek catalog from their official daily data dump
-        (~150k games). Provide BGG credentials — the dump download is login-gated.
-        Credentials are used only for this request and never stored. Runs an idempotent
-        upsert by BGG id, so it is safe to re-run; existing enriched data (images,
-        player counts) is preserved.
+        (~150k games). The dump download is login-gated, so it authenticates with the
+        app's BGG username and password configured in Settings — nothing is entered
+        here. Runs an idempotent upsert by BGG id, so it is safe to re-run; existing
+        enriched data (images, player counts) is preserved.
       </p>
 
       <p style="font-size:0.78rem;color:var(--text-secondary);margin:0 0 1rem">
@@ -88,28 +85,6 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
 
       <form phx-submit="import" style="border:1px solid var(--border);border-radius:0.5rem;padding:1rem;background:var(--bg-surface)">
         <div style="display:flex;flex-direction:column;gap:0.6rem">
-          <div>
-            <label style="display:block;font-size:0.75rem;font-weight:600;margin-bottom:0.2rem">BGG Username</label>
-            <input
-              type="text"
-              name="bgg_user"
-              value={@bgg_user}
-              autocomplete="off"
-              disabled={@importing}
-              style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.4rem 0.6rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
-            />
-          </div>
-          <div>
-            <label style="display:block;font-size:0.75rem;font-weight:600;margin-bottom:0.2rem">BGG Password</label>
-            <input
-              type="password"
-              name="bgg_pass"
-              value={@bgg_pass}
-              autocomplete="off"
-              disabled={@importing}
-              style="width:100%;border:1px solid var(--border);border-radius:0.375rem;padding:0.4rem 0.6rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
-            />
-          </div>
           <button
             type="submit"
             disabled={@importing}

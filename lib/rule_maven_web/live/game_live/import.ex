@@ -8,8 +8,6 @@ defmodule RuleMavenWeb.GameLive.Import do
     {:ok,
      assign(socket,
        username: "",
-       bgg_user: "",
-       bgg_pass: "",
        results: nil,
        loading: false,
        error: nil,
@@ -29,10 +27,8 @@ defmodule RuleMavenWeb.GameLive.Import do
   end
 
   @impl true
-  def handle_event("fetch", %{"username" => username} = params, socket) do
+  def handle_event("fetch", %{"username" => username}, socket) do
     username = String.trim(username)
-    bgg_user = String.trim(params["bgg_user"] || "")
-    bgg_pass = params["bgg_pass"] || ""
 
     if username == "" do
       {:noreply, assign(socket, error: "Enter a BGG username")}
@@ -40,14 +36,12 @@ defmodule RuleMavenWeb.GameLive.Import do
       socket =
         assign(socket,
           username: username,
-          bgg_user: bgg_user,
-          bgg_pass: bgg_pass,
           loading: true,
           error: nil,
           results: nil
         )
 
-      send(self(), {:fetch_collection, username, bgg_user, bgg_pass})
+      send(self(), {:fetch_collection, username})
       {:noreply, socket}
     end
   end
@@ -127,18 +121,12 @@ defmodule RuleMavenWeb.GameLive.Import do
   end
 
   @impl true
-  def handle_info({:fetch_collection, username, bgg_user, bgg_pass}, socket) do
-    case resolve_cookies(bgg_user, bgg_pass) do
-      {:ok, cookies} ->
-        do_fetch(socket, username, cookies)
-
-      {:error, reason} ->
-        {:noreply, assign(socket, error: reason, loading: false)}
-    end
+  def handle_info({:fetch_collection, username}, socket) do
+    # Requests carry the app's configured BGG API token (see BGG.build_headers),
+    # so no per-user credentials or login are needed — we read the user's public
+    # collection by username.
+    do_fetch(socket, username, nil)
   end
-
-  defp resolve_cookies("", _), do: {:ok, nil}
-  defp resolve_cookies(user, pass), do: BGG.login(user, pass)
 
   # Find the game in the global catalog by BGG id, or create it. Returns
   # {:ok, game, was_created?} so callers can enrich only freshly-created rows.
@@ -210,39 +198,10 @@ defmodule RuleMavenWeb.GameLive.Import do
             />
           </div>
 
-          <details class="text-sm">
-            <summary class="cursor-pointer text-gray-500 hover:text-gray-700">
-              Private collection? Add BGG credentials
-            </summary>
-            <div class="mt-2 space-y-2 pl-2 border-l-2 border-gray-200">
-              <div>
-                <label class="block text-xs font-medium mb-1 text-gray-500">Your BGG Username</label>
-                <input
-                  type="text"
-                  name="bgg_user"
-                  value={@bgg_user}
-                  placeholder="BGG login username"
-                  class="w-full border rounded px-3 py-2 text-sm"
-                  disabled={@loading}
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-medium mb-1 text-gray-500">Your BGG Password</label>
-                <input
-                  type="password"
-                  name="bgg_pass"
-                  value={@bgg_pass}
-                  placeholder="BGG login password"
-                  class="w-full border rounded px-3 py-2 text-sm"
-                  disabled={@loading}
-                />
-              </div>
-              <p class="text-xs text-gray-400">
-                Only needed if the target collection is private.
-                Credentials are never stored.
-              </p>
-            </div>
-          </details>
+          <p class="text-xs text-gray-400">
+            Your BGG collection must be public to import. We never ask for
+            your BoardGameGeek password.
+          </p>
 
           <button
             type="submit"

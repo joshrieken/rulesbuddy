@@ -18,9 +18,10 @@ defmodule RuleMaven.BGG do
     body = %{credentials: %{username: username, password: password}}
 
     case Req.post(@login_url, json: body) do
-      {:ok, %{status: 200, headers: headers}} ->
-        cookies = extract_cookies(headers)
-        {:ok, cookies}
+      # BGG returns 204 No Content on success (200 historically); cookies are in
+      # the Set-Cookie response headers either way.
+      {:ok, %{status: status, headers: headers}} when status in [200, 204] ->
+        {:ok, extract_cookies(headers)}
 
       {:ok, %{status: 401}} ->
         {:error, "Invalid BGG username or password"}
@@ -95,13 +96,15 @@ defmodule RuleMaven.BGG do
   Downloads BGG's official ranked-games data dump (the full catalog) and
   returns the decompressed CSV as a binary.
 
-  Requires authenticated `cookies` (from `login/2`) — the data_dumps page is
-  login-gated. Flow: load the dump page, scrape the time-limited signed S3
-  URL, download the ZIP, unzip in memory, return the CSV entry.
+  The data_dumps page is login-gated; authentication comes from the configured
+  BGG API token attached by `build_headers/1`. Optional `cookies` (from
+  `login/2`) may still be passed for token-less setups. Flow: load the dump
+  page, scrape the time-limited signed S3 URL, download the ZIP, unzip in
+  memory, return the CSV entry.
 
   Returns `{:ok, csv_binary}` or `{:error, reason}`.
   """
-  def fetch_rank_dump(cookies) do
+  def fetch_rank_dump(cookies \\ nil) do
     require Logger
 
     with {:ok, page} <- get_dump_page(cookies),
@@ -416,11 +419,17 @@ defmodule RuleMaven.BGG do
 
   defp extract_cookies(headers) do
     headers
-    |> Enum.flat_map(fn
-      {"set-cookie", value} -> [String.split(value, ";") |> List.first()]
-      _ -> []
-    end)
+    |> set_cookie_values()
+    |> Enum.map(fn v -> v |> String.split(";") |> List.first() end)
     |> Enum.join("; ")
+  end
+
+  # Req returns response headers either as a list of {name, value} tuples or as
+  # a map of name => [values] depending on version; handle both.
+  defp set_cookie_values(headers) when is_map(headers), do: Map.get(headers, "set-cookie", [])
+
+  defp set_cookie_values(headers) when is_list(headers) do
+    for {k, v} <- headers, String.downcase(k) == "set-cookie", do: v
   end
 
   defp parse_collection(xml) do
