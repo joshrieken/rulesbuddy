@@ -312,13 +312,18 @@ defmodule RuleMaven.Games do
   end
 
   def update_question_visibility(%QuestionLog{} = q, visibility) do
+    # Promoting to community makes the row cache-eligible.
+    attrs = %{visibility: visibility, pooled: visibility == "community" or q.pooled}
+
     q
-    |> QuestionLog.changeset(%{visibility: visibility})
+    |> QuestionLog.changeset(attrs)
     |> Repo.update()
   end
 
   def set_question_visibility(id, visibility) when is_integer(id) do
-    Repo.update_all(from(q in QuestionLog, where: q.id == ^id), set: [visibility: visibility])
+    set = [visibility: visibility]
+    set = if visibility == "community", do: Keyword.put(set, :pooled, true), else: set
+    Repo.update_all(from(q in QuestionLog, where: q.id == ^id), set: set)
   end
 
   def check_rate_limit(nil), do: {:error, "Not logged in."}
@@ -511,41 +516,97 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
-  Finds a similar question in the community pool using embedding similarity.
-  Only `visibility = "community"` questions are eligible — private Q&A is never
-  served to other users. Returns the matching QuestionLog or nil.
+  Finds a similar question in the cache pool using embedding similarity.
+
+  Eligibility is `pooled = true` (citation-gated, decoupled from `visibility`),
+  so citation-backed *private* answers serve the fast-path too. Results are
+  ordered trusted-first, then by trust_score, then cosine distance — so a
+  trusted (community / pinned / above-floor) hit always wins over a provisional
+  one. Returns nil or `{question_log, tier}` where tier is `:trusted | :provisional`.
+
+  This is the ONLY surface that widens to private rows, and it serves answer
+  text only (never the source row's question wording or author). Browse/list
+  surfaces (`community_questions/2`, `faq_questions/2`) stay community-only.
 
   Distance threshold derives from the `pool_similarity_threshold` setting
   (cosine similarity, default 0.92); cosine distance = 1 - similarity.
   """
   def find_similar_question_in_pool(game_id, question_embedding, opts \\ []) do
     threshold = Keyword.get(opts, :threshold, pool_distance_threshold())
+    floor = RuleMaven.Games.Trust.trusted_floor()
 
-    # Canonical answers first (admin-curated), then any non-refused answer
-    Repo.one(
-      from q in QuestionLog,
-        where: q.game_id == ^game_id,
-        where: q.visibility == "community",
-        where: not is_nil(q.question_embedding),
-        where: q.refused == false,
-        where:
-          fragment(
-            "cosine_distance(?, ?::vector)",
-            q.question_embedding,
-            ^Pgvector.new(question_embedding)
-          ) <= ^threshold,
-        order_by: [
-          asc: is_nil(q.canonical_answer),
-          asc:
+    row =
+      Repo.one(
+        from q in QuestionLog,
+          where: q.game_id == ^game_id,
+          # Community rows are always eligible; private rows once citation-gated.
+          where: q.pooled == true or q.visibility == "community",
+          where: not is_nil(q.question_embedding),
+          where: q.refused == false,
+          where:
             fragment(
               "cosine_distance(?, ?::vector)",
               q.question_embedding,
               ^Pgvector.new(question_embedding)
-            )
-        ],
-        limit: 1
-    )
+            ) <= ^threshold,
+          order_by: [
+            # Trusted rows first (community OR pinned OR above trust floor)...
+            desc:
+              fragment(
+                "(? = 'community' OR ? OR ? >= ?)",
+                q.visibility,
+                q.pinned,
+                q.trust_score,
+                ^floor
+              ),
+            desc: q.trust_score,
+            asc:
+              fragment(
+                "cosine_distance(?, ?::vector)",
+                q.question_embedding,
+                ^Pgvector.new(question_embedding)
+              )
+          ],
+          limit: 1
+      )
+
+    case row do
+      nil -> nil
+      q -> {q, pool_tier(q, floor)}
+    end
   end
+
+  @doc """
+  Classifies a pooled row as `:trusted` (community-promoted, admin-pinned, or
+  above the trust floor) or `:provisional` (citation-backed but unreviewed).
+  """
+  def pool_tier(%QuestionLog{} = q, floor \\ nil) do
+    floor = floor || RuleMaven.Games.Trust.trusted_floor()
+
+    if q.visibility == "community" or q.pinned or (q.trust_score || 0.0) >= floor do
+      :trusted
+    else
+      :provisional
+    end
+  end
+
+  @doc """
+  Marks a row cache-eligible when it carries a citation and was not refused.
+  No-op if `pooled` was explicitly turned off (a per-account opt-out can set
+  `pooled = false`). Returns the (possibly updated) row.
+  """
+  def mark_pooled(%QuestionLog{pooled: false, refused: false} = q) do
+    if RuleMaven.Games.Trust.has_citation?(q) do
+      case log_question_update(q, %{pooled: true}) do
+        {:ok, updated} -> updated
+        _ -> q
+      end
+    else
+      q
+    end
+  end
+
+  def mark_pooled(%QuestionLog{} = q), do: q
 
   @default_pool_similarity 0.92
 
@@ -1039,30 +1100,42 @@ defmodule RuleMaven.Games do
 
   def set_community_vote(question_log_id, user_id, value) do
     existing = get_user_community_vote(question_log_id, user_id)
+    weight = RuleMaven.Games.Trust.vote_weight(Repo.get(RuleMaven.Users.User, user_id))
 
-    cond do
-      existing && existing.value == value ->
-        Repo.delete(existing)
-        nil
+    result =
+      cond do
+        existing && existing.value == value ->
+          Repo.delete(existing)
+          nil
 
-      existing ->
-        existing
-        |> QuestionVote.changeset(%{value: value})
-        |> Repo.update!()
+        existing ->
+          existing
+          |> QuestionVote.changeset(%{value: value, weight: weight})
+          |> Repo.update!()
 
-        value
+          value
 
-      true ->
-        %QuestionVote{}
-        |> QuestionVote.changeset(%{
-          question_log_id: question_log_id,
-          user_id: user_id,
-          value: value
-        })
-        |> Repo.insert!()
+        true ->
+          %QuestionVote{}
+          |> QuestionVote.changeset(%{
+            question_log_id: question_log_id,
+            user_id: user_id,
+            value: value,
+            weight: weight
+          })
+          |> Repo.insert!()
 
-        value
+          value
+      end
+
+    # Recompute the row's trust_score and the answer author's reputation so
+    # ranking/promotion react immediately.
+    if q = Repo.get(QuestionLog, question_log_id) do
+      RuleMaven.Games.Trust.recompute_trust(q)
+      if q.user_id, do: RuleMaven.Games.Trust.recompute_reputation(q.user_id)
     end
+
+    result
   end
 
   def community_vote_maps(question_log_ids, user_id) do

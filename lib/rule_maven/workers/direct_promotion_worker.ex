@@ -2,11 +2,11 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
   @moduledoc """
   Nightly job: promotes well-received questions to the community pool.
 
-  Candidates are upvoted (`feedback = "up"`), non-refused, not-yet-community
-  questions that carry an embedding. They are clustered by embedding similarity
-  (not exact string match, so different phrasings of the same question group
-  together). A cluster asked & upvoted by `@min_upvotes` distinct users promotes
-  its best representative to `visibility = "community"`.
+  Candidates are pooled (citation-backed), non-refused, not-yet-community rows
+  that carry an embedding. They are clustered by embedding similarity (not exact
+  string match, so different phrasings of the same question group together). A
+  cluster whose best row has crossed `promotion_floor` (the reputation-weighted
+  trust threshold) promotes its representative to `visibility = "community"`.
   """
 
   use Oban.Worker, queue: :clustering, max_attempts: 3
@@ -14,20 +14,20 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
   alias RuleMaven.Games.QuestionLog
   alias RuleMaven.Repo
 
-  @min_upvotes 3
   @default_cluster_similarity 0.85
 
   @impl Oban.Worker
   def perform(_job) do
     Repo.all(
       from q in QuestionLog,
-        where: q.feedback == "up" and q.refused == false and q.visibility != "community",
+        where: q.pooled == true and q.refused == false and q.visibility != "community",
         where: not is_nil(q.question_embedding),
         select: %{
           id: q.id,
           game_id: q.game_id,
           user_id: q.user_id,
           embedding: q.question_embedding,
+          trust_score: q.trust_score,
           has_canonical: not is_nil(q.canonical_answer),
           inserted_at: q.inserted_at
         }
@@ -39,11 +39,13 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
   end
 
   defp promote_clusters(rows) do
+    floor = RuleMaven.Games.Trust.promotion_floor()
+
     rows
     |> cluster_by_similarity()
     |> Enum.each(fn cluster ->
-      distinct_users = cluster |> Enum.map(& &1.user_id) |> Enum.uniq() |> length()
-      if distinct_users >= @min_upvotes, do: promote_representative(cluster)
+      max_trust = cluster |> Enum.map(&(&1.trust_score || 0.0)) |> Enum.max()
+      if max_trust >= floor, do: promote_representative(cluster)
     end)
   end
 
@@ -69,19 +71,24 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
     end)
   end
 
-  # Prefer an admin-curated row, then the most recent.
+  # Prefer an admin-curated row, then highest trust, then most recent.
   defp promote_representative(cluster) do
     best =
       cluster
-      |> Enum.sort_by(fn r -> {r.has_canonical, r.inserted_at} end, :desc)
+      |> Enum.sort_by(
+        fn r -> {r.has_canonical, r.trust_score || 0.0, r.inserted_at} end,
+        :desc
+      )
       |> List.first()
 
     Repo.update_all(
       from(q in QuestionLog, where: q.id == ^best.id),
-      set: [visibility: "community"]
+      set: [visibility: "community", pooled: true]
     )
 
     RuleMaven.Workers.EmbedQuestionWorker.enqueue(best.id)
+    # Promotion rewards the author's reputation.
+    if best.user_id, do: RuleMaven.Games.Trust.recompute_reputation(best.user_id)
   end
 
   defp cosine_distance(a, b) do

@@ -83,7 +83,9 @@ defmodule RuleMavenWeb.AdminLive.Questions do
     id = String.to_integer(id)
 
     case Enum.find(socket.assigns.questions, &(&1.id == id)) do
-      nil -> {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
       q ->
         Games.delete_question(q)
         {:noreply, reload(socket)}
@@ -94,7 +96,9 @@ defmodule RuleMavenWeb.AdminLive.Questions do
     id = String.to_integer(id)
 
     case Enum.find(socket.assigns.questions, &(&1.id == id)) do
-      nil -> {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
       q ->
         Games.update_question_visibility(q, vis)
         {:noreply, reload(socket)}
@@ -110,10 +114,21 @@ defmodule RuleMavenWeb.AdminLive.Questions do
     end
   end
 
-  defp status_label(:pending), do: {"Pending", "color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)"}
-  defp status_label(:refused), do: {"Refused", "color:var(--text-muted);background:var(--bg-subtle)"}
-  defp status_label(:error), do: {"Error", "color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)"}
-  defp status_label(:answered), do: {"Answered", "color:var(--green);background:color-mix(in srgb,var(--green) 10%,transparent)"}
+  defp status_label(:pending),
+    do:
+      {"Pending",
+       "color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)"}
+
+  defp status_label(:refused),
+    do: {"Refused", "color:var(--text-muted);background:var(--bg-subtle)"}
+
+  defp status_label(:error),
+    do: {"Error", "color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)"}
+
+  defp status_label(:answered),
+    do:
+      {"Answered",
+       "color:var(--green);background:color-mix(in srgb,var(--green) 10%,transparent)"}
 
   @impl true
   def render(assigns) do
@@ -126,7 +141,11 @@ defmodule RuleMavenWeb.AdminLive.Questions do
       </div>
 
       <!-- Filters -->
-      <form phx-change="filter" phx-submit="filter" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;align-items:center">
+      <form
+        phx-change="filter"
+        phx-submit="filter"
+        style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;align-items:center"
+      >
         <select
           name="game_id"
           style="border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.8rem;background:var(--bg);color:var(--text)"
@@ -149,7 +168,11 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         </select>
       </form>
 
-      <form phx-change="search" phx-submit="search" style="display:flex;gap:0.35rem;margin-bottom:1rem">
+      <form
+        phx-change="search"
+        phx-submit="search"
+        style="display:flex;gap:0.35rem;margin-bottom:1rem"
+      >
         <input
           type="text"
           name="search"
@@ -159,7 +182,11 @@ defmodule RuleMavenWeb.AdminLive.Questions do
           style="flex:1;max-width:24rem;border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.6rem;font-size:0.8rem;background:var(--bg);color:var(--text)"
         />
         <%= if @search != "" do %>
-          <button type="button" phx-click="clear_search" style="background:none;border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.75rem;color:var(--text-muted);cursor:pointer">✕ Clear</button>
+          <button
+            type="button"
+            phx-click="clear_search"
+            style="background:none;border:1px solid var(--border);border-radius:0.375rem;padding:0.3rem 0.5rem;font-size:0.75rem;color:var(--text-muted);cursor:pointer"
+          >✕ Clear</button>
         <% end %>
       </form>
 
@@ -179,12 +206,27 @@ defmodule RuleMavenWeb.AdminLive.Questions do
                 {Calendar.strftime(q.inserted_at, "%b %-d %H:%M")}
               </span>
               <span style="font-size:0.7rem;color:var(--text-secondary);font-weight:500">
-                {q.user && q.user.username || "—"}
+                {(q.user && q.user.username) || "—"}<span
+                  :if={q.user}
+                  style="color:var(--text-muted);font-weight:400"
+                  title="Author reputation"
+                > &middot; rep {q.user.reputation}</span>
               </span>
-              <span style="font-size:0.7rem;color:var(--text-secondary);background:var(--bg-subtle);border:1px solid var(--border-subtle);padding:0.05rem 0.35rem;border-radius:0.25rem;max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={q.game && q.game.name}>
-                {q.game && q.game.name || "—"}
+              <span
+                style="font-size:0.7rem;color:var(--text-secondary);background:var(--bg-subtle);border:1px solid var(--border-subtle);padding:0.05rem 0.35rem;border-radius:0.25rem;max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                title={q.game && q.game.name}
+              >
+                {(q.game && q.game.name) || "—"}
               </span>
               <span style={"font-size:0.65rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.25rem;#{pill_style}"}>{status_label}</span>
+              <span
+                :if={q.pooled}
+                style="font-size:0.65rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.25rem;background:var(--bg-subtle);border:1px solid var(--border-subtle);color:var(--text-secondary)"
+                title="Cache-eligible; trust score drives ranking/promotion"
+              >
+                {if q.visibility == "community" or q.pinned, do: "✓ trusted", else: "◌ provisional"} &middot; {:erlang.float_to_binary(
+                  q.trust_score || 0.0, decimals: 1)}
+              </span>
               <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
                 <select
                   phx-change="set_visibility"
@@ -197,13 +239,25 @@ defmodule RuleMavenWeb.AdminLive.Questions do
                 </select>
                 <%= if @confirm_delete_id == q.id do %>
                   <span style="font-size:0.7rem;color:var(--red);font-weight:600">Delete?</span>
-                  <button type="button" phx-click="confirm_delete" phx-value-id={q.id}
-                    style="background:none;border:none;color:var(--red);font-size:0.7rem;font-weight:700;cursor:pointer">Yes</button>
-                  <button type="button" phx-click="cancel_delete"
-                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer">No</button>
+                  <button
+                    type="button"
+                    phx-click="confirm_delete"
+                    phx-value-id={q.id}
+                    style="background:none;border:none;color:var(--red);font-size:0.7rem;font-weight:700;cursor:pointer"
+                  >Yes</button>
+                  <button
+                    type="button"
+                    phx-click="cancel_delete"
+                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer"
+                  >No</button>
                 <% else %>
-                  <button type="button" phx-click="delete_question" phx-value-id={q.id}
-                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer" title="Delete">✕</button>
+                  <button
+                    type="button"
+                    phx-click="delete_question"
+                    phx-value-id={q.id}
+                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer"
+                    title="Delete"
+                  >✕</button>
                 <% end %>
               </div>
             </div>
@@ -232,12 +286,20 @@ defmodule RuleMavenWeb.AdminLive.Questions do
             <%= if @expanded_id == q.id do %>
               <div style="margin:0 0.75rem 0.75rem;padding:0.65rem 0.75rem;background:var(--bg);border:1px solid var(--border-subtle);border-radius:0.35rem">
                 <%= if q.canonical_question do %>
-                  <p style="font-size:0.7rem;color:var(--accent);font-weight:600;margin:0 0 0.35rem">★ Curated: {q.canonical_question}</p>
+                  <p style="font-size:0.7rem;color:var(--accent);font-weight:600;margin:0 0 0.35rem">
+                    ★ Curated: {q.canonical_question}
+                  </p>
                 <% end %>
-                <p style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:0 0 0.3rem">Answer</p>
-                <p style="font-size:0.8rem;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.5">{q.canonical_answer || q.answer}</p>
+                <p style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:0 0 0.3rem">
+                  Answer
+                </p>
+                <p style="font-size:0.8rem;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.5">
+                  {q.canonical_answer || q.answer}
+                </p>
                 <%= if q.cited_passage do %>
-                  <p style="margin-top:0.5rem;padding:0.4rem 0.5rem;background:var(--bg-subtle);border-radius:0.25rem;font-size:0.7rem;color:var(--text-muted);font-style:italic;line-height:1.4">{q.cited_passage}</p>
+                  <p style="margin-top:0.5rem;padding:0.4rem 0.5rem;background:var(--bg-subtle);border-radius:0.25rem;font-size:0.7rem;color:var(--text-muted);font-style:italic;line-height:1.4">
+                    {q.cited_passage}
+                  </p>
                 <% end %>
               </div>
             <% end %>
@@ -245,7 +307,9 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         <% end %>
       </div>
 
-      <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">Showing up to 100 most recent.</p>
+      <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">
+        Showing up to 100 most recent.
+      </p>
     </div>
     """
   end

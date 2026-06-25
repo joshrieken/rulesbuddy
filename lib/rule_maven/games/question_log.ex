@@ -21,6 +21,9 @@ defmodule RuleMaven.Games.QuestionLog do
     field :raw_response, :string
     field :canonical_question, :string
     field :canonical_answer, :string
+    field :trust_score, :float, default: 0.0
+    field :pooled, :boolean, default: false
+    field :pool_source_id, :integer
     belongs_to :game, RuleMaven.Games.Game
     belongs_to :user, RuleMaven.Users.User
     belongs_to :document, RuleMaven.Games.Document
@@ -54,6 +57,9 @@ defmodule RuleMaven.Games.QuestionLog do
       :raw_response,
       :canonical_question,
       :canonical_answer,
+      :trust_score,
+      :pooled,
+      :pool_source_id,
       :favorited
     ])
     |> validate_required([:question, :answer, :game_id])

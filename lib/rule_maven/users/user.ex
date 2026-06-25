@@ -8,6 +8,7 @@ defmodule RuleMaven.Users.User do
     field :role, :string, default: "player"
     field :password, :string, virtual: true
     field :password_hash, :string
+    field :reputation, :integer, default: 0
 
     timestamps(type: :utc_datetime)
   end

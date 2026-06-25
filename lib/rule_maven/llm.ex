@@ -34,6 +34,7 @@ defmodule RuleMaven.LLM do
   """
   def ask(game, question, expansion_ids \\ [], recent_context \\ [], opts \\ []) do
     user_id = Keyword.get(opts, :user_id)
+    skip_pool = Keyword.get(opts, :skip_pool, false)
 
     # Step 0: embed the question (used for pool check + logging)
     question_embedding =
@@ -43,20 +44,29 @@ defmodule RuleMaven.LLM do
       end
 
     pool_hit =
-      question_embedding &&
+      !skip_pool && question_embedding &&
         RuleMaven.Games.find_similar_question_in_pool(game.id, question_embedding,
           user_id: user_id
         )
 
     cond do
       pool_hit ->
+        {row, tier} = pool_hit
+
+        # Serve answer text only — never the source row's question wording or
+        # author. tier is :trusted | :provisional (unverified single source).
         {:ok,
          %{
-           answer: pool_hit.canonical_answer || pool_hit.answer,
-           cited_passage: pool_hit.cited_passage,
+           answer: row.canonical_answer || row.answer,
+           cited_passage: row.cited_passage,
            provider: "pool",
-           model: "cached",
+           # Encode tier in the model field so it survives a page reload
+           # (the served row has no trust_score of its own to derive from).
+           model: if(tier == :trusted, do: "cached", else: "cached-unverified"),
            pool_hit: true,
+           tier: tier,
+           verified: tier == :trusted,
+           source_question_log_id: row.id,
            question_embedding: question_embedding
          }}
 

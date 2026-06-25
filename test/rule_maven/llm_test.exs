@@ -185,6 +185,92 @@ defmodule RuleMaven.LLMTest do
       assert result.model == "cached"
       assert result.answer == "Pool answer"
       assert result[:pool_hit] == true
+      assert result[:tier] == :trusted
+      assert result[:verified] == true
+    end
+
+    test "serves a citation-backed private row as a provisional, anonymized hit" do
+      {:ok, game} = Games.create_game(%{name: "ProvisionalGame"})
+
+      author =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "prov_author",
+          email: "prov@test.com",
+          password_hash: "x"
+        })
+
+      embedding = Enum.to_list(1..768)
+
+      {:ok, q} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: author.id,
+          question: "What is the author's secret private wording?",
+          answer: "Provisional answer.",
+          cited_passage: "see p.7",
+          cited_page: 7,
+          visibility: "private",
+          pooled: true
+        })
+
+      Repo.update_all(
+        from(ql in QuestionLog, where: ql.id == ^q.id),
+        set: [question_embedding: Pgvector.new(embedding)]
+      )
+
+      Application.put_env(:rule_maven, :embed_mock, fn _text -> {:ok, embedding} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      {:ok, result} = LLM.ask(game, "different phrasing of the same thing")
+
+      assert result[:pool_hit] == true
+      assert result[:tier] == :provisional
+      assert result[:verified] == false
+      assert result.model == "cached-unverified"
+      assert result.answer == "Provisional answer."
+      assert result[:source_question_log_id] == q.id
+      # Anonymization: never leak the source row's wording or author.
+      refute Map.has_key?(result, :question)
+      refute Map.has_key?(result, :user_id)
+      refute result.answer =~ "secret private wording"
+    end
+
+    test "skip_pool forces a fresh answer past the cache" do
+      {:ok, game} = Games.create_game(%{name: "SkipPoolGame"})
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "skip_user",
+          email: "skip@test.com",
+          password_hash: "x"
+        })
+
+      embedding = Enum.to_list(1..768)
+
+      Games.log_question(%{
+        game_id: game.id,
+        user_id: user.id,
+        question: "Cached q",
+        answer: "Cached answer",
+        visibility: "community"
+      })
+
+      Repo.update_all(
+        from(ql in QuestionLog, where: ql.game_id == ^game.id),
+        set: [question_embedding: Pgvector.new(embedding)]
+      )
+
+      Application.put_env(:rule_maven, :embed_mock, fn _text -> {:ok, embedding} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      mock_llm(fn _body ->
+        {:ok, %{answer: "Fresh answer", cited_passage: "p.1", followup: false, followups: []}}
+      end)
+
+      {:ok, result} = LLM.ask(game, "Cached q", [], [], skip_pool: true)
+
+      assert result.provider != "pool"
+      assert result.answer =~ "Fresh answer"
     end
   end
 

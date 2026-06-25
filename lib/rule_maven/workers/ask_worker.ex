@@ -15,6 +15,7 @@ defmodule RuleMaven.Workers.AskWorker do
     question = args["question"]
     expansion_ids = args["expansion_ids"] || []
     user_id = args["user_id"]
+    skip_pool = args["skip_pool"] || false
 
     recent_context =
       (args["recent_context"] || [])
@@ -25,183 +26,202 @@ defmodule RuleMaven.Workers.AskWorker do
     if RuleMaven.Security.prompt_injection?(question) do
       if ql = get_question_log!(question_log_id) do
         case Games.log_question_update(ql, %{
-          answer: "⚠️ This question was blocked by the security filter.",
-          refused: true,
-          blocked: true
-        }) do
+               answer: "⚠️ This question was blocked by the security filter.",
+               refused: true,
+               blocked: true
+             }) do
           {:ok, _} ->
             Phoenix.PubSub.broadcast(
               RuleMaven.PubSub,
               "game:#{game_id}",
-              {:ask_complete, %{
-                question_log_id: question_log_id,
-                faq_hit: false,
-                followup: false,
-                followups: [],
-                also_asked: [],
-                cited_page: nil,
-                refused: true,
-                raw_response: nil
-              }}
+              {:ask_complete,
+               %{
+                 question_log_id: question_log_id,
+                 faq_hit: false,
+                 followup: false,
+                 followups: [],
+                 also_asked: [],
+                 cited_page: nil,
+                 refused: true,
+                 raw_response: nil
+               }}
             )
-          {:error, _} -> :ok
+
+          {:error, _} ->
+            :ok
         end
       end
 
       :ok
     else
+      case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context,
+             user_id: user_id,
+             skip_pool: skip_pool
+           ) do
+        {:ok, %{answer: raw_answer} = llm_result} ->
+          answer =
+            cond do
+              is_nil(raw_answer) || String.trim(raw_answer) == "" ->
+                "⚠️ The AI returned an empty response. Please retry."
 
-    case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context, user_id: user_id) do
-      {:ok, %{answer: raw_answer} = llm_result} ->
-        answer =
-          cond do
-            is_nil(raw_answer) || String.trim(raw_answer) == "" ->
-              "⚠️ The AI returned an empty response. Please retry."
+              suspicious_output?(raw_answer) ->
+                "⚠️ The AI returned an unexpected response format. Please retry."
 
-            suspicious_output?(raw_answer) ->
-              "⚠️ The AI returned an unexpected response format. Please retry."
-
-            true ->
-              stripped = strip_question_echo(raw_answer, question)
-              if String.trim(stripped) == "", do: raw_answer, else: stripped
-          end
-
-        if ql = get_question_log!(question_log_id) do
-          raw_passage = llm_result[:cited_passage]
-          followup? = llm_result[:followup] || false
-          cited_page = parse_cited_page(raw_passage)
-          # Strip [Page N] markers from display passage AFTER extracting page number
-          passage =
-            if raw_passage do
-              raw_passage
-              |> String.replace(~r/\[Page\s*\d+\]/i, "")
-              |> String.replace(~r/\(Page\s*\d+\)/i, "")
-              |> String.trim()
+              true ->
+                stripped = strip_question_echo(raw_answer, question)
+                if String.trim(stripped) == "", do: raw_answer, else: stripped
             end
 
-          refused? = refused?(answer)
-
-          cleaned =
-            llm_result[:cleaned_question]
-            |> to_string()
-            |> String.trim()
-            |> strip_game_name(game.name)
-
-          # Sanity check: cleaned must be shorter than the answer and
-          # not exceed a reasonable question length, else the LLM put
-          # answer content in the CLEANED block — discard it.
-          cleaned =
-            if cleaned != "" and
-                 String.length(cleaned) <= 250 and
-                 String.length(cleaned) <= String.length(answer) * 2 do
-              cleaned
-            else
-              ""
-            end
-
-          update_attrs = %{
-            answer: answer,
-            question: if(cleaned != "", do: cleaned, else: question),
-            cited_passage: passage,
-            cited_page: cited_page,
-            refused: refused?,
-            cleaned_question: llm_result[:cleaned_question],
-            raw_response: llm_result[:raw_response],
-            llm_provider: llm_result[:provider],
-            llm_model: llm_result[:model],
-            question_embedding: llm_result[:question_embedding]
-          }
-
-          update_attrs =
-            if followup? && user_id do
-              parent_id = Games.find_parent_question_id(game_id, user_id, question_log_id)
-              Map.put(update_attrs, :parent_question_id, parent_id)
-            else
-              update_attrs
-            end
-
-          case Games.log_question_update(ql, update_attrs) do
-            {:ok, _updated} ->
-              unless refused? do
-                RuleMaven.Workers.TagQuestionWorker.enqueue(question_log_id, game_id)
+          if ql = get_question_log!(question_log_id) do
+            raw_passage = llm_result[:cited_passage]
+            followup? = llm_result[:followup] || false
+            cited_page = parse_cited_page(raw_passage)
+            # Strip [Page N] markers from display passage AFTER extracting page number
+            passage =
+              if raw_passage do
+                raw_passage
+                |> String.replace(~r/\[Page\s*\d+\]/i, "")
+                |> String.replace(~r/\(Page\s*\d+\)/i, "")
+                |> String.trim()
               end
 
-              Phoenix.PubSub.broadcast(
-                RuleMaven.PubSub,
-                "game:#{game_id}",
-                {:ask_complete,
-                 %{
-                   question_log_id: question_log_id,
-                   faq_hit: llm_result[:faq_hit] || false,
-                   followup: followup?,
-                   followups: if(refused?, do: [], else: llm_result[:followups] || []),
-                   also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
-                   cited_page: cited_page,
-                   refused: refused?,
-                   raw_response: llm_result[:raw_response]
-                 }}
-              )
+            refused? = refused?(answer)
 
-            {:error, changeset} ->
-              require Logger
+            cleaned =
+              llm_result[:cleaned_question]
+              |> to_string()
+              |> String.trim()
+              |> strip_game_name(game.name)
 
-              Logger.error(
-                "AskWorker DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
-              )
+            # Sanity check: cleaned must be shorter than the answer and
+            # not exceed a reasonable question length, else the LLM put
+            # answer content in the CLEANED block — discard it.
+            cleaned =
+              if cleaned != "" and
+                   String.length(cleaned) <= 250 and
+                   String.length(cleaned) <= String.length(answer) * 2 do
+                cleaned
+              else
+                ""
+              end
 
-              Phoenix.PubSub.broadcast(
-                RuleMaven.PubSub,
-                "game:#{game_id}",
-                {:ask_error,
-                 %{
-                   question_log_id: question_log_id,
-                   question: question,
-                   error: "Failed to save answer"
-                 }}
-              )
+            update_attrs = %{
+              answer: answer,
+              question: if(cleaned != "", do: cleaned, else: question),
+              cited_passage: passage,
+              cited_page: cited_page,
+              refused: refused?,
+              cleaned_question: llm_result[:cleaned_question],
+              raw_response: llm_result[:raw_response],
+              llm_provider: llm_result[:provider],
+              llm_model: llm_result[:model],
+              pool_source_id: llm_result[:source_question_log_id],
+              question_embedding: llm_result[:question_embedding]
+            }
+
+            update_attrs =
+              if followup? && user_id do
+                parent_id = Games.find_parent_question_id(game_id, user_id, question_log_id)
+                Map.put(update_attrs, :parent_question_id, parent_id)
+              else
+                update_attrs
+              end
+
+            case Games.log_question_update(ql, update_attrs) do
+              {:ok, updated} ->
+                pool_hit? = llm_result[:pool_hit] || false
+
+                unless refused? do
+                  RuleMaven.Workers.TagQuestionWorker.enqueue(question_log_id, game_id)
+                  # Fresh, citation-backed answers become cache-eligible. Pool hits
+                  # are duplicates of an existing pooled row — don't re-pool them.
+                  unless pool_hit?, do: Games.mark_pooled(updated)
+                end
+
+                Phoenix.PubSub.broadcast(
+                  RuleMaven.PubSub,
+                  "game:#{game_id}",
+                  {:ask_complete,
+                   %{
+                     question_log_id: question_log_id,
+                     faq_hit: llm_result[:faq_hit] || false,
+                     pool_hit: pool_hit?,
+                     tier: llm_result[:tier],
+                     verified: llm_result[:verified] || false,
+                     source_question_log_id: llm_result[:source_question_log_id],
+                     followup: followup?,
+                     followups: if(refused?, do: [], else: llm_result[:followups] || []),
+                     also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
+                     cited_page: cited_page,
+                     refused: refused?,
+                     raw_response: llm_result[:raw_response]
+                   }}
+                )
+
+              {:error, changeset} ->
+                require Logger
+
+                Logger.error(
+                  "AskWorker DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
+                )
+
+                Phoenix.PubSub.broadcast(
+                  RuleMaven.PubSub,
+                  "game:#{game_id}",
+                  {:ask_error,
+                   %{
+                     question_log_id: question_log_id,
+                     question: question,
+                     error: "Failed to save answer"
+                   }}
+                )
+            end
           end
-        end
 
-        :ok
+          :ok
 
-      {:error, reason} ->
-        require Logger
-        Logger.error("AskWorker failed for game #{game_id}: #{reason}")
+        {:error, reason} ->
+          require Logger
+          Logger.error("AskWorker failed for game #{game_id}: #{reason}")
 
-        friendly =
-          cond do
-            is_binary(reason) && String.contains?(reason, "timeout") ->
-              "⚠️ The AI took too long to respond. Please retry."
-            is_binary(reason) && String.contains?(reason, "rate") ->
-              "⚠️ Too many requests — please wait a moment and retry."
-            is_binary(reason) && String.contains?(reason, "context") ->
-              "⚠️ Question too long for the AI to process. Try a shorter question."
-            true ->
-              "⚠️ Something went wrong. Please retry."
+          friendly =
+            cond do
+              is_binary(reason) && String.contains?(reason, "timeout") ->
+                "⚠️ The AI took too long to respond. Please retry."
+
+              is_binary(reason) && String.contains?(reason, "rate") ->
+                "⚠️ Too many requests — please wait a moment and retry."
+
+              is_binary(reason) && String.contains?(reason, "context") ->
+                "⚠️ Question too long for the AI to process. Try a shorter question."
+
+              true ->
+                "⚠️ Something went wrong. Please retry."
+            end
+
+          if ql = get_question_log!(question_log_id) do
+            case Games.log_question_update(ql, %{answer: friendly}) do
+              {:ok, _updated} ->
+                Phoenix.PubSub.broadcast(
+                  RuleMaven.PubSub,
+                  "game:#{game_id}",
+                  {:ask_error,
+                   %{question_log_id: question_log_id, question: question, error: reason}}
+                )
+
+              {:error, changeset} ->
+                Logger.error(
+                  "AskWorker error DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
+                )
+            end
           end
 
-        if ql = get_question_log!(question_log_id) do
-          case Games.log_question_update(ql, %{answer: friendly}) do
-            {:ok, _updated} ->
-              Phoenix.PubSub.broadcast(
-                RuleMaven.PubSub,
-                "game:#{game_id}",
-                {:ask_error,
-                 %{question_log_id: question_log_id, question: question, error: reason}}
-              )
-
-            {:error, changeset} ->
-              Logger.error(
-                "AskWorker error DB update failed for question #{question_log_id}: #{inspect(changeset.errors)}"
-              )
-          end
-        end
-
-        :ok
+          :ok
+      end
     end
-    end  # end prompt_injection? else
-  end
 
+    # end prompt_injection? else
+  end
 
   defp get_question_log(id) do
     import Ecto.Query
@@ -228,11 +248,14 @@ defmodule RuleMaven.Workers.AskWorker do
     len = String.length(trimmed)
 
     return_early = len < 10
+
     if return_early do
       false
     else
       # Count characters outside normal prose range (letters, digits, spaces, common punctuation)
-      prose_chars = Regex.scan(~r/[a-zA-Z0-9 \t\n\r.,!?;:()\-'"\/\[\]%&*@#$€£°]/, trimmed) |> length()
+      prose_chars =
+        Regex.scan(~r/[a-zA-Z0-9 \t\n\r.,!?;:()\-'"\/\[\]%&*@#$€£°]/, trimmed) |> length()
+
       non_prose_ratio = 1 - prose_chars / len
 
       # Base64 blocks: long runs of base64 chars with no prose spaces
