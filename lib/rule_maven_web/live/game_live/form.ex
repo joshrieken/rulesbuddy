@@ -1237,6 +1237,18 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
+  # Guard against older cached suggestions whose "category" is actually the
+  # model's preamble (e.g. "Here are common questions for X, grouped by …:").
+  defp tidy_category(name) do
+    name = to_string(name) |> String.trim()
+
+    cond do
+      String.length(name) > 40 -> "Suggested"
+      Regex.match?(~r/grouped by|questions for|here are/i, name) -> "Suggested"
+      true -> String.trim_trailing(name, ":")
+    end
+  end
+
   defp extract_pdf_text(path, client_name) do
     upload_dir = Application.app_dir(:rule_maven, "priv/static/uploads/rulebooks")
     File.mkdir_p!(upload_dir)
@@ -2254,7 +2266,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <%= for cat <- @suggestions do %>
                     <details style="border-bottom:1px solid var(--border-subtle)">
                       <summary style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);cursor:pointer;user-select:none;list-style:none;display:flex;justify-content:space-between;align-items:center">
-                        <span>{cat.category}</span>
+                        <span>{tidy_category(cat.category)}</span>
                         <span style="font-size:0.6rem;opacity:0.6">({length(cat.questions)})</span>
                       </summary>
                       <%= for q <- cat.questions do %>

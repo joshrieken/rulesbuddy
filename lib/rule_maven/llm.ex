@@ -556,24 +556,46 @@ defmodule RuleMaven.LLM do
            max_tokens: 512
          ) do
       {:ok, text} ->
-        categories =
+        # Everything before the first "CATEGORY:" is preamble (e.g. "Here are
+        # common questions for X, grouped by category:") — drop it so it never
+        # becomes a bogus category name.
+        blocks =
           text
           |> String.split(~r/^CATEGORY:\s*/mi)
-          |> Enum.reject(&(&1 == ""))
-          |> Enum.map(fn block ->
-            [name | questions] =
-              String.split(block, "\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+          |> Enum.drop(1)
 
-            questions = Enum.map(questions, &String.replace(&1, ~r/^[-*]\s*/, ""))
-            %{category: name, questions: questions}
-          end)
-          |> Enum.reject(fn %{questions: qs} -> qs == [] end)
+        categories =
+          if blocks == [] do
+            # Model ignored the CATEGORY: format — salvage the "- " questions
+            # under a single generic category rather than show the preamble.
+            qs = bullet_lines(text)
+            if qs == [], do: [], else: [%{category: "Suggested", questions: qs}]
+          else
+            blocks
+            |> Enum.map(fn block ->
+              [name | _] =
+                String.split(block, "\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+              %{category: name, questions: bullet_lines(block)}
+            end)
+            |> Enum.reject(fn %{questions: qs} -> qs == [] end)
+          end
 
         {:ok, categories}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Pull the "- " / "* " bullet lines out of a block as clean question strings,
+  # ignoring any prose/preamble lines that aren't bullets.
+  defp bullet_lines(block) do
+    block
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&Regex.match?(~r/^[-*]\s+/, &1))
+    |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
   end
 
   @doc """
