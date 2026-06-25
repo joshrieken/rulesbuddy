@@ -27,7 +27,10 @@ defmodule RuleMavenWeb.GameLive.Faq do
 
   @impl true
   def handle_params(%{"category" => cat_id}, _uri, socket) do
-    {:noreply, assign(socket, filter_category: String.to_integer(cat_id))}
+    case Integer.parse(cat_id) do
+      {id, ""} -> {:noreply, assign(socket, filter_category: id)}
+      _ -> {:noreply, assign(socket, filter_category: nil)}
+    end
   end
 
   def handle_params(_params, _uri, socket) do
