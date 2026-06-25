@@ -1,6 +1,15 @@
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 
 let Hooks = {};
+// Persists the selected game-list view to localStorage when the server
+// pushes "save_view". Restored on connect via the LiveSocket params above.
+Hooks.ViewPref = {
+  mounted() {
+    this.handleEvent("save_view", ({view}) => {
+      localStorage.setItem("rm:gamelist:view", view);
+    });
+  }
+};
 Hooks.FlashAutoHide = {
   mounted() {
     let duration = parseInt(this.el.dataset.flashDuration) || 4000;
@@ -239,7 +248,11 @@ Hooks.InfiniteScroll = {
 };
 
 let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
-  params: {_csrf_token: csrfToken},
+  params: () => ({
+    _csrf_token: csrfToken,
+    // Remembered game-list view (playable/mine/all) so it survives reloads.
+    list_view: localStorage.getItem("rm:gamelist:view") || ""
+  }),
   hooks: Hooks
 });
 

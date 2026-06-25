@@ -39,7 +39,6 @@ defmodule RuleMavenWeb.Router do
       live "/", GameLive.Index, :index
       live "/games/new", GameLive.Form, :new
       live "/games/import", GameLive.Import, :index
-      live "/games/refresh", GameLive.Refresh, :index
       live "/games/:id", GameLive.Show, :show
       live "/games/:id/edit", GameLive.Form, :edit
       live "/games/:id/review", GameLive.Review, :index

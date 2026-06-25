@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.GameLive.Index do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Games, BggRefresher}
+  alias RuleMaven.Games
 
   @impl true
   def mount(_params, _session, socket) do
@@ -9,21 +9,13 @@ defmodule RuleMavenWeb.GameLive.Index do
     collection_ids = Games.collection_game_ids(user_id)
 
     # Default landing view: askable games (those with rulebooks). Users can
-    # toggle to their collection or browse the full catalog.
-    view = "playable"
-    games = load_view_games(view, user_id, "", nil)
-
-    {refresh_total, refresh_current, refresh_complete, refresh_errored} =
-      if BggRefresher.running?() do
-        BggRefresher.subscribe(self())
-
-        case BggRefresher.state() do
-          nil -> {0, 0, false, false}
-          s -> {s.total, s.current, s.complete, Map.get(s, :errored, false)}
-        end
-      else
-        {0, 0, false, false}
-      end
+    # toggle to their collection or browse the full catalog. The last-used view
+    # is remembered per-browser and delivered via the LiveSocket connect params,
+    # which only exist on the connected mount. The disconnected (SSR) mount has
+    # no view yet — render nothing there so the static HTML doesn't flash the
+    # default before the remembered selection arrives on connect.
+    view = if connected?(socket), do: restore_view(socket), else: nil
+    games = if view, do: load_view_games(view, user_id, "", nil), else: []
 
     socket =
       socket
@@ -40,16 +32,39 @@ defmodule RuleMavenWeb.GameLive.Index do
         selected_idx: -1,
         display_count: 20,
         expanded_games: %{},
-        category_filter: nil,
-        refresh_total: refresh_total,
-        refresh_current: refresh_current,
-        refresh_complete: refresh_complete,
-        refresh_errored: refresh_errored,
-        version: 0
+        category_filter: nil
       )
       |> assign_games(games)
 
     {:ok, socket}
+  end
+
+  @views ~w(playable mine all)
+
+  # Views available to a user. "All Games" (full catalog) is game-master only;
+  # players are limited to playable games and their own collection.
+  defp view_tabs(user) do
+    base = [{"playable", "Playable"}, {"mine", "My Collection"}]
+    if RuleMaven.Users.game_master?(user), do: base ++ [{"all", "All Games"}], else: base
+  end
+
+  defp allowed_view?(user, view) do
+    view in ~w(playable mine) or (view == "all" and RuleMaven.Users.game_master?(user))
+  end
+
+  # Restore the remembered view from the localStorage-backed connect param.
+  # Returns "playable" on the disconnected mount, an unknown value, or a view
+  # the user isn't allowed (e.g. a stale "all" pref after losing access).
+  defp restore_view(socket) do
+    user = socket.assigns.current_user
+
+    case get_connect_params(socket) do
+      %{"list_view" => v} when v in @views ->
+        if allowed_view?(user, v), do: v, else: "playable"
+
+      _ ->
+        "playable"
+    end
   end
 
   # Load the game list for a view. "all" is DB-backed (catalog can be huge);
@@ -267,11 +282,16 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
-  def handle_event("set_view", %{"view" => view}, socket) do
-    {:noreply,
-     socket
-     |> assign(view: view, display_count: 20, selected_idx: -1)
-     |> reload_games()}
+  def handle_event("set_view", %{"view" => view}, socket) when view in @views do
+    if allowed_view?(socket.assigns.current_user, view) do
+      {:noreply,
+       socket
+       |> assign(view: view, display_count: 20, selected_idx: -1)
+       |> reload_games()
+       |> push_event("save_view", %{view: view})}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -307,54 +327,6 @@ defmodule RuleMavenWeb.GameLive.Index do
      |> put_flash(:info, "Cleared #{count} game(s).")}
   end
 
-  @impl true
-  def handle_event("start_refresh", _params, socket) do
-    games =
-      if RuleMaven.Users.game_master?(socket.assigns.current_user) do
-        Games.list_games()
-      else
-        Games.list_games_with_documents()
-      end
-      |> Enum.filter(& &1.bgg_id)
-      |> Enum.sort_by(&String.downcase(&1.name))
-
-    result =
-      if socket.assigns.refresh_errored do
-        BggRefresher.restart(games)
-      else
-        BggRefresher.start(games)
-      end
-
-    case result do
-      {:ok, _pid} ->
-        BggRefresher.subscribe(self())
-
-        {:noreply,
-         assign(socket,
-           refresh_total: length(games),
-           refresh_current: 0,
-           refresh_complete: false,
-           refresh_errored: false
-         )}
-
-      {:error, :already_running} ->
-        BggRefresher.subscribe(self())
-
-        case BggRefresher.state() do
-          nil ->
-            {:noreply, socket}
-
-          s ->
-            {:noreply,
-             assign(socket,
-               refresh_total: s.total,
-               refresh_current: s.current,
-               refresh_complete: s.complete
-             )}
-        end
-    end
-  end
-
   defp visible_games(assigns) do
     filtered = filtered_games(assigns.games, assigns.search, assigns.category_filter)
     Enum.take(filtered, assigns.display_count)
@@ -385,26 +357,6 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
-  def handle_info({:progress, _name, current, total}, socket) do
-    {:noreply, assign(socket, refresh_current: current, refresh_total: total)}
-  end
-
-  @impl true
-  def handle_info({:done, _name, _status}, socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:complete}, socket) do
-    {:noreply, assign(socket, refresh_complete: true)}
-  end
-
-  @impl true
-  def handle_info({:refresh_error, _reason}, socket) do
-    {:noreply, assign(socket, refresh_errored: true)}
-  end
-
-  @impl true
   def render(assigns) do
     ~H"""
     <div class="game-list">
@@ -430,8 +382,8 @@ defmodule RuleMavenWeb.GameLive.Index do
         </div>
       </form>
 
-      <div class="mb-4 flex gap-2 flex-wrap">
-        <%= for {key, label} <- [{"playable", "Playable"}, {"mine", "My Collection"}, {"all", "All Games"}] do %>
+      <div class="mb-4 flex gap-2 flex-wrap" id="view-tabs" phx-hook="ViewPref">
+        <%= for {key, label} <- view_tabs(@current_user) do %>
           <button
             type="button"
             phx-click="set_view"
@@ -466,22 +418,24 @@ defmodule RuleMavenWeb.GameLive.Index do
         </div>
       <% end %>
 
-      <div :if={RuleMaven.Users.game_master?(@current_user)} class="mb-4 flex gap-2 flex-wrap">
-        <.button variant="primary" navigate={~p"/games/new"}>+ Add Game</.button>
-        <.button variant="secondary" navigate={~p"/games/import"}>Import from BGG</.button>
+      <div class="mb-4 flex gap-2 flex-wrap">
+        <.button
+          :if={RuleMaven.Users.game_master?(@current_user)}
+          variant="primary"
+          navigate={~p"/games/new"}
+        >+ Add Game</.button>
+        <.button variant="secondary" navigate={~p"/games/import"}>Import BGG Collection</.button>
+      </div>
 
-        <%= if @games != [] do %>
-          <button
-            type="button"
-            phx-click="start_refresh"
-            style="display:inline-block;background:var(--accent);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
-            disabled={@refresh_total > 0 and not @refresh_complete}
-          >
-            {if @refresh_total > 0 and not @refresh_complete,
-              do: "Refreshing...",
-              else: "Refresh All from BGG"}
-          </button>
-
+      <%!-- Danger Zone --%>
+      <div
+        :if={RuleMaven.Users.game_master?(@current_user) and @games != []}
+        style="margin-bottom:1rem;border:1px solid var(--red);border-radius:0.5rem;padding:0.75rem 0.9rem;background:var(--bg)"
+      >
+        <h3 style="font-size:0.78rem;font-weight:700;color:var(--red);margin:0 0 0.5rem 0;text-transform:uppercase;letter-spacing:0.03em">
+          Danger Zone
+        </h3>
+        <div class="flex gap-2 flex-wrap" style="align-items:center">
           <%= if not @confirm_clear do %>
             <button
               type="button"
@@ -517,29 +471,8 @@ defmodule RuleMavenWeb.GameLive.Index do
               Cancel
             </button>
           <% end %>
-        <% end %>
-      </div>
-
-      <%!-- BGG refresh progress bar --%>
-      <%= if @refresh_total > 0 and not @refresh_complete do %>
-        <div
-          style={"margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid #{if @refresh_errored, do: "var(--red)", else: "var(--accent)"};border-radius:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"}
-          data-refresh={@version}
-        >
-          <span style={"font-size:0.75rem;font-weight:600;color:#{if @refresh_errored, do: "var(--red)", else: "var(--accent)"};white-space:nowrap"}>
-            {if @refresh_errored, do: "BGG Refresh Failed", else: "BGG Refresh"}
-          </span>
-          <div style="flex:1;min-width:100px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-            <div style={"width:#{if @refresh_total > 0, do: trunc(@refresh_current / @refresh_total * 100), else: 0}%;height:100%;background:#{if @refresh_errored, do: "var(--red)", else: "var(--accent)"};transition:width 0.3s"}>
-            </div>
-          </div>
-          <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">{@refresh_current}/{@refresh_total}</span>
-          <.link
-            navigate={~p"/games/refresh"}
-            style="font-size:0.7rem;color:var(--blue);white-space:nowrap"
-          >detail</.link>
         </div>
-      <% end %>
+      </div>
 
       <% filtered = filtered_games(@games, @search, @category_filter) %>
       <% display_games = visible_games(assigns) %>
@@ -751,27 +684,8 @@ defmodule RuleMavenWeb.GameLive.Index do
         </p>
 
         <%= if @games == [] do %>
-          <div class="text-center py-12 text-gray-500" style="max-width:24rem;margin:0 auto">
-            <div style="font-size:2rem;margin-bottom:0.75rem">📚</div>
-            <p style="font-size:1.05rem;font-weight:600;color:var(--text);margin-bottom:0.5rem">
-              Welcome to Rule Maven
-            </p>
-            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.25rem;line-height:1.5">
-              Ask rulebook questions in plain English and get answers with exact citations.
-            </p>
-            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;line-height:1.5">
-              Add a game or rulebook below to get started.
-            </p>
-            <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
-              <.link
-                navigate={~p"/games/new"}
-                style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.4rem 1rem;border-radius:0.4rem"
-              >+ Add manually</.link>
-              <.link
-                navigate={~p"/games/import"}
-                style="background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.4rem 1rem;border-radius:0.4rem"
-              >🔍 Import from BGG</.link>
-            </div>
+          <div class="text-center py-12 text-gray-500">
+            <p style="font-size:0.9rem;color:var(--text-muted)">Nothing available for now.</p>
           </div>
         <% end %>
 
