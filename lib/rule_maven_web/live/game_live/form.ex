@@ -146,11 +146,8 @@ defmodule RuleMavenWeb.GameLive.Form do
           end
 
           # Land on Manage once a rulebook has been processed, else Upload.
-          # "details" is no longer a tab (game info moved above the tabs) — fold
-          # any stale ?tab=details into the default.
           default_tab = if entries == [], do: "rulebook", else: "manage"
           tab = Map.get(params, "tab", default_tab)
-          tab = if tab == "details", do: default_tab, else: tab
           socket = assign(socket, tab: tab)
 
           suggestions =
@@ -1625,7 +1622,6 @@ defmodule RuleMavenWeb.GameLive.Form do
         <% end %>
       </h1>
 
-      <%!-- Tabs moved below the game-info block (inside the form). --%>
 
       <%!-- New game: simple form, no tabs --%>
       <%= if is_nil(@game) do %>
@@ -1752,6 +1748,51 @@ defmodule RuleMavenWeb.GameLive.Form do
           </div>
         <% end %>
 
+        <%!-- Tabs (below the game image panel, above the form) --%>
+        <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem">
+          <button
+            type="button"
+            phx-click="switch_tab"
+            phx-value-tab="details"
+            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "details", do: "var(--blue)", else: "transparent"};color:#{if @tab == "details", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "details", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            phx-click="switch_tab"
+            phx-value-tab="rulebook"
+            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+          >
+            Upload Rulebook
+          </button>
+          <button
+            :if={@source_entries != []}
+            type="button"
+            phx-click="switch_tab"
+            phx-value-tab="manage"
+            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "manage", do: "var(--blue)", else: "transparent"};color:#{if @tab == "manage", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "manage", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+          >
+            Manage Rulebooks
+          </button>
+          <button
+            type="button"
+            phx-click="switch_tab"
+            phx-value-tab="cheatsheet"
+            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+          >
+            Cheatsheet
+          </button>
+          <button
+            type="button"
+            phx-click="switch_tab"
+            phx-value-tab="danger"
+            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "danger", do: "var(--blue)", else: "transparent"};color:#{if @tab == "danger", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "danger", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+          >
+            Danger
+          </button>
+        </div>
+
         <.form
           for={@game_changeset}
           id="game-form"
@@ -1760,8 +1801,8 @@ defmodule RuleMavenWeb.GameLive.Form do
           class="mt-6"
           style="max-width:56rem"
         >
-          <%!-- Game info: always visible, above the tabs --%>
-          <div>
+          <%!-- Details tab --%>
+          <div style={if @tab == "details", do: "display:block", else: "display:none"}>
             <div style="margin-bottom:1.25rem">
               <label for="game_name" class="block text-sm font-medium mb-1">Name</label>
               <input
@@ -1864,43 +1905,6 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </div>
               </div>
             <% end %>
-          </div>
-
-          <%!-- Tabs (below the game-info block) --%>
-          <div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:0.5rem 0 1rem">
-            <button
-              type="button"
-              phx-click="switch_tab"
-              phx-value-tab="rulebook"
-              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-            >
-              Upload Rulebook
-            </button>
-            <button
-              :if={@source_entries != []}
-              type="button"
-              phx-click="switch_tab"
-              phx-value-tab="manage"
-              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "manage", do: "var(--blue)", else: "transparent"};color:#{if @tab == "manage", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "manage", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-            >
-              Manage Rulebooks
-            </button>
-            <button
-              type="button"
-              phx-click="switch_tab"
-              phx-value-tab="cheatsheet"
-              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-            >
-              Cheatsheet
-            </button>
-            <button
-              type="button"
-              phx-click="switch_tab"
-              phx-value-tab="danger"
-              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "danger", do: "var(--blue)", else: "transparent"};color:#{if @tab == "danger", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "danger", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-            >
-              Danger
-            </button>
           </div>
 
           <%!-- Rulebooks tab --%>
