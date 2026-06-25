@@ -16,7 +16,6 @@ defmodule RuleMavenWeb.SettingsLive do
        profile_email: user.email,
        profile_msg: nil,
        profile_error: nil,
-
        password_msg: nil,
        password_error: nil,
        is_admin: admin?,
@@ -38,6 +37,9 @@ defmodule RuleMavenWeb.SettingsLive do
        embedding_key: (admin? && Settings.get("embedding_api_key_openrouter")) || "",
        auto_approve_docs: (admin? && Settings.get("auto_approve_documents")) || "true",
        auto_approve_faqs: (admin? && Settings.get("auto_approve_faqs")) || "true",
+       pool_similarity_threshold: (admin? && Settings.get("pool_similarity_threshold")) || "0.92",
+       cluster_similarity_threshold:
+         (admin? && Settings.get("cluster_similarity_threshold")) || "0.85",
        llm_proxy_url: (admin? && Settings.get("llm_proxy_url")) || "",
        saved: false,
        usage_stats: nil,
@@ -141,6 +143,8 @@ defmodule RuleMavenWeb.SettingsLive do
         "embedding_api_key_openrouter" => params["embedding_key"],
         "auto_approve_documents" => params["auto_approve_docs"],
         "auto_approve_faqs" => params["auto_approve_faqs"],
+        "pool_similarity_threshold" => params["pool_similarity_threshold"],
+        "cluster_similarity_threshold" => params["cluster_similarity_threshold"],
         "llm_proxy_url" => params["llm_proxy_url"]
       }
 
@@ -167,6 +171,8 @@ defmodule RuleMavenWeb.SettingsLive do
          embedding_key: fields["embedding_api_key_openrouter"] |> trim(),
          auto_approve_docs: fields["auto_approve_documents"] |> trim(),
          auto_approve_faqs: fields["auto_approve_faqs"] |> trim(),
+         pool_similarity_threshold: fields["pool_similarity_threshold"] |> trim(),
+         cluster_similarity_threshold: fields["cluster_similarity_threshold"] |> trim(),
          llm_proxy_url: fields["llm_proxy_url"] |> trim(),
          saved: true
        )}
@@ -298,7 +304,10 @@ defmodule RuleMavenWeb.SettingsLive do
             <!-- Change Password -->
             <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
               <h3 style="font-size:0.82rem;font-weight:600;margin:0 0 0.5rem 0">Change Password</h3>
-              <form phx-submit="change_password" style="display:flex;flex-direction:column;gap:0.5rem;max-width:20rem">
+              <form
+                phx-submit="change_password"
+                style="display:flex;flex-direction:column;gap:0.5rem;max-width:20rem"
+              >
                 <input
                   type="password"
                   name="current_password"
@@ -720,6 +729,44 @@ defmodule RuleMavenWeb.SettingsLive do
                       Skips review when all source Q&amp;As are upvoted, no disagreements
                     </span>
                   </span>
+                </label>
+
+                <label style="display:flex;flex-direction:column;gap:0.25rem">
+                  <span style="font-size:0.85rem">
+                    Community pool match threshold
+                    <span style="display:block;font-size:0.7rem;color:var(--text-muted)">
+                      Min cosine similarity (0–1) for a cached community answer to be served. Higher = stricter. Default 0.92.
+                    </span>
+                  </span>
+                  <input
+                    type="number"
+                    name="pool_similarity_threshold"
+                    id="pool_similarity_threshold"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={@pool_similarity_threshold}
+                    style="width:7rem;padding:0.35rem 0.5rem;border:1px solid var(--border);border-radius:0.5rem;background:var(--bg)"
+                  />
+                </label>
+
+                <label style="display:flex;flex-direction:column;gap:0.25rem">
+                  <span style="font-size:0.85rem">
+                    Promotion clustering threshold
+                    <span style="display:block;font-size:0.7rem;color:var(--text-muted)">
+                      Min cosine similarity (0–1) to group upvoted questions when promoting to the community pool. Default 0.85.
+                    </span>
+                  </span>
+                  <input
+                    type="number"
+                    name="cluster_similarity_threshold"
+                    id="cluster_similarity_threshold"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={@cluster_similarity_threshold}
+                    style="width:7rem;padding:0.35rem 0.5rem;border:1px solid var(--border);border-radius:0.5rem;background:var(--bg)"
+                  />
                 </label>
               </div>
             </section>

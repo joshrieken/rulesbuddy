@@ -266,7 +266,7 @@ defmodule RuleMaven.LLM do
     CROSS-REFERENCE RULES:
     - If one section refers to another (e.g. "see Section 4.3"), use that referenced section to answer. Reference chains are valid.
 
-    OUTPUT — respond with ONE JSON object and nothing else (no markdown fences, no prose around it). Schema:
+    OUTPUT — respond with ONE json object (a single JSON object) and nothing else (no markdown fences, no prose around it). Schema:
     {
       "cleaned_question": string,  // the user's question rephrased as a standalone question: fix pronouns, add missing context, under 12 words, NEVER include the game name. WRONG: "How do turns work in Catan?" RIGHT: "How do turns work?"
       "answer": string,            // the answer in plain English. Use markdown (**bold**, bullet lists). Concise: 1-3 sentences plus optional list. On refusal this is exactly: "The rulebook does not cover this question."
