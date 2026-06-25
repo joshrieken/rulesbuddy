@@ -57,7 +57,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         parent_selected_name: nil,
         cleaning: %{},
         expanded_source_id: nil,
-        reader_mode: "scroll",
+        reader_mode: "paginated",
         reader_page: 0
       )
       |> allow_upload(:rulebook_pdfs,
