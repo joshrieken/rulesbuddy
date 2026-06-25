@@ -114,13 +114,15 @@ defmodule RuleMaven.RulebookDownloader do
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them — same treatment as the upload path.
       pages = String.split(raw_text, "\f")
-      text = Games.number_pages(pages)
+      page_structs = Games.paginate(pages)
+      text = Games.rebuild_full_text(page_structs)
       html_path = text_to_html(text, pdf_path)
       full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
 
       Games.create_rulebook_source(%{
         game_id: game.id,
         label: label,
+        pages: page_structs,
         full_text: text,
         pdf_path: pdf_path,
         html_path: html_path,

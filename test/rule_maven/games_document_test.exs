@@ -67,4 +67,30 @@ defmodule RuleMaven.GamesDocumentTest do
 
     assert doc.status == "pending_review"
   end
+
+  test "update_document persists edited text, re-derives pages, and re-chunks", %{game: game} do
+    {:ok, doc} =
+      Games.create_document(%{
+        game_id: game.id,
+        label: "Rules",
+        full_text: "original one\foriginal two"
+      })
+
+    assert Enum.map(doc.pages, & &1.text) == ["original one", "original two"]
+    chunks_before = Games.retrieve_chunks(game, "original") |> length()
+    assert chunks_before > 0
+
+    {:ok, updated} =
+      Games.update_document(doc, %{full_text: "edited alpha\fedited beta\fedited gamma"})
+
+    assert updated.full_text == "edited alpha\fedited beta\fedited gamma"
+    assert Enum.map(updated.pages, & &1.text) == ["edited alpha", "edited beta", "edited gamma"]
+    # Chunks reflect the new text, not the old (stale "original" chunks are gone).
+    contents =
+      Games.retrieve_chunks(game, "edited")
+      |> Enum.map_join(" ", fn {_label, content} -> content end)
+
+    assert contents =~ "edited"
+    refute contents =~ "original"
+  end
 end

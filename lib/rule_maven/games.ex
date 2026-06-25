@@ -310,6 +310,8 @@ defmodule RuleMaven.Games do
   end
 
   def create_document(attrs) do
+    attrs = derive_pages(attrs)
+
     # Auto-publish if quality looks good
     status =
       if RuleMaven.Settings.get("auto_approve_documents") != "false" and
@@ -376,9 +378,35 @@ defmodule RuleMaven.Games do
   def get_document!(id), do: Repo.get!(Document, id)
 
   def update_document(%Document{} = doc, attrs) do
-    doc
-    |> Document.changeset(attrs)
-    |> Repo.update()
+    result =
+      doc
+      |> Document.changeset(derive_pages(attrs))
+      |> Repo.update()
+
+    # Re-chunk when the text actually changed so RAG retrieval stays in sync.
+    case result do
+      {:ok, updated} when updated.full_text != doc.full_text ->
+        chunk_document(updated)
+        result
+
+      _ ->
+        result
+    end
+  end
+
+  # Derive first-class pages from full_text when a caller supplies text but not
+  # pages (e.g. hand-pasted rulebook text). Extraction paths pass :pages
+  # explicitly with printed-page detection, so they're left untouched. Updates
+  # without :full_text (status/review changes) are also left alone.
+  defp derive_pages(attrs) do
+    has_pages? = Map.has_key?(attrs, :pages) or Map.has_key?(attrs, "pages")
+    full_text = attrs[:full_text] || attrs["full_text"]
+
+    if not has_pages? and is_binary(full_text) do
+      Map.put(attrs, :pages, pages_from_full_text(full_text))
+    else
+      attrs
+    end
   end
 
   def delete_document(%Document{} = doc) do
@@ -935,17 +963,65 @@ defmodule RuleMaven.Games do
   marked-up text. Used by both the upload and download extraction paths.
   """
   def number_pages(pages) do
-    offset = detect_printed_offset(pages)
+    pages |> paginate() |> rebuild_full_text()
+  end
 
-    pages
+  @doc """
+  Turns a list of raw per-page text strings (physical order) into first-class
+  page maps: `%{index:, sheet:, printed:, text:}`. `printed` is the detected
+  rulebook page number (nil when unknown). This is the source-of-truth shape
+  stored in `Document.pages`.
+  """
+  def paginate(raw_pages) do
+    offset = detect_printed_offset(raw_pages)
+
+    raw_pages
     |> Enum.with_index(1)
-    |> Enum.map_join("", fn {text, sheet} ->
+    |> Enum.map(fn {text, sheet} ->
       printed = if offset && sheet - offset >= 1, do: sheet - offset
+      %{index: sheet - 1, sheet: sheet, printed: printed, text: text}
+    end)
+  end
 
-      marker =
-        if printed, do: "SHEET #{sheet} PAGE #{printed}", else: "SHEET #{sheet}"
+  @doc """
+  Parses an existing marker-delimited `full_text` blob back into page maps.
+  Handles legacy blobs without markers (positional sheet numbers, no printed
+  page). Used when persisting hand-edited text and when backfilling.
+  """
+  def pages_from_full_text(text) do
+    segments =
+      text
+      |> String.split("\f")
+      |> Enum.reject(&(String.trim(&1) == ""))
 
-      "\f===== #{marker} =====\n" <> text
+    if Enum.any?(segments, &(split_page_marker(&1) != nil)) do
+      segments
+      |> Enum.flat_map(fn seg ->
+        case split_page_marker(seg) do
+          {sheet, printed, body} -> [%{sheet: sheet, printed: printed, text: body}]
+          nil -> []
+        end
+      end)
+      |> Enum.with_index()
+      |> Enum.map(fn {p, i} -> Map.put(p, :index, i) end)
+    else
+      segments
+      |> Enum.with_index()
+      |> Enum.map(fn {text, i} ->
+        %{index: i, sheet: i + 1, printed: nil, text: text}
+      end)
+    end
+  end
+
+  @doc """
+  Rebuilds the marker-delimited `full_text` blob from page structs/maps (the
+  derived cache consumed by the LLM, search, cheat sheet and chunker). Accepts
+  either `Document.Page` structs or plain maps with `:sheet/:printed/:text`.
+  """
+  def rebuild_full_text(pages) do
+    Enum.map_join(pages, "", fn p ->
+      marker = if p.printed, do: "SHEET #{p.sheet} PAGE #{p.printed}", else: "SHEET #{p.sheet}"
+      "\f===== #{marker} =====\n" <> (p.text || "")
     end)
   end
 
@@ -1012,24 +1088,32 @@ defmodule RuleMaven.Games do
   def chunk_document(%Document{} = doc) do
     Repo.delete_all(from c in Chunk, where: c.document_id == ^doc.id)
 
-    segments = String.split(doc.full_text, "\f")
-
-    # Newer documents carry explicit "PAGE n / SHEET n" markers, so page numbers
-    # come from the marker (robust to a dropped \f). Legacy documents have no
-    # markers — fall back to the old positional numbering.
+    # Prefer first-class pages; fall back to parsing the legacy full_text blob
+    # for documents not yet backfilled.
     pages =
-      if Enum.any?(segments, &(split_page_marker(&1) != nil)) do
-        segments
-        |> Enum.map(&split_page_marker/1)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.map(fn {sheet, printed, text} ->
-          {kind, num} = page_label(sheet, printed)
-          {kind, num, text}
-        end)
-      else
-        segments
-        |> Enum.with_index(1)
-        |> Enum.map(fn {text, idx} -> {"Page", idx, text} end)
+      case doc.pages do
+        [_ | _] = doc_pages ->
+          Enum.map(doc_pages, fn p ->
+            {kind, num} = page_label(p.sheet, p.printed)
+            {kind, num, p.text}
+          end)
+
+        _ ->
+          segments = String.split(doc.full_text, "\f")
+
+          if Enum.any?(segments, &(split_page_marker(&1) != nil)) do
+            segments
+            |> Enum.map(&split_page_marker/1)
+            |> Enum.reject(&is_nil/1)
+            |> Enum.map(fn {sheet, printed, text} ->
+              {kind, num} = page_label(sheet, printed)
+              {kind, num, text}
+            end)
+          else
+            segments
+            |> Enum.with_index(1)
+            |> Enum.map(fn {text, idx} -> {"Page", idx, text} end)
+          end
       end
 
     chunks_with_meta =

@@ -2,6 +2,28 @@ defmodule RuleMaven.Games.Document do
   use Ecto.Schema
   import Ecto.Changeset
 
+  defmodule Page do
+    @moduledoc """
+    A single first-class rulebook page. `index` is the 0-based physical order,
+    `sheet` the physical PDF sheet number, `printed` the rulebook's printed page
+    number (nil when undetected), `text` the page body (no marker).
+    """
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @primary_key false
+    embedded_schema do
+      field :index, :integer
+      field :sheet, :integer
+      field :printed, :integer
+      field :text, :string
+    end
+
+    def changeset(page, attrs) do
+      cast(page, attrs, [:index, :sheet, :printed, :text])
+    end
+  end
+
   schema "documents" do
     field :label, :string
     field :full_text, :string
@@ -17,6 +39,7 @@ defmodule RuleMaven.Games.Document do
     field :version, :integer, default: 1
     field :status, :string, default: "pending_review"
     field :file_hash, :string
+    embeds_many :pages, Page, on_replace: :delete
     has_many :cheatsheet_versions, RuleMaven.CheatSheet.CheatSheetVersion
     belongs_to :game, RuleMaven.Games.Game
     belongs_to :reviewed_by, RuleMaven.Users.User
@@ -47,6 +70,7 @@ defmodule RuleMaven.Games.Document do
       :reviewed_by_id,
       :reviewed_at
     ])
+    |> cast_embed(:pages, with: &Page.changeset/2)
     |> validate_required([:label, :full_text, :game_id])
   end
 end

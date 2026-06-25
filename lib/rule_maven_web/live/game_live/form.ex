@@ -56,6 +56,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         parent_selected_id: nil,
         parent_selected_name: nil,
         cleaning: %{},
+        cleanup_subscribed: false,
         expanded_source_id: nil,
         reader_mode: "paginated",
         reader_page: 0
@@ -103,7 +104,9 @@ defmodule RuleMavenWeb.GameLive.Form do
               }
             end)
 
-          entries = if sources == [], do: [], else: sources
+          # Overlay any not-yet-saved cleanup result so cleaned text survives a
+          # refresh / tab switch until the user Saves (which clears it).
+          entries = if sources == [], do: [], else: overlay_cleanup_results(sources)
 
           cheat_status = CheatSheet.status(game.id)
           cheat_content = CheatSheet.stored_content(game.id)
@@ -144,6 +147,19 @@ defmodule RuleMavenWeb.GameLive.Form do
           if cheat_status in ["compressing", "generating"] do
             Process.send_after(self(), :poll_cheat_status, 2000)
           end
+
+          # Follow any in-flight cleanup for this game. Subscribe once (this runs
+          # again on every tab patch), and seed the progress map from Settings so
+          # a remount immediately shows "Cleaning d/t…" instead of the button.
+          socket =
+            if connected?(socket) and not socket.assigns.cleanup_subscribed do
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game_cleanup:#{game.id}")
+              assign(socket, cleanup_subscribed: true)
+            else
+              socket
+            end
+
+          socket = assign(socket, cleaning: seed_cleaning(entries))
 
           # Land on Manage once a rulebook has been processed, else Upload.
           default_tab = if entries == [], do: "rulebook", else: "manage"
@@ -333,9 +349,19 @@ defmodule RuleMavenWeb.GameLive.Form do
     id = String.to_integer(id)
     entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
 
-    if entry && String.trim(entry.text) != "" do
+    if entry && entry.source_id && String.trim(entry.text) != "" do
+      sid = entry.source_id
+      total = entry.text |> String.split("\f") |> length()
+
+      # Persist running state so progress survives a page refresh (the work
+      # runs in a detached Task and reports via PubSub keyed on source_id).
+      Settings.delete("cleanup_result_#{sid}")
+      Settings.put("cleanup_status_#{sid}", "running")
+      Settings.put("cleanup_done_#{sid}", "0")
+      Settings.put("cleanup_total_#{sid}", to_string(total))
+
       send(self(), {:cleanup_source, id})
-      {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, id, {0, 0}))}
+      {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, sid, {0, total}))}
     else
       {:noreply, socket}
     end
@@ -754,6 +780,12 @@ defmodule RuleMavenWeb.GameLive.Form do
       end)
       |> Map.new()
 
+    # The textarea (now holding any cleaned text) is being persisted, so drop
+    # the durable cleanup state to avoid re-overlaying stale text on next load.
+    for %{source_id: sid} <- socket.assigns.source_entries, not is_nil(sid) do
+      clear_cleanup(sid)
+    end
+
     save_game(socket, socket.assigns.game, game_params, merged)
   end
 
@@ -795,11 +827,16 @@ defmodule RuleMavenWeb.GameLive.Form do
         %{id: i, source_id: s.id, label: s.label, text: s.full_text, pdf_path: s.pdf_path, html_path: s.html_path}
       end)
 
+    tab = if pdfs != [], do: "manage", else: socket.assigns.tab
+
     socket =
       socket
       |> assign(source_entries: sources, uploading_pdfs: false)
       # Jump to Manage so the freshly extracted rulebook is visible.
-      |> assign(tab: if(pdfs != [], do: "manage", else: socket.assigns.tab))
+      |> assign(tab: tab)
+      # Keep the URL in sync so a refresh stays on this tab instead of falling
+      # back to a stale ?tab= param.
+      |> push_patch(to: ~p"/games/#{game}/edit?tab=#{tab}")
       |> then(fn s ->
         case errors do
           [] -> put_flash(s, :info, "#{length(pdfs)} PDF(s) uploaded!")
@@ -855,6 +892,7 @@ defmodule RuleMavenWeb.GameLive.Form do
            source_entries: sources,
            tab: "manage"
          )
+         |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
          |> put_flash(:info, "Rulebook downloaded!")
          |> then(fn s ->
            send(self(), {:refresh_suggestions, game})
@@ -974,40 +1012,58 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_info({:cleanup_source, id}, socket) do
-    parent = self()
     entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
+    game_id = socket.assigns.game.id
 
-    if entry do
+    if entry && entry.source_id do
+      sid = entry.source_id
+      text = entry.text
+
+      # Detached Task: outlives this LiveView process so a page refresh doesn't
+      # kill the work. Progress is persisted to Settings and broadcast over
+      # PubSub so the current (or a freshly remounted) LiveView can follow along.
       Task.start(fn ->
         # Clean each page independently so the \f page separators (and thus the
         # page numbers derived from them at chunk time) survive untouched.
-        pages = String.split(entry.text, "\f")
+        pages = String.split(text, "\f")
         total = length(pages)
+        counter = :counters.new(1, [:atomics])
 
         cleaned_pages =
           pages
-          |> Enum.with_index(1)
-          |> Enum.map(fn {page, idx} ->
-            # Keep the leading "===== SHEET n PAGE n =====" marker out of the
-            # LLM's hands so the page numbers are preserved exactly; clean body.
-            {marker, body} =
-              case Games.split_page_marker(page) do
-                {sheet, nil, rest} -> {"===== SHEET #{sheet} =====\n", rest}
-                {sheet, printed, rest} -> {"===== SHEET #{sheet} PAGE #{printed} =====\n", rest}
-                nil -> {"", page}
-              end
+          |> Task.async_stream(
+            fn page ->
+              # Keep the leading "===== SHEET n PAGE n =====" marker out of the
+              # LLM's hands so the page numbers are preserved exactly; clean body.
+              {marker, body} =
+                case Games.split_page_marker(page) do
+                  {sheet, nil, rest} -> {"===== SHEET #{sheet} =====\n", rest}
+                  {sheet, printed, rest} -> {"===== SHEET #{sheet} PAGE #{printed} =====\n", rest}
+                  nil -> {"", page}
+                end
 
-            cleaned =
-              case RuleMaven.LLM.cleanup_page(body) do
-                {:ok, text} -> marker <> text
-                {:error, _} -> page
-              end
+              cleaned =
+                case RuleMaven.LLM.cleanup_page(body) do
+                  {:ok, text} -> marker <> text
+                  {:error, _} -> page
+                end
 
-            send(parent, {:cleanup_progress, id, idx, total})
-            cleaned
-          end)
+              :counters.add(counter, 1, 1)
+              done = :counters.get(counter, 1)
+              Settings.put("cleanup_done_#{sid}", to_string(done))
+              broadcast_cleanup(game_id, {:cleanup_progress, sid, done, total})
+              cleaned
+            end,
+            max_concurrency: 5,
+            ordered: true,
+            timeout: :infinity
+          )
+          |> Enum.map(fn {:ok, cleaned} -> cleaned end)
 
-        send(parent, {:cleanup_done, id, Enum.join(cleaned_pages, "\f")})
+        result = Enum.join(cleaned_pages, "\f")
+        Settings.put("cleanup_result_#{sid}", result)
+        Settings.put("cleanup_status_#{sid}", "done")
+        broadcast_cleanup(game_id, {:cleanup_done, sid, result})
       end)
     end
 
@@ -1015,20 +1071,28 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:cleanup_progress, id, done, total}, socket) do
-    {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, id, {done, total}))}
+  def handle_info({:cleanup_progress, sid, done, total}, socket) do
+    # PubSub delivery can race the atomic counter, so never let the count go
+    # backwards.
+    done =
+      case Map.get(socket.assigns.cleaning, sid) do
+        {prev, _} -> max(prev, done)
+        _ -> done
+      end
+
+    {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, sid, {done, total}))}
   end
 
   @impl true
-  def handle_info({:cleanup_done, id, cleaned}, socket) do
+  def handle_info({:cleanup_done, sid, cleaned}, socket) do
     entries =
       Enum.map(socket.assigns.source_entries, fn e ->
-        if e.id == id, do: %{e | text: cleaned}, else: e
+        if e.source_id == sid, do: %{e | text: cleaned}, else: e
       end)
 
     {:noreply,
      socket
-     |> assign(source_entries: entries, cleaning: Map.delete(socket.assigns.cleaning, id))
+     |> assign(source_entries: entries, cleaning: Map.delete(socket.assigns.cleaning, sid))
      |> put_flash(:info, "Cleaned up the rulebook text — review it and Save to apply.")}
   end
 
@@ -1224,6 +1288,48 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
+  defp broadcast_cleanup(game_id, msg) do
+    Phoenix.PubSub.broadcast(RuleMaven.PubSub, "game_cleanup:#{game_id}", msg)
+  end
+
+  # Replace each source's text with its persisted (unsaved) cleanup result, if any.
+  defp overlay_cleanup_results(entries) do
+    Enum.map(entries, fn e ->
+      case e.source_id && Settings.get("cleanup_result_#{e.source_id}") do
+        result when is_binary(result) -> %{e | text: result}
+        _ -> e
+      end
+    end)
+  end
+
+  # Build the {source_id => {done, total}} map for sources still being cleaned.
+  defp seed_cleaning(entries) do
+    for %{source_id: sid} <- entries,
+        not is_nil(sid),
+        Settings.get("cleanup_status_#{sid}") == "running",
+        into: %{} do
+      done = parse_int(Settings.get("cleanup_done_#{sid}"))
+      total = parse_int(Settings.get("cleanup_total_#{sid}"))
+      {sid, {done, total}}
+    end
+  end
+
+  defp clear_cleanup(sid) do
+    Settings.delete("cleanup_status_#{sid}")
+    Settings.delete("cleanup_result_#{sid}")
+    Settings.delete("cleanup_done_#{sid}")
+    Settings.delete("cleanup_total_#{sid}")
+  end
+
+  defp parse_int(nil), do: 0
+
+  defp parse_int(val) do
+    case Integer.parse(val) do
+      {n, _} -> n
+      :error -> 0
+    end
+  end
+
   defp resolve_bgg_cookies do
     bgg_user = Settings.get("bgg_user")
     bgg_pass = Settings.get("bgg_pass")
@@ -1285,9 +1391,11 @@ defmodule RuleMavenWeb.GameLive.Form do
   # Build the document attrs (sans game_id/label) from extracted pages: numbered
   # text plus extraction metadata persisted alongside it.
   defp build_pdf_attrs(pages, pdf_path, dest, from_ocr) do
-    text = Games.number_pages(pages)
+    page_structs = Games.paginate(pages)
+    text = Games.rebuild_full_text(page_structs)
 
     %{
+      pages: page_structs,
       full_text: text,
       pdf_path: pdf_path,
       html_path: text_to_html(text, pdf_path),
@@ -1489,12 +1597,22 @@ defmodule RuleMavenWeb.GameLive.Form do
         |> Enum.filter(fn s -> not Map.has_key?(source_map, s.label) end)
         |> Enum.each(&Games.delete_rulebook_source/1)
 
-        existing_labels = MapSet.new(existing, & &1.label)
+        existing_by_label = Map.new(existing, &{&1.label, &1})
 
-        source_map
-        |> Enum.filter(fn {label, _} -> not MapSet.member?(existing_labels, label) end)
-        |> Enum.each(fn {label, attrs} ->
-          Games.create_rulebook_source(Map.merge(attrs, %{game_id: game.id, label: label}))
+        Enum.each(source_map, fn {label, attrs} ->
+          case existing_by_label do
+            %{^label => doc} ->
+              # Persist edited text on an existing source. Only touch full_text
+              # (pages are re-derived from it); leave pdf_path/metadata intact.
+              text = attrs[:full_text] || attrs["full_text"]
+
+              if is_binary(text) and text != doc.full_text do
+                Games.update_document(doc, %{full_text: text})
+              end
+
+            _ ->
+              Games.create_rulebook_source(Map.merge(attrs, %{game_id: game.id, label: label}))
+          end
         end)
 
         {:noreply,
@@ -2015,8 +2133,9 @@ defmodule RuleMavenWeb.GameLive.Form do
                     name={"text_#{entry.id}"}
                     rows="20"
                     class="w-full border rounded px-3 py-2 font-mono text-sm"
-                    style="resize:vertical;line-height:1.5"
+                    style={"resize:vertical;line-height:1.5#{if @cleaning[entry.source_id], do: ";opacity:0.6;cursor:not-allowed"}"}
                     placeholder="Paste rulebook text here..."
+                    readonly={@cleaning[entry.source_id] != nil}
                   ><%= entry.text %></textarea>
 
                   <div class="mt-2 flex gap-3 items-center flex-wrap">
@@ -2024,10 +2143,10 @@ defmodule RuleMavenWeb.GameLive.Form do
                       type="button"
                       phx-click="cleanup_source"
                       phx-value-id={entry.id}
-                      disabled={@cleaning[entry.id] != nil || String.trim(entry.text) == ""}
+                      disabled={@cleaning[entry.source_id] != nil || String.trim(entry.text) == ""}
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >
-                      <%= case @cleaning[entry.id] do %>
+                      <%= case @cleaning[entry.source_id] do %>
                         <% nil -> %>✨ Clean up text
                         <% {0, 0} -> %>Cleaning…
                         <% {d, t} -> %>Cleaning {d}/{t}…
