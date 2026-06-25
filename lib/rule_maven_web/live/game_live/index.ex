@@ -54,6 +54,38 @@ defmodule RuleMavenWeb.GameLive.Index do
     view in ~w(playable mine favorites) or (view == "all" and RuleMaven.Users.game_master?(user))
   end
 
+  # Friendly, view-specific copy shown when a pill has no games to list.
+  defp empty_state("playable"),
+    do: %{
+      icon: "🎲",
+      title: "No playable games yet",
+      body: "Games show up here once they have a rulebook. Import your collection to get going."
+    }
+
+  defp empty_state("mine"),
+    do: %{
+      icon: "📦",
+      title: "Your collection is empty",
+      body: "Sync your BoardGameGeek collection to fill it with the games you own."
+    }
+
+  defp empty_state("favorites"),
+    do: %{
+      icon: "💛",
+      title: "No favorites yet",
+      body: "Tap the ♡ on any game to save it here for quick access."
+    }
+
+  defp empty_state("all"),
+    do: %{
+      icon: "🗂️",
+      title: "The catalog is empty",
+      body: "Add a game or import a BoardGameGeek collection to seed the catalog."
+    }
+
+  defp empty_state(_),
+    do: %{icon: "📚", title: "Nothing here yet", body: "Pick a view above to browse games."}
+
   # Restore the remembered view from the localStorage-backed connect param.
   # Returns "playable" on the disconnected mount, an unknown value, or a view
   # the user isn't allowed (e.g. a stale "all" pref after losing access).
@@ -714,9 +746,21 @@ defmodule RuleMavenWeb.GameLive.Index do
           Showing {length(display_games)} of {length(filtered)}
         </p>
 
-        <%= if @games == [] do %>
-          <div class="text-center py-12 text-gray-500">
-            <p style="font-size:0.9rem;color:var(--text-muted)">Nothing available for now.</p>
+        <%= if @games == [] and @view != nil do %>
+          <% es = empty_state(@view) %>
+          <div class="text-center py-12 text-gray-500" style="max-width:22rem;margin:0 auto">
+            <div style="font-size:1.75rem;margin-bottom:0.6rem">{es.icon}</div>
+            <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:0.35rem">
+              {es.title}
+            </p>
+            <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;margin-bottom:1rem">
+              {es.body}
+            </p>
+            <.link
+              :if={@view in ~w(mine playable all)}
+              navigate={~p"/games/import"}
+              style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.4rem 1rem;border-radius:0.4rem"
+            >🔍 Import BGG Collection</.link>
           </div>
         <% end %>
 
