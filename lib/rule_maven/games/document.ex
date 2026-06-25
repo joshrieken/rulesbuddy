@@ -7,6 +7,7 @@ defmodule RuleMaven.Games.Document do
     field :full_text, :string
     field :pdf_path, :string
     field :html_path, :string
+    field :source_url, :string
     field :version, :integer, default: 1
     field :status, :string, default: "pending_review"
     field :file_hash, :string
@@ -27,6 +28,7 @@ defmodule RuleMaven.Games.Document do
       :game_id,
       :pdf_path,
       :html_path,
+      :source_url,
       :version,
       :status,
       :file_hash,

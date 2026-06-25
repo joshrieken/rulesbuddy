@@ -927,6 +927,86 @@ defmodule RuleMaven.Games do
     if printed, do: {"Page", printed}, else: {"Sheet", sheet}
   end
 
+  @doc """
+  Prefixes each page string with a durable, visible marker. When the printed
+  page number can be detected (footer/header) we anchor to it; otherwise the
+  physical sheet number is used (front matter, or low-confidence docs). Takes a
+  list of per-page text strings (physical order) and returns the joined,
+  marked-up text. Used by both the upload and download extraction paths.
+  """
+  def number_pages(pages) do
+    offset = detect_printed_offset(pages)
+
+    pages
+    |> Enum.with_index(1)
+    |> Enum.map_join("", fn {text, sheet} ->
+      printed = if offset && sheet - offset >= 1, do: sheet - offset
+
+      marker =
+        if printed, do: "SHEET #{sheet} PAGE #{printed}", else: "SHEET #{sheet}"
+
+      "\f===== #{marker} =====\n" <> text
+    end)
+  end
+
+  # Find the global offset between physical sheet index and printed page number
+  # by consensus: for each page with a detected footer/header number, the offset
+  # is `sheet - printed`; the true offset is the mode across pages (title/TOC
+  # pages with no number or noise get outvoted). Returns nil if no clear winner.
+  defp detect_printed_offset(pages) do
+    offsets =
+      pages
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {text, sheet} ->
+        case page_number_candidate(text) do
+          nil -> []
+          c -> [sheet - c]
+        end
+      end)
+
+    case offsets do
+      [] ->
+        nil
+
+      _ ->
+        {offset, count} =
+          offsets |> Enum.frequencies() |> Enum.max_by(fn {_o, n} -> n end)
+
+        # Require real consensus before trusting detection over raw sheet numbers.
+        if count >= max(3, div(length(pages), 5)), do: offset, else: nil
+    end
+  end
+
+  # Best-guess printed page number for one page: scan the first and last few
+  # non-empty lines (where headers/footers live) for a bare/decorated integer,
+  # preferring the footer. Returns the integer or nil.
+  defp page_number_candidate(text) do
+    lines =
+      text
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    # Footer lines first (most reliable), then header lines.
+    candidates = Enum.reverse(Enum.take(lines, -3)) ++ Enum.take(lines, 3)
+
+    Enum.find_value(candidates, fn line ->
+      cond do
+        Regex.match?(~r/^\d{1,3}$/, line) ->
+          String.to_integer(line)
+
+        m = Regex.run(~r/^(?:page|p\.?)\s*(\d{1,3})$/i, line) ->
+          m |> Enum.at(1) |> String.to_integer()
+
+        m = Regex.run(~r/^[—\-–|•\s]*(\d{1,3})[—\-–|•\s]*$/, line) ->
+          m |> Enum.at(1) |> String.to_integer()
+
+        true ->
+          nil
+      end
+    end)
+  end
+
   def chunk_document(%Document{} = doc) do
     Repo.delete_all(from c in Chunk, where: c.document_id == ^doc.id)
 
