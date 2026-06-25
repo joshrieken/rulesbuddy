@@ -145,7 +145,12 @@ defmodule RuleMavenWeb.GameLive.Form do
             Process.send_after(self(), :poll_cheat_status, 2000)
           end
 
-          tab = Map.get(params, "tab", "rulebook")
+          # Land on Manage once a rulebook has been processed, else Upload.
+          # "details" is no longer a tab (game info moved above the tabs) — fold
+          # any stale ?tab=details into the default.
+          default_tab = if entries == [], do: "rulebook", else: "manage"
+          tab = Map.get(params, "tab", default_tab)
+          tab = if tab == "details", do: default_tab, else: tab
           socket = assign(socket, tab: tab)
 
           suggestions =
@@ -802,6 +807,8 @@ defmodule RuleMavenWeb.GameLive.Form do
     socket =
       socket
       |> assign(source_entries: sources, uploading_pdfs: false)
+      # Jump to Manage so the freshly extracted rulebook is visible.
+      |> assign(tab: if(pdfs != [], do: "manage", else: socket.assigns.tab))
       |> then(fn s ->
         case errors do
           [] -> put_flash(s, :info, "#{length(pdfs)} PDF(s) uploaded!")
@@ -854,7 +861,8 @@ defmodule RuleMavenWeb.GameLive.Form do
            downloading: false,
            download_error: nil,
            download_ok: source.pdf_path,
-           source_entries: sources
+           source_entries: sources,
+           tab: "manage"
          )
          |> put_flash(:info, "Rulebook downloaded!")
          |> then(fn s ->
@@ -1617,43 +1625,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         <% end %>
       </h1>
 
-      <!-- Tabs -->
-      <%= if @game do %>
-        <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem">
-          <button
-            type="button"
-            phx-click="switch_tab"
-            phx-value-tab="details"
-            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "details", do: "var(--blue)", else: "transparent"};color:#{if @tab == "details", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "details", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-          >
-            Details
-          </button>
-          <button
-            type="button"
-            phx-click="switch_tab"
-            phx-value-tab="rulebook"
-            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-          >
-            Rulebooks
-          </button>
-          <button
-            type="button"
-            phx-click="switch_tab"
-            phx-value-tab="cheatsheet"
-            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-          >
-            Cheatsheet
-          </button>
-          <button
-            type="button"
-            phx-click="switch_tab"
-            phx-value-tab="danger"
-            style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "danger", do: "var(--blue)", else: "transparent"};color:#{if @tab == "danger", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "danger", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
-          >
-            Danger
-          </button>
-        </div>
-      <% end %>
+      <%!-- Tabs moved below the game-info block (inside the form). --%>
 
       <%!-- New game: simple form, no tabs --%>
       <%= if is_nil(@game) do %>
@@ -1780,88 +1752,6 @@ defmodule RuleMavenWeb.GameLive.Form do
           </div>
         <% end %>
 
-        <%!-- Download from URL (outside save form) --%>
-        <div :if={@tab == "rulebook"} class="border rounded-lg p-4 mb-4">
-          <h2 class="text-base font-semibold mb-3">Download Rulebook from URL</h2>
-          <div class="flex gap-2 mb-3">
-            <button
-              type="button"
-              phx-click="find_download"
-              disabled={@downloading}
-              style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
-            >Find &amp; Download</button>
-            <%= if @game.bgg_id do %>
-              <button
-                type="button"
-                phx-click="search_bgg"
-                disabled={@searching}
-                style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
-              >{if @searching, do: "Searching BGG...", else: "Find on BGG"}</button>
-            <% end %>
-          </div>
-          <%= if @game.bgg_id do %>
-            <%= if @search_error do %>
-              <p class="text-sm text-red-500 mb-2">{@search_error}</p>
-            <% end %>
-            <%= if @bgg_results != [] do %>
-              <div class="border rounded p-2 mb-3 max-h-48 overflow-y-auto space-y-1">
-                <%= for result <- @bgg_results do %>
-                  <div class="flex items-center justify-between text-xs p-1 hover:bg-gray-50 rounded">
-                    <span class="truncate">{result.label}</span>
-                    <button
-                      type="button"
-                      phx-click="search_download"
-                      phx-value-url={result.url}
-                      phx-value-label={result.label}
-                      disabled={@downloading}
-                      style="color:var(--accent);border:none;background:none;font-size:0.75rem;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:0.5rem"
-                    >Download</button>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
-          <% end %>
-          <form phx-submit="download">
-            <div style="margin-bottom:0.5rem">
-              <label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label>
-              <input
-                type="text"
-                name="url"
-                value={@download_url}
-                placeholder="https://example.com/rulebook.pdf"
-                class="w-full border rounded px-3 py-2 text-sm"
-                disabled={@downloading}
-              />
-            </div>
-            <div style="margin-bottom:0.5rem">
-              <label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label>
-              <input
-                type="text"
-                name="label"
-                value={@download_label}
-                placeholder="e.g. Core Rulebook"
-                class="w-full border rounded px-3 py-2 text-sm"
-                disabled={@downloading}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={@downloading}
-              style="background:var(--accent);color:white;border:none;padding:0.4rem 0.875rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"
-            >{if @downloading, do: "Downloading...", else: "Download & Extract"}</button>
-          </form>
-          <%= if @download_ok do %>
-            <p class="text-sm mt-2" style="color:var(--green)">
-              Downloaded!
-              <.link href={"/#{@download_ok}"} target="_blank" class="underline font-semibold">View PDF</.link>
-              or go to <.link navigate={~p"/games/#{@game.id}"} class="underline font-semibold">Ask page</.link>.
-            </p>
-          <% end %>
-          <%= if @download_error do %>
-            <p class="text-sm text-red-500 mt-2">{@download_error}</p>
-          <% end %>
-        </div>
-
         <.form
           for={@game_changeset}
           id="game-form"
@@ -1870,8 +1760,8 @@ defmodule RuleMavenWeb.GameLive.Form do
           class="mt-6"
           style="max-width:56rem"
         >
-          <%!-- Details tab --%>
-          <div style={if @tab == "details", do: "display:block", else: "display:none"}>
+          <%!-- Game info: always visible, above the tabs --%>
+          <div>
             <div style="margin-bottom:1.25rem">
               <label for="game_name" class="block text-sm font-medium mb-1">Name</label>
               <input
@@ -1976,6 +1866,43 @@ defmodule RuleMavenWeb.GameLive.Form do
             <% end %>
           </div>
 
+          <%!-- Tabs (below the game-info block) --%>
+          <div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:0.5rem 0 1rem">
+            <button
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="rulebook"
+              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "rulebook", do: "var(--blue)", else: "transparent"};color:#{if @tab == "rulebook", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "rulebook", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+            >
+              Upload Rulebook
+            </button>
+            <button
+              :if={@source_entries != []}
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="manage"
+              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "manage", do: "var(--blue)", else: "transparent"};color:#{if @tab == "manage", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "manage", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+            >
+              Manage Rulebooks
+            </button>
+            <button
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="cheatsheet"
+              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "cheatsheet", do: "var(--blue)", else: "transparent"};color:#{if @tab == "cheatsheet", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "cheatsheet", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+            >
+              Cheatsheet
+            </button>
+            <button
+              type="button"
+              phx-click="switch_tab"
+              phx-value-tab="danger"
+              style={"cursor:pointer;padding:0.35rem 0.75rem;font-size:0.8rem;font-weight:600;border:none;border-bottom:2px solid #{if @tab == "danger", do: "var(--blue)", else: "transparent"};color:#{if @tab == "danger", do: "var(--blue)", else: "var(--text-muted)"};background:#{if @tab == "danger", do: "var(--bg-subtle)", else: "transparent"};border-radius:0.25rem 0.25rem 0 0"}
+            >
+              Danger
+            </button>
+          </div>
+
           <%!-- Rulebooks tab --%>
           <div style={if @tab == "rulebook", do: "display:block", else: "display:none"}>
             <%!-- Upload PDF (inside .form so live_file_input hook attaches correctly) --%>
@@ -2009,6 +1936,10 @@ defmodule RuleMavenWeb.GameLive.Form do
                 style={"margin-top:0.5rem;background:var(--accent);color:white;border:none;padding:0.4rem 0.875rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer;opacity:#{if pdf_btn_disabled, do: 0.5, else: 1}"}
               ><%= if @uploading_pdfs, do: "Processing…", else: "Upload" %></button>
             </div>
+          </div>
+
+          <%!-- Manage Rulebooks tab --%>
+          <div style={if @tab == "manage", do: "display:block", else: "display:none"}>
             <div class="space-y-4">
               <h2 class="text-lg font-semibold">Rulebook Sources</h2>
               <%= for entry <- @source_entries do %>
@@ -2462,7 +2393,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           </div>
 
           <div
-            :if={@tab in ["details", "rulebook"]}
+            :if={@tab in ["details", "rulebook", "manage"]}
             class="flex gap-3"
             style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)"
           >
@@ -2470,6 +2401,89 @@ defmodule RuleMavenWeb.GameLive.Form do
             <.button variant="secondary" navigate={~p"/"}>Cancel</.button>
           </div>
         </.form>
+
+        <%!-- Download from URL: separate form (can't nest inside save form),
+              shown with the Upload Rulebook tab. --%>
+        <div :if={@tab == "rulebook"} class="border rounded-lg p-4 mb-4 mt-4">
+          <h2 class="text-base font-semibold mb-3">Download Rulebook from URL</h2>
+          <div class="flex gap-2 mb-3">
+            <button
+              type="button"
+              phx-click="find_download"
+              disabled={@downloading}
+              style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+            >Find &amp; Download</button>
+            <%= if @game.bgg_id do %>
+              <button
+                type="button"
+                phx-click="search_bgg"
+                disabled={@searching}
+                style="background:var(--accent);color:white;border:none;padding:0.25rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.75rem;cursor:pointer"
+              >{if @searching, do: "Searching BGG...", else: "Find on BGG"}</button>
+            <% end %>
+          </div>
+          <%= if @game.bgg_id do %>
+            <%= if @search_error do %>
+              <p class="text-sm text-red-500 mb-2">{@search_error}</p>
+            <% end %>
+            <%= if @bgg_results != [] do %>
+              <div class="border rounded p-2 mb-3 max-h-48 overflow-y-auto space-y-1">
+                <%= for result <- @bgg_results do %>
+                  <div class="flex items-center justify-between text-xs p-1 hover:bg-gray-50 rounded">
+                    <span class="truncate">{result.label}</span>
+                    <button
+                      type="button"
+                      phx-click="search_download"
+                      phx-value-url={result.url}
+                      phx-value-label={result.label}
+                      disabled={@downloading}
+                      style="color:var(--accent);border:none;background:none;font-size:0.75rem;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:0.5rem"
+                    >Download</button>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          <% end %>
+          <form phx-submit="download">
+            <div style="margin-bottom:0.5rem">
+              <label class="block text-xs font-medium mb-1 text-gray-500">PDF URL</label>
+              <input
+                type="text"
+                name="url"
+                value={@download_url}
+                placeholder="https://example.com/rulebook.pdf"
+                class="w-full border rounded px-3 py-2 text-sm"
+                disabled={@downloading}
+              />
+            </div>
+            <div style="margin-bottom:0.5rem">
+              <label class="block text-xs font-medium mb-1 text-gray-500">Label (optional)</label>
+              <input
+                type="text"
+                name="label"
+                value={@download_label}
+                placeholder="e.g. Core Rulebook"
+                class="w-full border rounded px-3 py-2 text-sm"
+                disabled={@downloading}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={@downloading}
+              style="background:var(--accent);color:white;border:none;padding:0.4rem 0.875rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"
+            >{if @downloading, do: "Downloading...", else: "Download & Extract"}</button>
+          </form>
+          <%= if @download_ok do %>
+            <p class="text-sm mt-2" style="color:var(--green)">
+              Downloaded!
+              <.link href={"/#{@download_ok}"} target="_blank" class="underline font-semibold">View PDF</.link>
+              or go to <.link navigate={~p"/games/#{@game.id}"} class="underline font-semibold">Ask page</.link>.
+            </p>
+          <% end %>
+          <%= if @download_error do %>
+            <p class="text-sm text-red-500 mt-2">{@download_error}</p>
+          <% end %>
+        </div>
       </div>
 
       <!-- Cheatsheet panel -->
