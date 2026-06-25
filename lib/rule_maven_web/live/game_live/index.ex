@@ -7,6 +7,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_user.id
     collection_ids = Games.collection_game_ids(user_id)
+    favorite_ids = Games.favorite_game_ids(user_id)
 
     # Default landing view: askable games (those with rulebooks). Users can
     # toggle to their collection or browse the full catalog. The last-used view
@@ -22,6 +23,7 @@ defmodule RuleMavenWeb.GameLive.Index do
       |> assign(
         view: view,
         collection_ids: collection_ids,
+        favorite_ids: favorite_ids,
         confirm_clear: false,
         confirm_text: "",
         search: if(connected?(socket), do: nil, else: ""),
@@ -39,17 +41,17 @@ defmodule RuleMavenWeb.GameLive.Index do
     {:ok, socket}
   end
 
-  @views ~w(playable mine all)
+  @views ~w(playable mine favorites all)
 
   # Views available to a user. "All Games" (full catalog) is game-master only;
-  # players are limited to playable games and their own collection.
+  # players are limited to playable games, their collection, and favorites.
   defp view_tabs(user) do
-    base = [{"playable", "Playable"}, {"mine", "My Collection"}]
+    base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
     if RuleMaven.Users.game_master?(user), do: base ++ [{"all", "All Games"}], else: base
   end
 
   defp allowed_view?(user, view) do
-    view in ~w(playable mine) or (view == "all" and RuleMaven.Users.game_master?(user))
+    view in ~w(playable mine favorites) or (view == "all" and RuleMaven.Users.game_master?(user))
   end
 
   # Restore the remembered view from the localStorage-backed connect param.
@@ -70,6 +72,9 @@ defmodule RuleMavenWeb.GameLive.Index do
   # Load the game list for a view. "all" is DB-backed (catalog can be huge);
   # "mine"/"playable" are bounded lists filtered in-memory by the render path.
   defp load_view_games("mine", user_id, _search, _category), do: Games.list_collection(user_id)
+
+  defp load_view_games("favorites", user_id, _search, _category),
+    do: Games.list_favorites(user_id)
 
   defp load_view_games("all", _user_id, search, category),
     do: Games.search_catalog(search || "", category: category)
@@ -313,6 +318,24 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
+  def handle_event("toggle_favorite", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    user_id = socket.assigns.current_user.id
+
+    if MapSet.member?(socket.assigns.favorite_ids, id) do
+      Games.remove_favorite(user_id, id)
+    else
+      Games.add_favorite(user_id, id)
+    end
+
+    favorite_ids = Games.favorite_game_ids(user_id)
+    socket = assign(socket, favorite_ids: favorite_ids)
+    # Reflect the change immediately when viewing favorites.
+    socket = if socket.assigns.view == "favorites", do: reload_games(socket), else: socket
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("load_more", _params, socket) do
     {:noreply, assign(socket, display_count: socket.assigns.display_count + 20)}
   end
@@ -544,6 +567,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                   style="display:inline-block;visibility:hidden;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;line-height:1.2"
                 >Ask</span>
                 <% in_collection = MapSet.member?(@collection_ids, game.id) %>
+                <% favorited = MapSet.member?(@favorite_ids, game.id) %>
                 <button
                   type="button"
                   phx-click="toggle_collection"
@@ -551,6 +575,13 @@ defmodule RuleMavenWeb.GameLive.Index do
                   title={if in_collection, do: "Remove from your collection", else: "Add to your collection"}
                   style={"background:#{if in_collection, do: "color-mix(in srgb,var(--accent) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if in_collection, do: "var(--accent)", else: "var(--text-muted)"};border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem;line-height:1.2"}
                 >{if in_collection, do: "★", else: "☆"}</button>
+                <button
+                  type="button"
+                  phx-click="toggle_favorite"
+                  phx-value-id={game.id}
+                  title={if favorited, do: "Remove from favorites", else: "Add to favorites"}
+                  style={"background:#{if favorited, do: "color-mix(in srgb,var(--red) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if favorited, do: "var(--red)", else: "var(--text-muted)"};border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem;line-height:1.2"}
+                >{if favorited, do: "♥", else: "♡"}</button>
                 <.link
                   :if={RuleMaven.Users.game_master?(@current_user)}
                   navigate={~p"/games/#{game.id}/edit"}

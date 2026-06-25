@@ -14,6 +14,7 @@ defmodule RuleMaven.Games do
   alias RuleMaven.Games.Document
   alias RuleMaven.Games.Chunk
   alias RuleMaven.Games.UserCollection
+  alias RuleMaven.Games.UserFavorite
   alias Oban
 
   NimbleCSV.define(RuleMaven.Games.RankCSV, separator: ",", escape: "\"")
@@ -232,6 +233,38 @@ defmodule RuleMaven.Games do
         where: uc.user_id == ^user_id and not is_nil(g.bgg_id),
         select: g.bgg_id
     )
+    |> MapSet.new()
+  end
+
+  # ── User favorites ──
+
+  def add_favorite(user_id, game_id) when is_integer(user_id) and is_integer(game_id) do
+    %UserFavorite{}
+    |> UserFavorite.changeset(%{user_id: user_id, game_id: game_id})
+    |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :game_id])
+  end
+
+  def remove_favorite(user_id, game_id) when is_integer(user_id) and is_integer(game_id) do
+    Repo.delete_all(
+      from uf in UserFavorite, where: uf.user_id == ^user_id and uf.game_id == ^game_id
+    )
+  end
+
+  @doc "Base games a user has favorited, sorted by name."
+  def list_favorites(user_id) when is_integer(user_id) do
+    Repo.all(
+      from g in Game,
+        join: uf in UserFavorite,
+        on: uf.game_id == g.id,
+        where: uf.user_id == ^user_id,
+        where: is_nil(g.parent_game_id)
+    )
+    |> Enum.sort_by(&String.downcase(&1.name))
+  end
+
+  @doc "MapSet of game ids a user has favorited (for membership checks)."
+  def favorite_game_ids(user_id) when is_integer(user_id) do
+    Repo.all(from uf in UserFavorite, where: uf.user_id == ^user_id, select: uf.game_id)
     |> MapSet.new()
   end
 
