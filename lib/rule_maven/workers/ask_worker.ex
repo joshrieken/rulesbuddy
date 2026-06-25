@@ -111,6 +111,8 @@ defmodule RuleMaven.Workers.AskWorker do
               cited_passage: passage,
               cited_page: cited_page,
               refused: refused?,
+              followups: if(refused?, do: [], else: llm_result[:followups] || []),
+              also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
               cleaned_question: llm_result[:cleaned_question],
               raw_response: llm_result[:raw_response],
               llm_provider: llm_result[:provider],

@@ -28,6 +28,14 @@ defmodule RuleMavenWeb.AdminLive.Questions do
     end
   end
 
+  @impl true
+  def handle_params(params, _uri, socket) do
+    case params["focus"] && Integer.parse(params["focus"]) do
+      {id, _} -> {:noreply, assign(socket, expanded_id: id)}
+      _ -> {:noreply, socket}
+    end
+  end
+
   defp reload(socket) do
     questions =
       Games.admin_list_questions(
@@ -227,6 +235,11 @@ defmodule RuleMavenWeb.AdminLive.Questions do
                 {if q.visibility == "community" or q.pinned, do: "✓ trusted", else: "◌ provisional"} &middot; {:erlang.float_to_binary(
                   q.trust_score || 0.0, decimals: 1)}
               </span>
+              <a
+                href={"/admin/threads#thread-#{q.parent_question_id || q.id}"}
+                style="font-size:0.65rem;color:var(--text-muted);text-decoration:none"
+                title="View this question's thread in Review Threads"
+              >thread →</a>
               <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
                 <select
                   phx-change="set_visibility"

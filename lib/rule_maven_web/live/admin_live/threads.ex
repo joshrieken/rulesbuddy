@@ -155,7 +155,10 @@ defmodule RuleMavenWeb.AdminLive.Threads do
       <div style="display:flex;flex-direction:column;gap:0.5rem">
         <%= for thread <- @threads do %>
           <% root = thread.root %>
-          <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.375rem;padding:0.6rem 0.75rem">
+          <div
+            id={"thread-#{root.id}"}
+            style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.375rem;padding:0.6rem 0.75rem"
+          >
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:600;font-size:0.8rem;color:var(--text);margin-bottom:0.25rem">
@@ -184,12 +187,18 @@ defmodule RuleMavenWeb.AdminLive.Threads do
                   </div>
                 <% end %>
               </div>
-              <button
-                type="button"
-                phx-click="prepare_merge"
-                phx-value-id={root.id}
-                style="background:var(--accent);color:#fff;border:none;padding:0.25rem 0.6rem;border-radius:0.3rem;font-size:0.65rem;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0"
-              >Promote to Community<br/>(Merge thread)</button>
+              <div style="display:flex;flex-direction:column;gap:0.3rem;align-items:stretch;flex-shrink:0">
+                <button
+                  type="button"
+                  phx-click="prepare_merge"
+                  phx-value-id={root.id}
+                  style="background:var(--accent);color:#fff;border:none;padding:0.25rem 0.6rem;border-radius:0.3rem;font-size:0.65rem;font-weight:600;cursor:pointer;white-space:nowrap"
+                >Promote to Community<br/>(Merge thread)</button>
+                <.link
+                  navigate={~p"/admin/questions?focus=#{root.id}"}
+                  style="text-align:center;font-size:0.6rem;color:var(--text-muted);text-decoration:none"
+                >Moderate in Questions →</.link>
+              </div>
             </div>
           </div>
         <% end %>

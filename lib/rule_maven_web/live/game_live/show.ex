@@ -86,7 +86,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     {cv_counts, cv_user} =
       Games.community_vote_maps(vote_ids, socket.assigns.current_user.id)
 
-    all_thread_ids = Enum.map(threads, fn {id, _} -> id end)
+    all_thread_ids = Enum.map(threads, & &1.id)
     question_categories = Games.categories_for_questions(all_thread_ids ++ cq_ids)
 
     socket =
@@ -232,8 +232,8 @@ defmodule RuleMavenWeb.GameLive.Show do
         feedback: g.primary.feedback,
         favorited: g.primary.favorited,
         raw_response: g.primary.raw_response,
-        followups: parse_followups(g.primary.raw_response),
-        also_asked: parse_also_asked(g.primary.raw_response),
+        followups: g.primary.followups,
+        also_asked: g.primary.also_asked,
         timestamp: g.primary.inserted_at
       }
 
@@ -250,8 +250,8 @@ defmodule RuleMavenWeb.GameLive.Show do
             pinned: h.pinned,
             refused: h.refused,
             raw_response: h.raw_response,
-            followups: parse_followups(h.raw_response),
-            also_asked: parse_also_asked(h.raw_response),
+            followups: h.followups,
+            also_asked: h.also_asked,
             timestamp: h.inserted_at,
             history: true
           }
@@ -280,8 +280,8 @@ defmodule RuleMavenWeb.GameLive.Show do
             pinned: f.pinned,
             refused: f.refused,
             raw_response: f.raw_response,
-            followups: parse_followups(f.raw_response),
-            also_asked: parse_also_asked(f.raw_response),
+            followups: f.followups,
+            also_asked: f.also_asked,
             timestamp: f.inserted_at
           }
 
@@ -925,8 +925,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                 |> Map.put(:content, ql.answer)
                 |> Map.put(:cited_passage, ql.cited_passage)
                 |> Map.put(:cited_page, data[:cited_page] || ql.cited_page)
-                |> Map.put(:followups, data[:followups] || [])
-                |> Map.put(:also_asked, data[:also_asked] || parse_also_asked(ql.raw_response))
+                |> Map.put(:followups, data[:followups] || ql.followups)
+                |> Map.put(:also_asked, data[:also_asked] || ql.also_asked)
                 |> Map.put(:refused, ql.refused)
                 |> Map.put(:raw_response, ql.raw_response)
                 |> Map.put(:llm_provider, ql.llm_provider)
@@ -2073,37 +2073,6 @@ defmodule RuleMavenWeb.GameLive.Show do
     |> Enum.take(-2)
   end
 
-  defp parse_followups(nil), do: []
-
-  defp parse_followups(raw_response) do
-    case Regex.run(~r{---FOLLOWUPS---\s*\n(.*?)\s*---END-FOLLOWUPS---}s, raw_response) do
-      [_, qs] ->
-        qs
-        |> String.split("\n")
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
-        |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
-
-      nil ->
-        []
-    end
-  end
-
-  defp parse_also_asked(nil), do: []
-
-  defp parse_also_asked(raw_response) do
-    case Regex.run(~r{---ALSO-ASKED---\s*\n(.*?)\n?---END-ALSO-ASKED---}s, raw_response) do
-      [_, qs] ->
-        qs
-        |> String.split("\n")
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
-        |> Enum.map(&String.replace(&1, ~r/^[-*]\s*/, ""))
-
-      nil ->
-        []
-    end
-  end
 
   defp find_question_for_answer(conversation, assistant_msg) do
     {_, question} =

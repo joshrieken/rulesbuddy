@@ -408,8 +408,7 @@ defmodule RuleMaven.Games do
     search = Keyword.get(opts, :search)
 
     query =
-      from q in QuestionLog,
-        order_by: [desc: q.inserted_at],
+      from q in base_question_query(),
         limit: ^limit,
         preload: [:game, :user]
 
@@ -652,16 +651,20 @@ defmodule RuleMaven.Games do
     |> Enum.sort_by(& &1.root.inserted_at, {:desc, DateTime})
   end
 
+  # Shared base for admin question listings — single source for ordering.
+  defp base_question_query do
+    from q in QuestionLog, order_by: [desc: q.inserted_at]
+  end
+
   @doc """
   Returns all question threads across all games.
   """
   def all_question_threads do
     roots =
       Repo.all(
-        from q in QuestionLog,
+        from q in base_question_query(),
           where: is_nil(q.parent_question_id),
           where: q.answer != "Thinking...",
-          order_by: [desc: q.inserted_at],
           limit: 200,
           preload: [:game]
       )

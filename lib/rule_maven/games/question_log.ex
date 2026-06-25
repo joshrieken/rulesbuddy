@@ -19,6 +19,8 @@ defmodule RuleMaven.Games.QuestionLog do
     field :blocked, :boolean, default: false
     field :cleaned_question, :string
     field :raw_response, :string
+    field :followups, {:array, :string}, default: []
+    field :also_asked, {:array, :string}, default: []
     field :canonical_question, :string
     field :canonical_answer, :string
     field :trust_score, :float, default: 0.0
@@ -55,6 +57,8 @@ defmodule RuleMaven.Games.QuestionLog do
       :blocked,
       :cleaned_question,
       :raw_response,
+      :followups,
+      :also_asked,
       :canonical_question,
       :canonical_answer,
       :trust_score,
