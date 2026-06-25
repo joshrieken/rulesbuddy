@@ -52,7 +52,7 @@ Never skip step 2 or 4. Regressions are unacceptable.
 
 ## LLM Mocking
 
-For tests that call `RuleMaven.LLM.ask/4` or `RuleMaven.LLM.chat/3`, inject mock via:
+For tests that call `RuleMaven.LLM.ask/5` or `RuleMaven.LLM.chat/3`, inject mock via:
 
 ```elixir
 Application.put_env(:rule_maven, :llm_mock, fn body ->

@@ -6,6 +6,12 @@ defmodule RuleMaven.Embed do
 
   @default_model "openai/text-embedding-3-small"
 
+  # Stored vectors and the pgvector columns are fixed at this dimension. Switching
+  # the embedding model to one that emits a different dimension corrupts similarity
+  # search against existing rows, so the dimension is pinned and validated here.
+  # See OQ1 in DESIGN.md: changing dimension after data exists is unsupported.
+  @expected_dim 768
+
   def embed(text) when is_binary(text) do
     case Application.get_env(:rule_maven, :embed_mock) do
       nil -> embed_real(text)
@@ -29,7 +35,7 @@ defmodule RuleMaven.Embed do
     body = %{
       model: model,
       input: texts,
-      dimensions: 768
+      dimensions: @expected_dim
     }
 
     headers =
@@ -52,7 +58,16 @@ defmodule RuleMaven.Embed do
           |> Enum.sort_by(& &1["index"])
           |> Enum.map(& &1["embedding"])
 
-        {:ok, vectors}
+        case Enum.find(vectors, &(length(&1) != @expected_dim)) do
+          nil ->
+            {:ok, vectors}
+
+          bad ->
+            {:error,
+             "Embedding dimension mismatch: model #{model} returned #{length(bad)} dims, " <>
+               "expected #{@expected_dim}. Stored vectors are #{@expected_dim}-dim — " <>
+               "switching embedding model is unsupported once data exists."}
+        end
 
       {:ok, %{status: status, body: resp_body}} ->
         {:error, "Embedding API returned status #{status}: #{inspect(resp_body)}"}

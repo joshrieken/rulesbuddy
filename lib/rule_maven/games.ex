@@ -341,15 +341,23 @@ defmodule RuleMaven.Games do
       monthly_limit = parse_limit(Settings.get("rate_limit_monthly"), 500)
 
       cond do
-        daily_count >= daily_limit -> {:error, "Daily question limit reached (#{daily_limit})."}
-        weekly_count >= weekly_limit -> {:error, "Weekly question limit reached (#{weekly_limit})."}
-        monthly_count >= monthly_limit -> {:error, "Monthly question limit reached (#{monthly_limit})."}
-        true -> :ok
+        daily_count >= daily_limit ->
+          {:error, "Daily question limit reached (#{daily_limit})."}
+
+        weekly_count >= weekly_limit ->
+          {:error, "Weekly question limit reached (#{weekly_limit})."}
+
+        monthly_count >= monthly_limit ->
+          {:error, "Monthly question limit reached (#{monthly_limit})."}
+
+        true ->
+          :ok
       end
     end
   end
 
   defp parse_limit(nil, default), do: default
+
   defp parse_limit(val, default) do
     case Integer.parse(to_string(val)) do
       {n, _} -> n
@@ -405,11 +413,22 @@ defmodule RuleMaven.Games do
 
     query =
       case status do
-        "pending" -> from(q in query, where: q.answer == "Thinking...")
-        "refused" -> from(q in query, where: q.refused == true)
-        "error" -> from(q in query, where: like(q.answer, "⚠️%"))
-        "answered" -> from(q in query, where: q.answer != "Thinking..." and q.refused == false and not like(q.answer, "⚠️%"))
-        _ -> query
+        "pending" ->
+          from(q in query, where: q.answer == "Thinking...")
+
+        "refused" ->
+          from(q in query, where: q.refused == true)
+
+        "error" ->
+          from(q in query, where: like(q.answer, "⚠️%"))
+
+        "answered" ->
+          from(q in query,
+            where: q.answer != "Thinking..." and q.refused == false and not like(q.answer, "⚠️%")
+          )
+
+        _ ->
+          query
       end
 
     query =
@@ -434,8 +453,8 @@ defmodule RuleMaven.Games do
   Returns community-visible FAQ-approved questions for a game.
   Excludes questions by the given user_id when specified.
   """
-  def community_questions(%Game{} = game, _exclude_user_id \\ nil) do
-    Repo.all(
+  def community_questions(%Game{} = game, exclude_user_id \\ nil) do
+    query =
       from q in QuestionLog,
         where: q.game_id == ^game.id,
         where: q.visibility == "community",
@@ -443,7 +462,15 @@ defmodule RuleMaven.Games do
         where: q.refused == false,
         order_by: [desc: q.inserted_at],
         limit: 50
-    )
+
+    query =
+      if exclude_user_id do
+        from q in query, where: q.user_id != ^exclude_user_id
+      else
+        query
+      end
+
+    Repo.all(query)
   end
 
   @doc """
@@ -484,16 +511,21 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
-  Finds a similar question in the question pool using embedding similarity.
-  Returns the matching QuestionLog or nil.
+  Finds a similar question in the community pool using embedding similarity.
+  Only `visibility = "community"` questions are eligible — private Q&A is never
+  served to other users. Returns the matching QuestionLog or nil.
+
+  Distance threshold derives from the `pool_similarity_threshold` setting
+  (cosine similarity, default 0.92); cosine distance = 1 - similarity.
   """
   def find_similar_question_in_pool(game_id, question_embedding, opts \\ []) do
-    threshold = Keyword.get(opts, :threshold, 0.08)
+    threshold = Keyword.get(opts, :threshold, pool_distance_threshold())
 
     # Canonical answers first (admin-curated), then any non-refused answer
     Repo.one(
       from q in QuestionLog,
         where: q.game_id == ^game_id,
+        where: q.visibility == "community",
         where: not is_nil(q.question_embedding),
         where: q.refused == false,
         where:
@@ -513,6 +545,30 @@ defmodule RuleMaven.Games do
         ],
         limit: 1
     )
+  end
+
+  @default_pool_similarity 0.92
+
+  # Cosine distance ceiling for a pool hit, derived from the configured
+  # similarity floor (distance = 1 - similarity).
+  defp pool_distance_threshold do
+    sim =
+      case RuleMaven.Settings.get("pool_similarity_threshold") do
+        nil ->
+          @default_pool_similarity
+
+        "" ->
+          @default_pool_similarity
+
+        val ->
+          case Float.parse(val),
+            do: (
+              {f, _} -> f
+              :error -> @default_pool_similarity
+            )
+      end
+
+    1.0 - sim
   end
 
   @doc """
@@ -621,12 +677,25 @@ defmodule RuleMaven.Games do
   defdelegate chunk_source(source), to: __MODULE__, as: :chunk_document
 
   def retrieve_chunks(%Game{} = game, question, limit \\ 6) do
-    retrieve_chunks_for_games([game.id], question, limit)
+    retrieve_chunks_for_games([game.id], question, limit: limit)
   end
 
-  def retrieve_chunks_for_games(game_ids, question, limit \\ 6) when is_list(game_ids) do
+  @doc """
+  Semantic chunk retrieval. Pass `:embedding` to reuse a question vector already
+  computed upstream (avoids a redundant embedding API call); otherwise embeds
+  here. `:limit` caps returned chunks (default 6).
+  """
+  def retrieve_chunks_for_games(game_ids, question, opts \\ []) when is_list(game_ids) do
+    limit = Keyword.get(opts, :limit, 6)
+
+    embed_result =
+      case Keyword.get(opts, :embedding) do
+        nil -> RuleMaven.Embed.embed(question)
+        vec -> {:ok, vec}
+      end
+
     # Try semantic retrieval via pgvector
-    case RuleMaven.Embed.embed(question) do
+    case embed_result do
       {:ok, question_vec} ->
         chunks =
           Repo.all(
@@ -858,13 +927,20 @@ defmodule RuleMaven.Games do
 
     Enum.each(cat_list, fn %{name: name, description: desc} ->
       text = "#{name}: #{desc}"
-      embedding = case RuleMaven.Embed.embed(text) do
-        {:ok, vec} -> Pgvector.new(vec)
-        _ -> nil
-      end
+
+      embedding =
+        case RuleMaven.Embed.embed(text) do
+          {:ok, vec} -> Pgvector.new(vec)
+          _ -> nil
+        end
 
       %GameCategory{}
-      |> GameCategory.changeset(%{game_id: game.id, name: name, description: desc, name_embedding: embedding})
+      |> GameCategory.changeset(%{
+        game_id: game.id,
+        name: name,
+        description: desc,
+        name_embedding: embedding
+      })
       |> Repo.insert!()
     end)
 
@@ -898,7 +974,10 @@ defmodule RuleMaven.Games do
 
       Enum.each(top2, fn {cat_id, _} ->
         %QuestionCategoryTag{}
-        |> QuestionCategoryTag.changeset(%{question_log_id: question_log_id, game_category_id: cat_id})
+        |> QuestionCategoryTag.changeset(%{
+          question_log_id: question_log_id,
+          game_category_id: cat_id
+        })
         |> Repo.insert(on_conflict: :nothing)
       end)
 
@@ -907,11 +986,13 @@ defmodule RuleMaven.Games do
   end
 
   def retag_all_questions(%Game{} = game) do
-    ids = Repo.all(
-      from q in QuestionLog,
-        where: q.game_id == ^game.id and q.refused == false and not is_nil(q.question_embedding),
-        select: q.id
-    )
+    ids =
+      Repo.all(
+        from q in QuestionLog,
+          where:
+            q.game_id == ^game.id and q.refused == false and not is_nil(q.question_embedding),
+          select: q.id
+      )
 
     Enum.each(ids, fn id ->
       RuleMaven.Workers.TagQuestionWorker.enqueue(id, game.id)
@@ -921,6 +1002,7 @@ defmodule RuleMaven.Games do
   end
 
   def categories_for_questions([]), do: %{}
+
   def categories_for_questions(question_log_ids) do
     tags =
       Repo.all(
@@ -945,7 +1027,9 @@ defmodule RuleMaven.Games do
         where: q.refused == false,
         order_by: [desc: q.inserted_at]
 
-    query = if community_only, do: from(q in query, where: q.visibility == "community"), else: query
+    query =
+      if community_only, do: from(q in query, where: q.visibility == "community"), else: query
+
     Repo.all(query)
   end
 
@@ -965,12 +1049,18 @@ defmodule RuleMaven.Games do
         existing
         |> QuestionVote.changeset(%{value: value})
         |> Repo.update!()
+
         value
 
       true ->
         %QuestionVote{}
-        |> QuestionVote.changeset(%{question_log_id: question_log_id, user_id: user_id, value: value})
+        |> QuestionVote.changeset(%{
+          question_log_id: question_log_id,
+          user_id: user_id,
+          value: value
+        })
         |> Repo.insert!()
+
         value
     end
   end

@@ -10,30 +10,34 @@ GameLive.Show handle_event("ask")
   → pending_count incremented (max 5 concurrent, input disabled at limit)
 
 AskWorker.perform (background, Oban queue)
-  → Games.retrieve_chunks/3 (vector search on embeddings)
-  → LLM.ask/4 (build prompt with chunks + game sources)
-    → Games.find_similar_question_in_pool/2 (embedding check against community question pool)
-      → HIT: return cached answer ("pool" provider)
-    → Faq.check_faq_cache/3 (embedding check against FAQ entries, expansion-aware)
-      → HIT: return cached answer ("faq" provider)
-    → MISS: LLM.chat/3 → parse response → return cited answer with followup detection
-  → Games.log_question_update/2 (save answer, citation, provider, etc.)
+  → Security.prompt_injection?/1 → blocked path if it trips
+  → LLM.ask/5
+    → Embed.embed/1 (embed question once; reused below)
+    → Games.find_similar_question_in_pool/3 (embedding check, COMMUNITY-only)
+      → HIT: return cached answer ("pool" provider). Private Q&A is never served.
+    → MISS: retrieve_chunks_for_games/3 (vector search, reuses the embedding)
+            → LLM.do_request (json_object response_format) → JSON answer object
+  → Games.log_question_update/2 (save answer, citation, provider, embedding, etc.)
+  → unless refused: TagQuestionWorker.enqueue (categorize)
   → PubSub.broadcast({:ask_complete, %{question_log_id, ...}})
+
+Note: there is no separate FAQ cache layer. FAQ was collapsed onto QuestionLog
+(`visibility = "community"` + optional admin-curated `canonical_question`/
+`canonical_answer`). `RuleMaven.Faq` is now only community counts/stats.
 
 GameLive.Show handle_info({:ask_complete})
   → get_question_log_by_id/1 (read only this one answer from DB)
   → Targeted in-place update: match messages by question_log_id, replace content
   → pending_count decremented
   → No full conversation rebuild — no DOM clobber, no index shift
-  → Refused answers skip followup suggestions and community pool.
-  → Oban.insert(DirectPromotionWorker) (auto-promote exact-match to FAQ)
+  → Refused answers skip followup suggestions and the community pool.
 ```
 
 Key files:
 - `lib/rule_maven_web/live/game_live/show.ex` — LiveView handler: `handle_event("ask", ...)`
-- `lib/rule_maven/games.ex` — `log_question/1`, `retrieve_chunks/3`, `log_question_update/2`, `find_similar_question_in_pool/2`
-- `lib/rule_maven/llm.ex` — `ask/4` (pool check → FAQ check → retrieval + LLM call)
-- `lib/rule_maven/faq.ex` — `check_faq_cache/3` (private, embedding similarity, expansion-aware)
+- `lib/rule_maven/games.ex` — `log_question/1`, `retrieve_chunks_for_games/3` (accepts `:embedding`), `log_question_update/2`, `find_similar_question_in_pool/3` (community-only)
+- `lib/rule_maven/llm.ex` — `ask/5` (pool check → retrieval + LLM call, JSON output)
+- `lib/rule_maven/embed.ex` — `embed/1` (768-dim, dimension-guarded)
 - `lib/rule_maven/workers/ask_worker.ex` — background ask, sets parent_question_id on followups
 
 ## Save Rulebook
@@ -64,39 +68,32 @@ Key files:
 - `lib/rule_maven/workers/cheat_sheet_worker.ex` — async cheatsheet generation
 - `lib/rule_maven_web/live/game_live/show.ex` — `handle_params` triggers suggestions
 
-## FAQ Cluster (periodic)
+## Community Promotion (nightly cron)
+
+There is no clustering-into-candidates job and no FaqCandidate/FaqEntry tables —
+those were collapsed. The only nightly job is direct promotion to the community
+pool.
 
 ```
-FaqClusterJob (Oban cron)
-  → FaqClusterWorker.perform/1
-    → group questions by embedding similarity
-    → create FaqCandidate (canonical question + answer)
-    → admin reviews in AdminLive
-```
-
-Key files:
-- `lib/rule_maven/workers/faq_cluster_job.ex` — Oban job struct (cron config)
-- `lib/rule_maven/workers/faq_cluster_worker.ex` — clustering logic
-- `lib/rule_maven/faq.ex` — `upsert_candidate/1`, `approve_candidate/2`
-- `lib/rule_maven_web/live/admin_live.ex` — admin review UI
-
-## Auto-Promotion (after question answered)
-
-```
-DirectPromotionWorker.perform/1
-  → check if same question+answer pair already exists as FAQ
-  → if exact match or embedding similarity > threshold
-    → auto-create FaqCandidate for admin approval
+DirectPromotionWorker.perform/1 (Oban cron, "0 4 * * *", :clustering queue)
+  → fetch upvoted (feedback="up"), non-refused, non-community, embedded questions
+  → group per game, cluster by embedding cosine similarity
+    (cluster_similarity_threshold setting, default 0.85)
+  → cluster asked+upvoted by ≥3 DISTINCT users
+    → promote best representative (prefer canonical, then newest)
+      → set visibility="community"
+      → EmbedQuestionWorker.enqueue (re-embed for pool matching)
 ```
 
 Key files:
-- `lib/rule_maven/workers/direct_promotion_worker.ex` — promotion logic
-- `lib/rule_maven/faq.ex` — `upsert_candidate/1`
+- `lib/rule_maven/workers/direct_promotion_worker.ex` — clustering + promotion
+- `config/config.exs` — Oban crontab
+- `lib/rule_maven_web/live/admin_live/questions.ex` — admin review of community Q&A
 
 ## Followup Chain Persistence
 
 ```
-LLM.ask/4 returns followup: true (LLM detected followup based on recent context)
+LLM.ask/5 returns followup: true (LLM detected followup based on recent context)
   → AskWorker.perform/1
     → Games.find_parent_question_id/3 (find most recent root question by same user)
     → Games.log_question_update/2 (set parent_question_id on followup question)
@@ -113,15 +110,15 @@ Key files:
 ## Thread Consolidation (Admin)
 
 ```
-AdminLive ("Review Threads" section)
+AdminLive.Threads ("Review Threads")
   → Games.all_question_threads/0 (list all root questions with followups)
-  → Admin selects thread → "Merge → FAQ"
-    → Faq.build_consolidated_answer/2 (combine root + followup answers)
-    → Admin edits Q&A, clicks "Publish to FAQ"
-    → Faq.consolidate_thread/3 (create FaqEntry, publish)
+  → Admin "prepare_merge" → build_consolidated_answer/2 (combine root + followup answers)
+  → Admin edits Q&A → "merge_thread"
+    → update root QuestionLog: visibility="community",
+      canonical_question + canonical_answer (no separate FAQ table)
+    → EmbedQuestionWorker.enqueue (re-embed canonical question)
 ```
 
 Key files:
 - `lib/rule_maven/games.ex` — `question_threads/1`, `all_question_threads/0`
-- `lib/rule_maven/faq.ex` — `consolidate_thread/3`, `build_consolidated_answer/2`
-- `lib/rule_maven_web/live/admin_live.ex` — thread UI, merge form
+- `lib/rule_maven_web/live/admin_live/threads.ex` — thread UI, merge form, `build_consolidated_answer/2`

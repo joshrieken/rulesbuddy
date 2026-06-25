@@ -1,7 +1,7 @@
 defmodule RuleMaven.LLMTest do
   use RuleMaven.DataCase
 
-  alias RuleMaven.{LLM, Games, Faq, Repo}
+  alias RuleMaven.{LLM, Games, Repo}
   alias RuleMaven.Games.QuestionLog
 
   describe "response parsing" do
@@ -185,66 +185,6 @@ defmodule RuleMaven.LLMTest do
       assert result.model == "cached"
       assert result.answer == "Pool answer"
       assert result[:pool_hit] == true
-    end
-  end
-
-  describe "FAQ cache with expansions" do
-    test "checks FAQ across base game and expansions" do
-      {:ok, base} = Games.create_game(%{name: "Base Game"})
-      {:ok, exp} = Games.create_game(%{name: "Expansion", parent_game_id: base.id})
-
-      # Create a published FAQ under the expansion
-      embedding = Enum.to_list(1..768)
-
-      {:ok, _faq} =
-        Faq.create_faq(%{
-          game_id: exp.id,
-          canonical_question: "Expansion rule question?",
-          canonical_answer: "Expansion answer.",
-          source_qa_ids: [],
-          status: "published",
-          question_embedding: Pgvector.new(embedding)
-        })
-
-      # Mock embed to return the matching embedding
-      Application.put_env(:rule_maven, :embed_mock, fn _text -> {:ok, embedding} end)
-
-      on_exit(fn ->
-        Application.delete_env(:rule_maven, :embed_mock)
-      end)
-
-      # Ask with expansion included
-      {:ok, result} = LLM.ask(base, "Expansion question", [exp.id])
-
-      assert result[:faq_hit] == true
-      assert result.answer == "Expansion answer."
-      assert result.provider == "faq"
-    end
-
-    test "FAQ miss when expansion not included" do
-      {:ok, base} = Games.create_game(%{name: "Base2"})
-      {:ok, exp} = Games.create_game(%{name: "Exp2", parent_game_id: base.id})
-
-      # Create FAQ under expansion
-      {:ok, _faq} =
-        Faq.create_faq(%{
-          game_id: exp.id,
-          canonical_question: "Exp only Q",
-          canonical_answer: "Exp only A",
-          source_qa_ids: [],
-          status: "published"
-        })
-
-      # No expansion included, should go to LLM
-      mock_llm(fn _body ->
-        {:ok, %{answer: "LLM answer", cited_passage: "Passage", followup: false, followups: []}}
-      end)
-
-      {:ok, result} = LLM.ask(base, "Exp only Q")
-
-      # Should NOT be a FAQ hit since expansion wasn't passed
-      assert result[:faq_hit] == false
-      assert result.answer == "LLM answer"
     end
   end
 
