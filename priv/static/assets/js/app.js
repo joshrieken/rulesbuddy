@@ -8,6 +8,16 @@ Hooks.ViewPref = {
     this.handleEvent("save_view", ({view}) => {
       localStorage.setItem("rm:gamelist:view", view);
     });
+    // Remember how many rows were loaded so the list can be restored to the
+    // same depth (and scroll offset) when the user comes back to it.
+    this.handleEvent("save_count", ({count}) => {
+      localStorage.setItem("rm:gamelist:count", count);
+    });
+    // Search/filter/view changes reset the list, so the saved spot is stale.
+    this.handleEvent("reset_list_pos", () => {
+      localStorage.removeItem("rm:gamelist:count");
+      localStorage.removeItem("rm:gamelist:scroll");
+    });
   }
 };
 Hooks.FlashAutoHide = {
@@ -132,6 +142,27 @@ Hooks.GameListScroll = {
       }
     });
 
+    // Restore the saved spot: ask the server to load back to the same row
+    // depth, then land on the saved scroll offset once those rows render.
+    const savedCount = parseInt(localStorage.getItem("rm:gamelist:count")) || 0;
+    const savedScroll = parseInt(localStorage.getItem("rm:gamelist:scroll")) || 0;
+    if (savedCount > 20) {
+      this.pushEvent("restore_list_pos", {count: savedCount}, () => {
+        requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+      });
+    } else if (savedScroll > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+    }
+
+    // Persist scroll offset (debounced) so a return visit lands here.
+    this._scrollHandler = () => {
+      clearTimeout(this._scrollTimer);
+      this._scrollTimer = setTimeout(() => {
+        localStorage.setItem("rm:gamelist:scroll", window.scrollY);
+      }, 150);
+    };
+    window.addEventListener("scroll", this._scrollHandler, {passive: true});
+
     this._keyHandler = (e) => {
       // Escape in search input: clear and refocus
       if (e.key === "Escape") {
@@ -186,6 +217,8 @@ Hooks.GameListScroll = {
   },
   destroyed() {
     window.removeEventListener("keydown", this._keyHandler);
+    window.removeEventListener("scroll", this._scrollHandler);
+    clearTimeout(this._scrollTimer);
   }
 };
 

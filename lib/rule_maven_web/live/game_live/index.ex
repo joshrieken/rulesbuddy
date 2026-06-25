@@ -293,7 +293,8 @@ defmodule RuleMavenWeb.GameLive.Index do
     {:noreply,
      socket
      |> assign(search: text, search_ready: true, display_count: 20, selected_idx: -1)
-     |> maybe_reload_for_all()}
+     |> maybe_reload_for_all()
+     |> push_event("reset_list_pos", %{})}
   end
 
   @impl true
@@ -302,15 +303,30 @@ defmodule RuleMavenWeb.GameLive.Index do
      socket
      |> assign(search: "", search_ready: true, display_count: 20, selected_idx: -1)
      |> maybe_reload_for_all()
-     |> push_event("refocus", %{})}
+     |> push_event("refocus", %{})
+     |> push_event("reset_list_pos", %{})}
   end
 
   @impl true
   def handle_event("restore_search", %{"value" => text}, socket) do
+    # Keep display_count untouched: the saved list position is restored
+    # separately via "restore_list_pos", and this fires on every mount.
     {:noreply,
      socket
-     |> assign(search: text, search_ready: true, display_count: 20, selected_idx: -1)
+     |> assign(search: text, search_ready: true, selected_idx: -1)
      |> maybe_reload_for_all()}
+  end
+
+  # Restore how many rows were loaded when the user last left the list, so the
+  # saved scroll position (applied client-side) has enough content to land on.
+  @impl true
+  def handle_event("restore_list_pos", %{"count" => count}, socket) do
+    count = count |> max(20) |> min(2000)
+
+    {:noreply,
+     socket
+     |> assign(display_count: count)
+     |> reload_games()}
   end
 
   @impl true
@@ -320,7 +336,8 @@ defmodule RuleMavenWeb.GameLive.Index do
     {:noreply,
      socket
      |> assign(category_filter: filter, display_count: 20, selected_idx: -1)
-     |> maybe_reload_for_all()}
+     |> maybe_reload_for_all()
+     |> push_event("reset_list_pos", %{})}
   end
 
   @impl true
@@ -330,7 +347,8 @@ defmodule RuleMavenWeb.GameLive.Index do
        socket
        |> assign(view: view, display_count: 20, selected_idx: -1)
        |> reload_games()
-       |> push_event("save_view", %{view: view})}
+       |> push_event("save_view", %{view: view})
+       |> push_event("reset_list_pos", %{})}
     else
       {:noreply, socket}
     end
@@ -374,11 +392,12 @@ defmodule RuleMavenWeb.GameLive.Index do
 
   @impl true
   def handle_event("load_more", _params, socket) do
-    socket = assign(socket, display_count: socket.assigns.display_count + 20)
+    count = socket.assigns.display_count + 20
+    socket = assign(socket, display_count: count)
     # The "all" view pages from the DB, so fetch the next page; other views are
     # already fully loaded and just reveal more rows in-memory.
     socket = if socket.assigns.view == "all", do: reload_games(socket), else: socket
-    {:noreply, socket}
+    {:noreply, push_event(socket, "save_count", %{count: count})}
   end
 
   @impl true
