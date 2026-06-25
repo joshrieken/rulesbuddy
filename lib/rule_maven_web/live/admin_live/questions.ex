@@ -163,109 +163,85 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         <% end %>
       </form>
 
-      <!-- Table -->
-      <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
-        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
-          <colgroup>
-            <col style="width:7rem">
-            <col style="width:7rem">
-            <col style="width:9rem">
-            <col>
-            <col style="width:5.5rem">
-            <col style="width:7rem">
-            <col style="width:7rem">
-          </colgroup>
-          <thead>
-            <tr style="background:var(--bg-subtle);text-align:left">
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted);white-space:nowrap">When</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">User</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Game</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Question</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Status</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Visibility</th>
-              <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for q <- @questions do %>
-              <% status = status_of(q) %>
-              <% {label, pill_style} = status_label(status) %>
-              <tr style={"border-top:1px solid var(--border-subtle);#{if @expanded_id == q.id, do: "background:var(--bg-subtle)"}"}>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap;color:var(--text-muted);font-size:0.75rem">
-                  {Calendar.strftime(q.inserted_at, "%b %-d %H:%M")}
-                </td>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap;color:var(--text-secondary);font-size:0.75rem">
-                  {q.user && q.user.username || "—"}
-                </td>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap;color:var(--text-secondary);font-size:0.75rem">
-                  {q.game && q.game.name || "—"}
-                </td>
-                <td style="padding:0.45rem 0.75rem;overflow:hidden">
-                  <button
-                    type="button"
-                    phx-click="expand"
-                    phx-value-id={q.id}
-                    style="background:none;border:none;text-align:left;cursor:pointer;padding:0;color:var(--text);font-size:0.8rem;width:100%"
-                  >
-                    <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                      {q.question}
-                    </span>
-                  </button>
-                  <%= if @expanded_id == q.id do %>
-                    <div style="margin-top:0.5rem;padding:0.5rem;background:var(--bg);border-radius:0.25rem;border:1px solid var(--border-subtle)">
-                      <p style="font-weight:600;font-size:0.75rem;color:var(--text-muted);margin:0 0 0.25rem">Q: {q.question}</p>
-                      <p style="font-size:0.78rem;color:var(--text);white-space:pre-wrap;margin:0">{q.answer}</p>
-                      <%= if q.cited_passage do %>
-                        <p style="margin-top:0.5rem;padding:0.4rem;background:var(--bg-subtle);border-radius:0.2rem;font-size:0.72rem;color:var(--text-muted);font-style:italic">{q.cited_passage}</p>
-                      <% end %>
-                    </div>
-                  <% end %>
-                </td>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap">
-                  <span style={"font-size:0.65rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.25rem;#{pill_style}"}>{label}</span>
-                </td>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap">
-                  <select
-                    phx-change="set_visibility"
-                    phx-value-id={q.id}
-                    name="visibility"
-                    style="border:1px solid var(--border);border-radius:0.25rem;padding:0.1rem 0.25rem;font-size:0.72rem;background:var(--bg);color:var(--text)"
-                  >
-                    <option value="private" selected={q.visibility == "private"}>Private</option>
-                    <option value="public" selected={q.visibility == "public"}>Public</option>
-                  </select>
-                </td>
-                <td style="padding:0.45rem 0.75rem;white-space:nowrap">
-                  <%= if @confirm_delete_id == q.id do %>
-                    <span style="font-size:0.72rem;color:var(--red);font-weight:600">Delete?</span>
-                    <button
-                      type="button"
-                      phx-click="confirm_delete"
-                      phx-value-id={q.id}
-                      style="background:none;border:none;color:var(--red);font-size:0.72rem;font-weight:700;cursor:pointer"
-                    >Yes</button>
-                    <button
-                      type="button"
-                      phx-click="cancel_delete"
-                      style="background:none;border:none;color:var(--text-muted);font-size:0.72rem;cursor:pointer"
-                    >No</button>
-                  <% else %>
-                    <button
-                      type="button"
-                      phx-click="delete_question"
-                      phx-value-id={q.id}
-                      style="background:none;border:none;color:var(--text-muted);font-size:0.72rem;cursor:pointer"
-                      title="Delete"
-                    >✕ Delete</button>
-                  <% end %>
-                </td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-
+      <!-- Question list -->
+      <div style="display:flex;flex-direction:column;gap:0.5rem">
         <%= if @questions == [] do %>
-          <p style="text-align:center;color:var(--text-muted);font-size:0.8rem;padding:2rem">No questions found.</p>
+          <p style="color:var(--text-muted);font-size:0.8rem;padding:1rem 0">No questions found.</p>
+        <% end %>
+
+        <%= for q <- @questions do %>
+          <% status = status_of(q) %>
+          <% {status_label, pill_style} = status_label(status) %>
+          <div style={"border:1px solid var(--border);border-radius:0.5rem;background:#{if @expanded_id == q.id, do: "var(--bg-subtle)", else: "var(--bg)"}"}>
+            <!-- meta row -->
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem 0.75rem;padding:0.45rem 0.75rem;border-bottom:1px solid var(--border-subtle)">
+              <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">
+                {Calendar.strftime(q.inserted_at, "%b %-d %H:%M")}
+              </span>
+              <span style="font-size:0.7rem;color:var(--text-secondary);font-weight:500">
+                {q.user && q.user.username || "—"}
+              </span>
+              <span style="font-size:0.7rem;color:var(--text-secondary);background:var(--bg-subtle);border:1px solid var(--border-subtle);padding:0.05rem 0.35rem;border-radius:0.25rem;max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={q.game && q.game.name}>
+                {q.game && q.game.name || "—"}
+              </span>
+              <span style={"font-size:0.65rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.25rem;#{pill_style}"}>{status_label}</span>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
+                <select
+                  phx-change="set_visibility"
+                  phx-value-id={q.id}
+                  name="visibility"
+                  style="border:1px solid var(--border);border-radius:0.25rem;padding:0.1rem 0.25rem;font-size:0.7rem;background:var(--bg);color:var(--text)"
+                >
+                  <option value="private" selected={q.visibility == "private"}>Private</option>
+                  <option value="community" selected={q.visibility == "community"}>Community</option>
+                </select>
+                <%= if @confirm_delete_id == q.id do %>
+                  <span style="font-size:0.7rem;color:var(--red);font-weight:600">Delete?</span>
+                  <button type="button" phx-click="confirm_delete" phx-value-id={q.id}
+                    style="background:none;border:none;color:var(--red);font-size:0.7rem;font-weight:700;cursor:pointer">Yes</button>
+                  <button type="button" phx-click="cancel_delete"
+                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer">No</button>
+                <% else %>
+                  <button type="button" phx-click="delete_question" phx-value-id={q.id}
+                    style="background:none;border:none;color:var(--text-muted);font-size:0.7rem;cursor:pointer" title="Delete">✕</button>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- question + expand -->
+            <button
+              type="button"
+              phx-click="expand"
+              phx-value-id={q.id}
+              style="display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0.5rem 0.75rem"
+            >
+              <%= if @expanded_id == q.id do %>
+                <span style="font-size:0.82rem;color:var(--text);line-height:1.45;word-break:break-word;display:block">
+                  {q.question}
+                </span>
+                <span style="font-size:0.6rem;color:var(--text-muted);display:block;margin-top:0.2rem">▴ hide</span>
+              <% else %>
+                <span style="font-size:0.82rem;color:var(--text);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  {q.question}
+                </span>
+                <span style="font-size:0.6rem;color:var(--text-muted);display:block;margin-top:0.1rem">▾ answer</span>
+              <% end %>
+            </button>
+
+            <!-- expanded answer -->
+            <%= if @expanded_id == q.id do %>
+              <div style="margin:0 0.75rem 0.75rem;padding:0.65rem 0.75rem;background:var(--bg);border:1px solid var(--border-subtle);border-radius:0.35rem">
+                <%= if q.canonical_question do %>
+                  <p style="font-size:0.7rem;color:var(--accent);font-weight:600;margin:0 0 0.35rem">★ Curated: {q.canonical_question}</p>
+                <% end %>
+                <p style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:0 0 0.3rem">Answer</p>
+                <p style="font-size:0.8rem;color:var(--text);white-space:pre-wrap;margin:0;line-height:1.5">{q.canonical_answer || q.answer}</p>
+                <%= if q.cited_passage do %>
+                  <p style="margin-top:0.5rem;padding:0.4rem 0.5rem;background:var(--bg-subtle);border-radius:0.25rem;font-size:0.7rem;color:var(--text-muted);font-style:italic;line-height:1.4">{q.cited_passage}</p>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
         <% end %>
       </div>
 

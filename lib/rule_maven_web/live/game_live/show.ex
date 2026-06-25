@@ -34,7 +34,8 @@ defmodule RuleMavenWeb.GameLive.Show do
        community_count: 0,
        refresh: 0,
        show_onboarding: false,
-       stale_timer: nil
+       stale_timer: nil,
+       question_categories: %{}
      )}
   end
 
@@ -76,6 +77,9 @@ defmodule RuleMavenWeb.GameLive.Show do
     cq_ids = Enum.map(community, & &1.id)
     {cv_counts, cv_user} = Games.community_vote_maps(cq_ids, socket.assigns.current_user.id)
 
+    all_thread_ids = Enum.map(threads, fn {id, _} -> id end)
+    question_categories = Games.categories_for_questions(all_thread_ids ++ cq_ids)
+
     socket =
       assign(socket,
         game: game,
@@ -93,6 +97,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         community_count: community_count,
         community_vote_counts: cv_counts,
         community_user_votes: cv_user,
+        question_categories: question_categories,
         show_onboarding: conversation == [] && sources != [] && pending_count == 0
       )
 
@@ -1103,10 +1108,10 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%!-- Community --%>
             <%= if @community_count > 0 do %>
               <.link
-                navigate={~p"/games/#{@game.id}/review"}
+                navigate={~p"/games/#{@game.id}/faq"}
                 style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
               >
-                Community ({@community_count})
+                FAQ ({@community_count})
               </.link>
             <% end %>
             <%!-- Cheat Sheet --%>
@@ -1389,9 +1394,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                       </div>
                       <div style="font-size:0.72rem;color:var(--text-muted)">
                         <.link
-                          navigate={~p"/games/#{@game.id}/review"}
+                          navigate={~p"/games/#{@game.id}/faq"}
                           style="color:var(--accent);font-weight:600"
-                        >View community Q&A</.link>
+                        >Browse FAQ</.link>
                         — curated answers from other players.
                       </div>
                     </div>
@@ -1661,6 +1666,19 @@ defmodule RuleMavenWeb.GameLive.Show do
                     style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if msg[:feedback] == "down", do: "1", else: "0.4"}"}
                     title={if msg[:feedback] == "down", do: "Remove vote", else: "Not helpful"}
                   >👎</button>
+                <% end %>
+              </div>
+
+              <!-- Category pills (community questions only) -->
+              <% msg_cats = if is_community_msg && msg[:id], do: Map.get(@question_categories, msg[:id], []), else: [] %>
+              <div :if={msg_cats != []} style="display:flex;flex-wrap:wrap;gap:0.25rem;padding:0.15rem 0.25rem 0">
+                <%= for cat <- msg_cats do %>
+                  <.link
+                    navigate={~p"/games/#{@game.id}/faq?category=#{cat.id}"}
+                    style="font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:1rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-muted);text-decoration:none"
+                  >
+                    {cat.name}
+                  </.link>
                 <% end %>
               </div>
 

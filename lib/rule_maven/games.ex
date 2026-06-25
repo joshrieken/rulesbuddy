@@ -9,6 +9,8 @@ defmodule RuleMaven.Games do
   alias RuleMaven.Games.Game
   alias RuleMaven.Games.QuestionLog
   alias RuleMaven.Games.QuestionVote
+  alias RuleMaven.Games.GameCategory
+  alias RuleMaven.Games.QuestionCategoryTag
   alias RuleMaven.Games.Document
   alias RuleMaven.Games.Chunk
   alias Oban
@@ -787,6 +789,116 @@ defmodule RuleMaven.Games do
 
       initial_chunks ++ extra
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Categories
+  # ---------------------------------------------------------------------------
+
+  def list_game_categories(%Game{} = game) do
+    Repo.all(from c in GameCategory, where: c.game_id == ^game.id, order_by: c.name)
+  end
+
+  def replace_game_categories(%Game{} = game, cat_list) do
+    Repo.delete_all(from c in GameCategory, where: c.game_id == ^game.id)
+
+    Enum.each(cat_list, fn %{name: name, description: desc} ->
+      text = "#{name}: #{desc}"
+      embedding = case RuleMaven.Embed.embed(text) do
+        {:ok, vec} -> Pgvector.new(vec)
+        _ -> nil
+      end
+
+      %GameCategory{}
+      |> GameCategory.changeset(%{game_id: game.id, name: name, description: desc, name_embedding: embedding})
+      |> Repo.insert!()
+    end)
+
+    :ok
+  end
+
+  def delete_game_category(id) do
+    case Repo.get(GameCategory, id) do
+      nil -> :ok
+      cat -> Repo.delete(cat)
+    end
+  end
+
+  def tag_question(question_log_id, game_id) do
+    q = Repo.get!(QuestionLog, question_log_id)
+    cats = Repo.all(from c in GameCategory, where: c.game_id == ^game_id and not is_nil(c.name_embedding))
+
+    if cats == [] or is_nil(q.question_embedding) do
+      :skipped
+    else
+      q_vec = Pgvector.to_list(q.question_embedding)
+
+      scored = Enum.map(cats, fn cat ->
+        cat_vec = Pgvector.to_list(cat.name_embedding)
+        dist = cosine_distance(q_vec, cat_vec)
+        {cat.id, dist}
+      end)
+
+      top2 = scored |> Enum.sort_by(&elem(&1, 1)) |> Enum.take(2) |> Enum.filter(&(elem(&1, 1) <= 0.5))
+
+      Enum.each(top2, fn {cat_id, _} ->
+        %QuestionCategoryTag{}
+        |> QuestionCategoryTag.changeset(%{question_log_id: question_log_id, game_category_id: cat_id})
+        |> Repo.insert(on_conflict: :nothing)
+      end)
+
+      :ok
+    end
+  end
+
+  defp cosine_distance(a, b) do
+    dot = Enum.zip(a, b) |> Enum.reduce(0.0, fn {x, y}, acc -> acc + x * y end)
+    norm_a = :math.sqrt(Enum.reduce(a, 0.0, fn x, acc -> acc + x * x end))
+    norm_b = :math.sqrt(Enum.reduce(b, 0.0, fn x, acc -> acc + x * x end))
+    if norm_a == 0.0 or norm_b == 0.0, do: 1.0, else: 1.0 - dot / (norm_a * norm_b)
+  end
+
+  def retag_all_questions(%Game{} = game) do
+    ids = Repo.all(
+      from q in QuestionLog,
+        where: q.game_id == ^game.id and q.refused == false and not is_nil(q.question_embedding),
+        select: q.id
+    )
+
+    Enum.each(ids, fn id ->
+      RuleMaven.Workers.TagQuestionWorker.enqueue(id, game.id)
+    end)
+
+    length(ids)
+  end
+
+  def categories_for_questions([]), do: %{}
+  def categories_for_questions(question_log_ids) do
+    tags =
+      Repo.all(
+        from t in QuestionCategoryTag,
+          join: c in assoc(t, :game_category),
+          where: t.question_log_id in ^question_log_ids,
+          select: {t.question_log_id, c}
+      )
+
+    Enum.reduce(tags, %{}, fn {qid, cat}, acc ->
+      Map.update(acc, qid, [cat], &[cat | &1])
+    end)
+  end
+
+  def questions_for_category(category_id, opts \\ []) do
+    community_only = Keyword.get(opts, :community_only, true)
+
+    query =
+      from q in QuestionLog,
+        join: t in QuestionCategoryTag,
+        on: t.question_log_id == q.id and t.game_category_id == ^category_id,
+        where: q.refused == false,
+        order_by: [desc: q.inserted_at]
+
+    query = if community_only, do: from(q in query, where: q.visibility == "community"), else: query
+    Repo.all(query)
   end
 
   def get_user_community_vote(question_log_id, user_id) do

@@ -47,7 +47,10 @@ defmodule RuleMavenWeb.GameLive.Form do
         bgg_search_error: nil,
         suggestions: [],
         regenerating_suggestions: false,
-        uploading_pdfs: false
+        uploading_pdfs: false,
+        draft_categories: [],
+        saved_categories: [],
+        regenerating_categories: false
       )
       |> allow_upload(:rulebook_pdfs,
         accept: ["application/pdf", ".pdf"],
@@ -151,6 +154,19 @@ defmodule RuleMavenWeb.GameLive.Form do
             end
 
           socket = assign(socket, suggestions: suggestions)
+
+          draft_categories =
+            case RuleMaven.Settings.get("categories_#{game.id}") do
+              nil ->
+                []
+              json ->
+                json
+                |> Jason.decode!()
+                |> Enum.map(fn %{"name" => n, "description" => d} -> %{name: n, description: d} end)
+            end
+
+          saved_categories = RuleMaven.Games.list_game_categories(game)
+          socket = assign(socket, draft_categories: draft_categories, saved_categories: saved_categories)
           socket
 
         _ ->
@@ -283,6 +299,39 @@ defmodule RuleMavenWeb.GameLive.Form do
     socket = assign(socket, regenerating_suggestions: true)
     send(self(), {:refresh_suggestions, game})
     {:noreply, socket}
+  end
+
+  def handle_event("regenerate_categories", _params, socket) do
+    game = socket.assigns.game
+    socket = assign(socket, regenerating_categories: true)
+    send(self(), {:refresh_categories, game})
+    {:noreply, socket}
+  end
+
+  def handle_event("save_categories", _params, socket) do
+    game = socket.assigns.game
+    draft = socket.assigns.draft_categories
+    RuleMaven.Games.replace_game_categories(game, draft)
+    RuleMaven.Settings.delete("categories_#{game.id}")
+    saved = RuleMaven.Games.list_game_categories(game)
+
+    {:noreply,
+     socket
+     |> assign(saved_categories: saved, draft_categories: [])
+     |> put_flash(:info, "Categories saved.")}
+  end
+
+  def handle_event("delete_category", %{"id" => id}, socket) do
+    RuleMaven.Games.delete_game_category(String.to_integer(id))
+    game = socket.assigns.game
+    saved = RuleMaven.Games.list_game_categories(game)
+    {:noreply, assign(socket, saved_categories: saved)}
+  end
+
+  def handle_event("retag_all_questions", _params, socket) do
+    game = socket.assigns.game
+    count = RuleMaven.Games.retag_all_questions(game)
+    {:noreply, put_flash(socket, :info, "Re-tagging #{count} question(s) in background.")}
   end
 
   @impl true
@@ -810,6 +859,31 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_info({:suggestions_ready, qs}, socket) do
     {:noreply, assign(socket, suggestions: qs, regenerating_suggestions: false)}
+  end
+
+  @impl true
+  def handle_info({:refresh_categories, game}, socket) do
+    parent = self()
+
+    Task.start(fn ->
+      text = Games.document_full_text(game)
+
+      case RuleMaven.LLM.generate_categories(game.name, text) do
+        {:ok, cats} ->
+          RuleMaven.Settings.put("categories_#{game.id}", Jason.encode!(cats))
+          send(parent, {:categories_ready, cats})
+
+        {:error, _} ->
+          send(parent, {:categories_ready, []})
+      end
+    end)
+
+    {:noreply, assign(socket, regenerating_categories: true)}
+  end
+
+  @impl true
+  def handle_info({:categories_ready, cats}, socket) do
+    {:noreply, assign(socket, draft_categories: cats, regenerating_categories: false)}
   end
 
   @impl true
@@ -1756,6 +1830,73 @@ defmodule RuleMavenWeb.GameLive.Form do
               <% end %>
             </div>
           </div>
+
+          <%!-- Categories section --%>
+            <div style="margin-top:1.25rem">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+                <span style="font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary)">
+                  Question Categories
+                  <%= if @saved_categories != [] do %>
+                    ({length(@saved_categories)})
+                  <% end %>
+                </span>
+                <button
+                  type="button"
+                  phx-click="regenerate_categories"
+                  disabled={@regenerating_categories}
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                >
+                  <%= if @regenerating_categories, do: "Generating…", else: "Generate" %>
+                </button>
+                <button
+                  :if={@draft_categories != []}
+                  type="button"
+                  phx-click="save_categories"
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--blue);background:var(--blue);color:white;cursor:pointer"
+                >
+                  Save
+                </button>
+                <button
+                  :if={@saved_categories != []}
+                  type="button"
+                  phx-click="retag_all_questions"
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                >
+                  Re-tag All
+                </button>
+              </div>
+              <%= if @draft_categories != [] do %>
+                <p style="font-size:0.6rem;color:var(--orange);margin-bottom:0.4rem">
+                  Draft (unsaved) — saving will replace all categories and clear question tags.
+                </p>
+                <div style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                  <%= for cat <- @draft_categories do %>
+                    <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle)">
+                      <div style="font-size:0.72rem;font-weight:600;color:var(--text)">{cat.name}</div>
+                      <div style="font-size:0.65rem;color:var(--text-secondary)">{cat.description}</div>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+              <%= if @saved_categories != [] do %>
+                <div style="border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                  <%= for cat <- @saved_categories do %>
+                    <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;gap:0.5rem">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:0.72rem;font-weight:600;color:var(--text)">{cat.name}</div>
+                        <div style="font-size:0.65rem;color:var(--text-secondary)">{cat.description}</div>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="delete_category"
+                        phx-value-id={cat.id}
+                        style="font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:0.25rem;border:1px solid var(--red);color:var(--red);background:transparent;cursor:pointer;flex-shrink:0"
+                      >×</button>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
 
           <%!-- Danger tab --%>
           <div style={if @tab == "danger", do: "display:block", else: "display:none"}>

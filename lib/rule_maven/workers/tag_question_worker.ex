@@ -1,0 +1,16 @@
+defmodule RuleMaven.Workers.TagQuestionWorker do
+  use Oban.Worker, queue: :default, max_attempts: 3
+  alias RuleMaven.Games
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"question_log_id" => id, "game_id" => game_id}}) do
+    Games.tag_question(id, game_id)
+    :ok
+  end
+
+  def enqueue(question_log_id, game_id) do
+    %{"question_log_id" => question_log_id, "game_id" => game_id}
+    |> new()
+    |> Oban.insert()
+  end
+end

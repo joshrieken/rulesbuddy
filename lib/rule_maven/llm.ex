@@ -34,14 +34,11 @@ defmodule RuleMaven.LLM do
   def ask(game, question, expansion_ids \\ [], recent_context \\ [], opts \\ []) do
     user_id = Keyword.get(opts, :user_id)
 
-    # Step 0: embed the question (used for pool check + FAQ check + logging)
-    # Skip embedding if nothing to match against — saves ~500ms-2s API call
+    # Step 0: embed the question (used for pool check + logging)
     question_embedding =
-      if embed_worthwhile?(game.id) do
-        case RuleMaven.Embed.embed(question) do
-          {:ok, vec} -> vec
-          {:error, _} -> nil
-        end
+      case RuleMaven.Embed.embed(question) do
+        {:ok, vec} -> vec
+        {:error, _} -> nil
       end
 
     pool_hit =
@@ -105,17 +102,6 @@ defmodule RuleMaven.LLM do
     end
   end
 
-  defp embed_worthwhile?(game_id) do
-    import Ecto.Query
-    alias RuleMaven.Games.QuestionLog
-
-    RuleMaven.Repo.aggregate(
-      from(q in QuestionLog,
-        where: q.game_id == ^game_id and not is_nil(q.question_embedding) and q.refused == false
-      ),
-      :count
-    ) > 0
-  end
 
   @doc """
   Sends a generic chat prompt to the LLM. Returns `{:ok, raw_text}` or `{:error, reason}`.
@@ -566,6 +552,70 @@ defmodule RuleMaven.LLM do
           |> Enum.reject(fn %{questions: qs} -> qs == [] end)
 
         {:ok, categories}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Generates topic categories for a game based on its rulebook text.
+  Returns `{:ok, [%{name: string, description: string}]}` or `{:error, reason}`.
+  """
+  def generate_categories(game_name, rulebook_text) do
+    # Sample: first 1500 + last 1500 + 3 random middle chunks of 500
+    len = String.length(rulebook_text)
+    front = String.slice(rulebook_text, 0, 1500)
+    back = if len > 1500, do: String.slice(rulebook_text, max(len - 1500, 0), 1500), else: ""
+
+    middle_samples =
+      if len > 3000 do
+        step = div(len - 3000, 4)
+        Enum.map([1, 2, 3], fn i ->
+          start = 1500 + i * step
+          String.slice(rulebook_text, start, 500)
+        end)
+        |> Enum.join("\n...\n")
+      else
+        ""
+      end
+
+    sample = Enum.reject([front, middle_samples, back], &(&1 == "")) |> Enum.join("\n...\n")
+
+    prompt = """
+    Based on the rulebook text below for "#{game_name}", generate 8-15 topic categories that cover the main rules areas.
+
+    Return one category per line in this exact format:
+    NAME: brief description (one sentence)
+
+    Example:
+    Combat: Rules for attacking monsters and resolving damage.
+    Movement: How investigators move between spaces and rooms.
+    Setup: Game preparation, component placement, and starting conditions.
+
+    Only output the category lines — no headers, no numbering, no extra text.
+    """
+
+    full_prompt = prompt <> "\n\nRULEBOOK (sample):\n" <> sample
+
+    case chat(full_prompt, "generate_categories",
+           system: "You generate topic categories for board game rulebooks. Be concise and specific.",
+           max_tokens: 400
+         ) do
+      {:ok, text} ->
+        cats =
+          text
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.flat_map(fn line ->
+            case String.split(line, ":", parts: 2) do
+              [name, desc] -> [%{name: String.trim(name), description: String.trim(desc)}]
+              _ -> []
+            end
+          end)
+
+        {:ok, cats}
 
       {:error, reason} ->
         {:error, reason}

@@ -122,6 +122,10 @@ defmodule RuleMaven.Workers.AskWorker do
 
           case Games.log_question_update(ql, update_attrs) do
             {:ok, _updated} ->
+              unless refused? do
+                RuleMaven.Workers.TagQuestionWorker.enqueue(question_log_id, game_id)
+              end
+
               Phoenix.PubSub.broadcast(
                 RuleMaven.PubSub,
                 "game:#{game_id}",

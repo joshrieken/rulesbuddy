@@ -11,14 +11,19 @@ defmodule RuleMavenWeb.GameLive.Review do
     game = Games.get_game!(id)
     is_admin = RuleMaven.Users.game_master?(socket.assigns.current_user)
 
-    {:ok,
-     assign(socket,
-       game: game,
-       is_admin: is_admin,
-       documents: Games.list_documents(game),
-       community_questions: load_community_questions(game.id),
-       page_title: "Review — #{game.name}"
-     )}
+    if !is_admin do
+      {:ok, push_navigate(socket, to: ~p"/games/#{id}/faq")}
+    else
+      {:ok,
+       assign(socket,
+         game: game,
+         is_admin: is_admin,
+         documents: Games.list_documents(game),
+         community_questions: load_community_questions(game.id),
+         categories: Games.list_game_categories(game),
+         page_title: "Review — #{game.name}"
+       )}
+    end
   end
 
   @impl true
