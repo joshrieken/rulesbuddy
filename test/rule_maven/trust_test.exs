@@ -130,4 +130,69 @@ defmodule RuleMaven.TrustTest do
       assert Games.pool_tier(provisional) == :provisional
     end
   end
+
+  describe "privacy boundary" do
+    test "a pooled private row never appears in browse/list surfaces" do
+      game = game_fixture()
+      author = user_fixture("author")
+      other = user_fixture("other")
+
+      private =
+        log(game, author, %{
+          question: "private wording",
+          cited_passage: "p.1",
+          visibility: "private",
+          pooled: true
+        })
+
+      assert private.pooled == true
+      # Community + FAQ lists are community-only — the pooled private row is absent.
+      refute private.id in Enum.map(Games.community_questions(game, other.id), & &1.id)
+      refute private.id in Enum.map(Games.faq_questions(game), & &1.id)
+    end
+  end
+
+  describe "find_similar_question_in_pool tiering" do
+    test "prefers a trusted hit over a closer provisional one" do
+      game = game_fixture()
+      author = user_fixture("author")
+
+      # Provisional row sits exactly on the query embedding (distance 0).
+      exact = Enum.map(1..768, &(&1 * 1.0))
+
+      prov =
+        log(game, author, %{
+          question: "provisional",
+          cited_passage: "p.1",
+          visibility: "private",
+          pooled: true,
+          trust_score: 0.0
+        })
+
+      Repo.update_all(
+        from(q in RuleMaven.Games.QuestionLog, where: q.id == ^prov.id),
+        set: [question_embedding: Pgvector.new(exact)]
+      )
+
+      # Trusted (community) row slightly further away.
+      near = Enum.map(1..768, &(&1 * 1.0 + 0.001))
+
+      trusted =
+        log(game, author, %{
+          question: "trusted",
+          answer: "Trusted answer.",
+          visibility: "community",
+          pooled: true
+        })
+
+      Repo.update_all(
+        from(q in RuleMaven.Games.QuestionLog, where: q.id == ^trusted.id),
+        set: [question_embedding: Pgvector.new(near)]
+      )
+
+      {row, tier} = Games.find_similar_question_in_pool(game.id, exact)
+      assert tier == :trusted
+      assert row.id == trusted.id
+    end
+  end
 end

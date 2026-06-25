@@ -86,7 +86,11 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
       set: [visibility: "community", pooled: true]
     )
 
-    RuleMaven.Workers.EmbedQuestionWorker.enqueue(best.id)
+    # Re-embed the promoted canonical (skip in test — Oban not running).
+    unless Application.get_env(:rule_maven, Oban)[:testing] == :manual do
+      RuleMaven.Workers.EmbedQuestionWorker.enqueue(best.id)
+    end
+
     # Promotion rewards the author's reputation.
     if best.user_id, do: RuleMaven.Games.Trust.recompute_reputation(best.user_id)
   end
