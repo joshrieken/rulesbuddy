@@ -2312,7 +2312,6 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </div>
               <% end %>
             </div>
-          </div>
 
           <%!-- Categories section --%>
             <div style="margin-top:1.25rem">
@@ -2380,6 +2379,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </div>
               <% end %>
             </div>
+          </div>
 
           <%!-- Danger tab --%>
           <div style={if @tab == "danger", do: "display:block", else: "display:none"}>
