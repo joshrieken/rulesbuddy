@@ -40,9 +40,7 @@ config :rule_maven, Oban,
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 3 * * *", RuleMaven.Workers.FaqClusterWorker},
-       {"0 4 * * *", RuleMaven.Workers.DirectPromotionWorker},
-       {"0 5 * * *", RuleMaven.Workers.FaqClusterJob}
+       {"0 4 * * *", RuleMaven.Workers.DirectPromotionWorker}
      ]}
   ],
   queues: [default: 5, cheatsheet: 2, clustering: 1]
