@@ -1901,14 +1901,12 @@ defmodule RuleMavenWeb.GameLive.Form do
                 <% end %>
               </p>
               <p class="text-xs text-gray-400 mt-0.5">
-                <%= if @game_changeset.data.bgg_id do %>
-                  <.link
-                    href={"https://boardgamegeek.com/boardgame/#{@game_changeset.data.bgg_id}"}
-                    target="_blank"
-                    rel="noopener"
-                    class="text-blue-500 hover:underline"
-                  >BGG ID: {@game_changeset.data.bgg_id}</.link>
-                <% end %>
+                <.link
+                  href={"https://boardgamegeek.com/boardgame/#{@game_changeset.data.bgg_id}"}
+                  target="_blank"
+                  rel="noopener"
+                  class="text-blue-500 hover:underline"
+                >BGG ID: {@game_changeset.data.bgg_id}</.link>
               </p>
             </div>
           </div>
