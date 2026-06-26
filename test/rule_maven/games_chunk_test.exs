@@ -44,6 +44,27 @@ defmodule RuleMaven.GamesChunkTest do
       # "See Section 4.3" should be detected
       assert "4.3" in refs
     end
+
+    test "marks chunks with [Page N] even when printed page is undetected", %{game: game} do
+      # Printed page numbers often aren't detected (OCR, odd layouts). The chunk
+      # marker must still be [Page N] (falling back to the physical sheet), never
+      # [Sheet N] — the LLM prompt + cited-page parser only understand [Page N].
+      {:ok, doc} =
+        Games.create_document(%{
+          game_id: game.id,
+          label: "No printed numbers",
+          full_text: "Some rule text on the first sheet with enough words to chunk.",
+          pages: [
+            %{index: 0, sheet: 1, printed: nil, text: "Some rule text on the first sheet."}
+          ]
+        })
+
+      chunks = Repo.all(from c in Chunk, where: c.document_id == ^doc.id)
+
+      assert chunks != []
+      assert Enum.all?(chunks, &String.starts_with?(&1.content, "[Page "))
+      refute Enum.any?(chunks, &String.contains?(&1.content, "[Sheet "))
+    end
   end
 
   describe "retrieval" do
