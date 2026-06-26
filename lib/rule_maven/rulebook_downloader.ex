@@ -110,7 +110,7 @@ defmodule RuleMaven.RulebookDownloader do
 
     with {:ok, pdf_binary} <- fetch_pdf(url),
          {:ok, pdf_path} <- save_pdf(pdf_binary, url),
-         {:ok, raw_text, from_ocr} <- extract_text_with_source(pdf_path) do
+         {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path) do
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them — same treatment as the upload path.
       pages = String.split(raw_text, "\f")
@@ -250,6 +250,19 @@ defmodule RuleMaven.RulebookDownloader do
 
       {:error, reason} ->
         {:error, "Download failed: #{inspect(reason)}"}
+    end
+  end
+
+  # Extract, but if extraction fails for good, remove the PDF we just saved —
+  # no Document row will reference it, so it would otherwise linger on disk.
+  defp extract_with_cleanup(pdf_path) do
+    case extract_text_with_source(pdf_path) do
+      {:ok, _text, _from_ocr} = ok ->
+        ok
+
+      {:error, _reason} = err ->
+        Application.app_dir(:rule_maven, "priv/static/#{pdf_path}") |> File.rm()
+        err
     end
   end
 
