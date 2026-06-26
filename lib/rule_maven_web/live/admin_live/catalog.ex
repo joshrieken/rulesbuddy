@@ -12,6 +12,8 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
          importing: false,
          error: nil,
          result: nil,
+         confirm_clear: false,
+         confirm_text: "",
          total_games: Games.count_games()
        )}
     else
@@ -36,6 +38,32 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
       send(self(), {:run_import, user, pass})
       {:noreply, assign(socket, importing: true, error: nil, result: nil)}
     end
+  end
+
+  @impl true
+  def handle_event("confirm_clear", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: true)}
+  end
+
+  @impl true
+  def handle_event("confirm_cancel", _params, socket) do
+    {:noreply, assign(socket, confirm_clear: false, confirm_text: "")}
+  end
+
+  @impl true
+  def handle_event("confirm_input", params, socket) do
+    text = params["value"] || params["confirm_text"] || ""
+    {:noreply, assign(socket, confirm_text: text)}
+  end
+
+  @impl true
+  def handle_event("clear_all_games", _params, socket) do
+    {count, _} = Games.delete_all_games()
+
+    {:noreply,
+     socket
+     |> assign(confirm_clear: false, confirm_text: "", total_games: Games.count_games())
+     |> put_flash(:info, "Cleared #{count} game(s).")}
   end
 
   @impl true
@@ -112,6 +140,53 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
           Done — {@result} games imported/updated.
         </div>
       <% end %>
+
+      <%!-- Danger Zone --%>
+      <div
+        :if={@total_games > 0}
+        style="margin-top:2rem;border:1px solid var(--red);border-radius:0.5rem;padding:0.75rem 0.9rem;background:var(--bg)"
+      >
+        <h3 style="font-size:0.78rem;font-weight:700;color:var(--red);margin:0 0 0.5rem 0;text-transform:uppercase;letter-spacing:0.03em">
+          Danger Zone
+        </h3>
+        <div class="flex gap-2 flex-wrap" style="align-items:center">
+          <%= if not @confirm_clear do %>
+            <button
+              type="button"
+              phx-click="confirm_clear"
+              style="background:var(--red);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Clear All Games
+            </button>
+          <% else %>
+            <form phx-change="confirm_input" style="display:inline">
+              <span class="text-sm font-medium" style="color:var(--red)">Type DELETE to confirm:</span>
+              <input
+                type="text"
+                name="confirm_text"
+                value={@confirm_text}
+                placeholder="DELETE"
+                style="border:1px solid var(--red);border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.8rem;width:6rem"
+              />
+            </form>
+            <button
+              type="button"
+              phx-click="clear_all_games"
+              disabled={@confirm_text != "DELETE"}
+              style="background:var(--red);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Delete All
+            </button>
+            <button
+              type="button"
+              phx-click="confirm_cancel"
+              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
+            >
+              Cancel
+            </button>
+          <% end %>
+        </div>
+      </div>
     </div>
     """
   end

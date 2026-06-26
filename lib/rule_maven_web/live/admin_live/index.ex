@@ -79,6 +79,19 @@ defmodule RuleMavenWeb.AdminLive.Index do
         </.link>
 
         <.link
+          navigate={~p"/admin/requests"}
+          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
+        >
+          <div style="font-size:1.5rem;margin-bottom:0.4rem">🙋</div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
+            Support Requests
+          </div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">
+            Games users want supported, ranked by demand.
+          </div>
+        </.link>
+
+        <.link
           navigate={~p"/admin/users"}
           style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
         >

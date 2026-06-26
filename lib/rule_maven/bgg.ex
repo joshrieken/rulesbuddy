@@ -41,7 +41,7 @@ defmodule RuleMaven.BGG do
   """
   def fetch_collection(username, opts \\ []) do
     cookies = Keyword.get(opts, :cookies)
-    url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&brief=1"
+    url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&stats=1"
     headers = build_headers(cookies)
 
     case Req.get(url, headers: headers, max_retries: 0, receive_timeout: 15_000) do
@@ -71,7 +71,7 @@ defmodule RuleMaven.BGG do
     else
       :timer.sleep(2000 * attempt + 2000)
 
-      url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&brief=1"
+      url = "#{@base}/collection?username=#{URI.encode_www_form(username)}&own=1&stats=1"
 
       case Req.get(url, headers: build_headers(cookies)) do
         {:ok, %{status: 200, body: body}} ->
@@ -439,7 +439,15 @@ defmodule RuleMaven.BGG do
       |> xpath(
         ~x"//items/item"l,
         objectid: ~x"./@objectid"s,
-        name: ~x"./name/text()"s
+        name: ~x"./name/text()"s,
+        # stats=1 carries lightweight metadata for the whole collection in one
+        # request (no per-game calls), used to seed freshly-created catalog rows.
+        year_published: ~x"./yearpublished/text()"s |> transform_by(&parse_int/1),
+        image_url: ~x"./image/text()"s,
+        thumbnail_url: ~x"./thumbnail/text()"s,
+        min_players: ~x"./stats/@minplayers"s |> transform_by(&parse_int/1),
+        max_players: ~x"./stats/@maxplayers"s |> transform_by(&parse_int/1),
+        playing_time: ~x"./stats/@playingtime"s |> transform_by(&parse_int/1)
       )
       |> Enum.map(&build_game/1)
       |> Enum.reject(&is_nil/1)
@@ -453,11 +461,23 @@ defmodule RuleMaven.BGG do
         name = String.trim(item.name)
 
         if name != "" do
-          %{bgg_id: id, name: name}
+          %{
+            bgg_id: id,
+            name: name,
+            year_published: item.year_published,
+            image_url: blank_to_nil(item.image_url),
+            thumbnail_url: blank_to_nil(item.thumbnail_url),
+            min_players: item.min_players,
+            max_players: item.max_players,
+            playing_time: item.playing_time
+          }
         end
 
       _ ->
         nil
     end
   end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(s), do: s
 end

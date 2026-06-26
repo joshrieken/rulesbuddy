@@ -15,6 +15,23 @@ defmodule RuleMaven.GamesPagesTest do
     end
   end
 
+  describe "effective_page_text/1 layer precedence" do
+    test "cleaned beats original" do
+      assert Games.effective_page_text(%{text: "orig", cleaned: "clean"}) == "clean"
+      assert Games.effective_page_text(%{text: "orig", cleaned: nil}) == "orig"
+    end
+
+    test "empty-string cleaned still counts (not skipped as nil)" do
+      assert Games.effective_page_text(%{text: "orig", cleaned: ""}) == ""
+    end
+
+    test "rebuild_full_text uses effective text" do
+      pages = [%{sheet: 1, printed: 1, text: "orig", cleaned: "clean"}]
+      assert Games.rebuild_full_text(pages) =~ "clean"
+      refute Games.rebuild_full_text(pages) =~ "orig"
+    end
+  end
+
   describe "rebuild_full_text/1 round-trips with paginate/1" do
     test "number_pages output equals rebuild_full_text(paginate(...))" do
       raw = ["alpha", "beta", "gamma"]

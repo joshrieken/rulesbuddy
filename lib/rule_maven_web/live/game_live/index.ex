@@ -24,8 +24,7 @@ defmodule RuleMavenWeb.GameLive.Index do
         view: view,
         collection_ids: collection_ids,
         favorite_ids: favorite_ids,
-        confirm_clear: false,
-        confirm_text: "",
+        requested_ids: Games.requested_game_ids(socket.assigns.current_user.id),
         search: if(connected?(socket), do: nil, else: ""),
         search_ready: false,
         delete_id: nil,
@@ -41,17 +40,24 @@ defmodule RuleMavenWeb.GameLive.Index do
     {:ok, socket}
   end
 
-  @views ~w(playable mine favorites all)
+  @views ~w(playable mine favorites all needs_bgg requested)
+
+  # Views whose rows are paged from the DB (vs fully loaded + paged in-memory).
+  defp db_paged?(view), do: view in ~w(all needs_bgg)
 
   # Views available to a user. "All Games" (full catalog) is game-master only;
   # players are limited to playable games, their collection, and favorites.
   defp view_tabs(user) do
     base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
-    if RuleMaven.Users.game_master?(user), do: base ++ [{"all", "All Games"}], else: base
+
+    if RuleMaven.Users.game_master?(user),
+      do: [{"all", "All Games"}] ++ base ++ [{"needs_bgg", "Needs Pull"}, {"requested", "Requested"}],
+      else: base
   end
 
   defp allowed_view?(user, view) do
-    view in ~w(playable mine favorites) or (view == "all" and RuleMaven.Users.game_master?(user))
+    view in ~w(playable mine favorites) or
+      (view in ~w(all needs_bgg requested) and RuleMaven.Users.game_master?(user))
   end
 
   # Friendly, view-specific copy shown when a pill has no games to list.
@@ -81,6 +87,20 @@ defmodule RuleMavenWeb.GameLive.Index do
       icon: "🗂️",
       title: "The catalog is empty",
       body: "Add a game or import a BoardGameGeek collection to seed the catalog."
+    }
+
+  defp empty_state("needs_bgg"),
+    do: %{
+      icon: "✅",
+      title: "Nothing to pull",
+      body: "Every game with a BGG id already has its full BGG data."
+    }
+
+  defp empty_state("requested"),
+    do: %{
+      icon: "🙋",
+      title: "No requests yet",
+      body: "Games users request support for will show up here."
     }
 
   defp empty_state(_),
@@ -117,6 +137,13 @@ defmodule RuleMavenWeb.GameLive.Index do
     # (the infinite-scroll sentinel shows while display_games < loaded games).
     do: Games.search_catalog(search || "", category: category, limit: limit + 1)
 
+  defp load_view_games("needs_bgg", _user_id, _search, _category, limit),
+    # Fetch one extra row so the render path knows there's another page.
+    do: Games.list_games_needing_bgg(limit + 1)
+
+  defp load_view_games("requested", _user_id, _search, _category, _limit),
+    do: Games.list_requested_games()
+
   defp load_view_games(_playable, _user_id, _search, _category, _limit),
     do: Games.list_games_with_documents()
 
@@ -150,9 +177,9 @@ defmodule RuleMavenWeb.GameLive.Index do
     assign_games(socket, games)
   end
 
-  # "all" view is DB-backed, so search/category changes must re-query.
+  # DB-paged views must re-query on search/category changes.
   defp maybe_reload_for_all(socket) do
-    if socket.assigns.view == "all", do: reload_games(socket), else: socket
+    if db_paged?(socket.assigns.view), do: reload_games(socket), else: socket
   end
 
   @impl true
@@ -170,21 +197,6 @@ defmodule RuleMavenWeb.GameLive.Index do
     {:noreply, assign(socket, expanded_games: expanded)}
   end
 
-  @impl true
-  def handle_event("confirm_clear", _params, socket) do
-    {:noreply, assign(socket, confirm_clear: true)}
-  end
-
-  @impl true
-  def handle_event("confirm_cancel", _params, socket) do
-    {:noreply, assign(socket, confirm_clear: false, confirm_text: "")}
-  end
-
-  @impl true
-  def handle_event("confirm_input", params, socket) do
-    text = params["value"] || params["confirm_text"] || ""
-    {:noreply, assign(socket, confirm_text: text)}
-  end
 
   @impl true
   def handle_event("delete_game", %{"id" => id_str}, socket) do
@@ -311,10 +323,20 @@ defmodule RuleMavenWeb.GameLive.Index do
   def handle_event("restore_search", %{"value" => text}, socket) do
     # Keep display_count untouched: the saved list position is restored
     # separately via "restore_list_pos", and this fires on every mount.
-    {:noreply,
-     socket
-     |> assign(search: text, search_ready: true, selected_idx: -1)
-     |> maybe_reload_for_all()}
+    #
+    # Counts (source/expansion) are computed over visible_games, which is empty
+    # while search is still nil (the connected-mount sentinel). Now that search
+    # is restored, recompute them so the Ask button + expansion toggle appear:
+    # "all" re-queries the DB, other views just recompute counts over the
+    # already-loaded list.
+    socket = assign(socket, search: text, search_ready: true, selected_idx: -1)
+
+    socket =
+      if db_paged?(socket.assigns.view),
+        do: reload_games(socket),
+        else: assign_games(socket, socket.assigns.games)
+
+    {:noreply, socket}
   end
 
   # Restore how many rows were loaded when the user last left the list, so the
@@ -391,23 +413,48 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
-  def handle_event("load_more", _params, socket) do
-    count = socket.assigns.display_count + 20
-    socket = assign(socket, display_count: count)
-    # The "all" view pages from the DB, so fetch the next page; other views are
-    # already fully loaded and just reveal more rows in-memory.
-    socket = if socket.assigns.view == "all", do: reload_games(socket), else: socket
-    {:noreply, push_event(socket, "save_count", %{count: count})}
+  def handle_event("pull_bgg", %{"id" => id_str}, socket) do
+    if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+      {id, _} = Integer.parse(id_str)
+      game = Games.get_game!(id)
+
+      case RuleMaven.BGG.enrich_game(game, force: true) do
+        {:ok, _} ->
+          {:noreply,
+           socket |> reload_games() |> put_flash(:info, "Pulled BGG data for #{game.name}.")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "BGG pull failed: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
-  def handle_event("clear_all_games", _params, socket) do
-    {count, _} = Games.delete_all_games()
+  def handle_event("request_support", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+    Games.request_support(socket.assigns.current_user.id, id)
 
     {:noreply,
      socket
-     |> assign(games: [], confirm_clear: false, confirm_text: "", search: "")
-     |> put_flash(:info, "Cleared #{count} game(s).")}
+     |> assign(requested_ids: MapSet.put(socket.assigns.requested_ids, id))
+     |> put_flash(:info, "Requested support — we'll take a look.")}
+  end
+
+  @impl true
+  def handle_event("load_more", _params, socket) do
+    count = socket.assigns.display_count + 20
+    socket = assign(socket, display_count: count)
+    # DB-paged views fetch the next page. Other views are already fully loaded,
+    # but counts are only computed for the previously visible rows — recompute
+    # them so the newly revealed games get their expansion/source counts
+    # (otherwise their toggle + Ask button stay hidden).
+    socket =
+      if db_paged?(socket.assigns.view),
+        do: reload_games(socket),
+        else: assign_games(socket, socket.assigns.games)
+    {:noreply, push_event(socket, "save_count", %{count: count})}
   end
 
   defp visible_games(assigns) do
@@ -507,54 +554,7 @@ defmodule RuleMavenWeb.GameLive.Index do
           variant="primary"
           navigate={~p"/games/new"}
         >+ Add Game</.button>
-        <.button variant="secondary" navigate={~p"/games/import"}>Import BGG Collection</.button>
-      </div>
-
-      <%!-- Danger Zone --%>
-      <div
-        :if={RuleMaven.Users.game_master?(@current_user) and @games != []}
-        style="margin-bottom:1rem;border:1px solid var(--red);border-radius:0.5rem;padding:0.75rem 0.9rem;background:var(--bg)"
-      >
-        <h3 style="font-size:0.78rem;font-weight:700;color:var(--red);margin:0 0 0.5rem 0;text-transform:uppercase;letter-spacing:0.03em">
-          Danger Zone
-        </h3>
-        <div class="flex gap-2 flex-wrap" style="align-items:center">
-          <%= if not @confirm_clear do %>
-            <button
-              type="button"
-              phx-click="confirm_clear"
-              style="background:var(--red);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
-            >
-              Clear All Games
-            </button>
-          <% else %>
-            <form phx-change="confirm_input" style="display:inline">
-              <span class="text-sm font-medium" style="color:var(--red)">Type DELETE to confirm:</span>
-              <input
-                type="text"
-                name="confirm_text"
-                value={@confirm_text}
-                placeholder="DELETE"
-                style="border:1px solid var(--red);border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.8rem;width:6rem"
-              />
-            </form>
-            <button
-              type="button"
-              phx-click="clear_all_games"
-              disabled={@confirm_text != "DELETE"}
-              style="background:var(--red);color:white;border:none;padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
-            >
-              Delete All
-            </button>
-            <button
-              type="button"
-              phx-click="confirm_cancel"
-              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);padding:0.375rem 0.75rem;border-radius:0.375rem;font-weight:600;font-size:0.8rem;cursor:pointer"
-            >
-              Cancel
-            </button>
-          <% end %>
-        </div>
+        <.button variant="secondary" navigate={~p"/games/import"}>Sync Your BGG Collection</.button>
       </div>
 
       <% filtered = filtered_games(@games, @search, @category_filter) %>
@@ -565,12 +565,20 @@ defmodule RuleMavenWeb.GameLive.Index do
           <%= for {game, idx} <- Enum.with_index(display_games) do %>
             <% expansion_count = Map.get(@expansion_counts, game.id, 0) %>
             <% expanded = Map.get(@expanded_games, game.id) %>
+            <% playable = Map.get(@source_counts, game.id, 0) > 0 %>
+            <%!-- In "My Collection", games without a rulebook are shown grayed
+                  out with nothing to do but request support. --%>
+            <% unsupported = @view == "mine" and not playable %>
+            <%!-- Admins can pull BGG data for any showing game that lacks it. --%>
+            <% needs_pull =
+              RuleMaven.Users.game_master?(@current_user) and not is_nil(game.bgg_id) and
+                is_nil(game.bgg_data) %>
             <div
               id={"game-card-#{idx}"}
               class="border rounded-lg p-4 flex items-center gap-4 game-card"
-              phx-click="go_to_game"
+              phx-click={unless unsupported, do: "go_to_game"}
               phx-value-id={game.id}
-              style={"cursor:pointer;#{if @selected_idx == idx, do: "outline:2px solid var(--accent);outline-offset:-2px;background:var(--bg-subtle)", else: ""}"}
+              style={"#{if unsupported, do: "cursor:default;opacity:0.55;filter:grayscale(1)", else: "cursor:pointer"};#{if @selected_idx == idx, do: ";outline:2px solid var(--accent);outline-offset:-2px;background:var(--bg-subtle)", else: ""}"}
             >
               <%= if game.image_url do %>
                 <img
@@ -600,6 +608,33 @@ defmodule RuleMavenWeb.GameLive.Index do
                 </p>
               </div>
               <div class="flex gap-1.5 flex-shrink-0 game-actions items-center">
+                <button
+                  :if={unsupported and needs_pull}
+                  type="button"
+                  phx-click="pull_bgg"
+                  phx-value-id={game.id}
+                  style="background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
+                >⬇ Pull BGG</button>
+                <%= if unsupported do %>
+                  <% requested = MapSet.member?(@requested_ids, game.id) %>
+                  <%= if requested do %>
+                    <span style="color:var(--text-muted);font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;line-height:1.2">Requested ✓</span>
+                  <% else %>
+                    <button
+                      type="button"
+                      phx-click="request_support"
+                      phx-value-id={game.id}
+                      style="background:var(--bg-subtle);color:var(--accent);border:1px solid var(--accent);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
+                    >Request</button>
+                  <% end %>
+                <% else %>
+                <button
+                  :if={needs_pull}
+                  type="button"
+                  phx-click="pull_bgg"
+                  phx-value-id={game.id}
+                  style="background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
+                >⬇ Pull BGG</button>
                 <%= if expansion_count > 0 do %>
                   <button
                     type="button"
@@ -670,6 +705,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                       title="Delete game"
                     >✕</button>
                   <% end %>
+                <% end %>
                 <% end %>
               </div>
             </div>
@@ -788,7 +824,7 @@ defmodule RuleMavenWeb.GameLive.Index do
               :if={@view in ~w(mine playable all)}
               navigate={~p"/games/import"}
               style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.4rem 1rem;border-radius:0.4rem"
-            >🔍 Import BGG Collection</.link>
+            >🔍 Sync Your BGG Collection</.link>
           </div>
         <% end %>
 

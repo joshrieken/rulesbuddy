@@ -6,7 +6,12 @@ defmodule RuleMaven.Games.Document do
     @moduledoc """
     A single first-class rulebook page. `index` is the 0-based physical order,
     `sheet` the physical PDF sheet number, `printed` the rulebook's printed page
-    number (nil when undetected), `text` the page body (no marker).
+    number (nil when undetected).
+
+    Two text layers (no markers): `text` is the read-only original from
+    extraction, `cleaned` the editable working copy (auto-populated by Clean Up,
+    then hand-editable; nil until cleaned/edited). The effective text used
+    everywhere downstream is `cleaned || text`.
     """
     use Ecto.Schema
     import Ecto.Changeset
@@ -17,10 +22,13 @@ defmodule RuleMaven.Games.Document do
       field :sheet, :integer
       field :printed, :integer
       field :text, :string
+      field :cleaned, :string
     end
 
     def changeset(page, attrs) do
-      cast(page, attrs, [:index, :sheet, :printed, :text])
+      # empty_values: [] so a blank page body ("") is stored as "" rather than
+      # Ecto's default of treating "" as missing and leaving the field nil.
+      cast(page, attrs, [:index, :sheet, :printed, :text, :cleaned], empty_values: [])
     end
   end
 

@@ -96,23 +96,10 @@ defmodule RuleMavenWeb.GameLive.Import do
   end
 
   @impl true
-  def handle_info({:import_games, [], imported, created}, socket) do
-    if created != [] do
-      Task.start(fn ->
-        created
-        |> Task.async_stream(
-          fn game ->
-            :timer.sleep(2000)
-            BGG.enrich_game(game)
-          end,
-          max_concurrency: 2,
-          ordered: false,
-          timeout: 60_000
-        )
-        |> Stream.run()
-      end)
-    end
-
+  def handle_info({:import_games, [], imported, _created}, socket) do
+    # Imported games are NOT enriched from BGG here. Unsupported games sit in the
+    # user's collection grayed out until someone adds rulebook support; metadata
+    # is pulled later (on demand, in the game form) only for games we support.
     {:noreply,
      assign(socket,
        importing: false,
@@ -130,10 +117,23 @@ defmodule RuleMavenWeb.GameLive.Import do
 
   # Find the game in the global catalog by BGG id, or create it. Returns
   # {:ok, game, was_created?} so callers can enrich only freshly-created rows.
-  defp ensure_catalog_game(%{bgg_id: bgg_id, name: name}) do
+  defp ensure_catalog_game(%{bgg_id: bgg_id} = attrs) do
     case Games.get_game_by_bgg_id(bgg_id) do
       nil ->
-        case Games.create_game(%{name: name, bgg_id: bgg_id}) do
+        # Seed lightweight metadata from the collection response (one request,
+        # no per-game BGG calls). The rank dump later upserts by bgg_id and stays
+        # authoritative for name/year/rank, so this won't conflict.
+        create_attrs = %{
+          name: attrs.name,
+          bgg_id: bgg_id,
+          year_published: attrs[:year_published],
+          image_url: attrs[:image_url],
+          min_players: attrs[:min_players],
+          max_players: attrs[:max_players],
+          playing_time: attrs[:playing_time]
+        }
+
+        case Games.create_game(create_attrs) do
           {:ok, game} -> {:ok, game, true}
           _ -> :error
         end
@@ -181,7 +181,7 @@ defmodule RuleMavenWeb.GameLive.Import do
         </.link>
       </div>
 
-      <h1 class="text-2xl font-bold mb-6">Import from BoardGameGeek</h1>
+      <h1 class="text-2xl font-bold mb-6">Sync Your BGG Collection</h1>
 
       <div class="border rounded-lg p-4 mb-6">
         <form phx-submit="fetch" class="space-y-3">

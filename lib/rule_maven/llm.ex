@@ -146,7 +146,11 @@ defmodule RuleMaven.LLM do
     if String.trim(page_text) == "" do
       {:ok, page_text}
     else
-      case chat(page_text, "cleanup_rulebook", system: @cleanup_system, max_tokens: 4096) do
+      case chat(page_text, "cleanup_rulebook",
+             system: @cleanup_system,
+             max_tokens: 4096,
+             model: model(:cleanup)
+           ) do
         {:ok, cleaned} ->
           trimmed = String.trim(cleaned)
 
@@ -175,7 +179,7 @@ defmodule RuleMaven.LLM do
       end
 
     body = %{
-      model: model(),
+      model: opts[:model] || model(),
       max_tokens: opts[:max_tokens] || 2048,
       messages: messages
     }
@@ -448,7 +452,23 @@ defmodule RuleMaven.LLM do
     RuleMaven.Settings.get("llm_provider") || "openrouter"
   end
 
-  def model do
+  @doc """
+  Model id for a given purpose. `:default` (answering, summaries, etc.) reads the
+  per-provider `llm_model_<provider>` override, then the provider default. `:cleanup`
+  (rulebook text cleanup) first checks `llm_cleanup_model_<provider>` and falls back
+  to the `:default` model when unset — so cleanup can run a cheaper/faster model
+  than answering without touching the answering config.
+  """
+  def model(purpose \\ :default)
+
+  def model(:cleanup) do
+    case RuleMaven.Settings.get("llm_cleanup_model_#{provider()}") do
+      m when is_binary(m) and m != "" -> m
+      _ -> model(:default)
+    end
+  end
+
+  def model(_default) do
     provider_name = provider()
     provider_conf = @providers[provider_name]
 

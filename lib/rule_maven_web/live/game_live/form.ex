@@ -59,7 +59,13 @@ defmodule RuleMavenWeb.GameLive.Form do
         cleanup_subscribed: false,
         expanded_source_id: nil,
         reader_mode: "paginated",
-        reader_page: 0
+        # Current page index per source entry (id => idx) for the inline + modal
+        # paginated views, plus whether the page picker selects by Sheet or Page.
+        source_page: %{},
+        reader_label_mode: "sheet",
+        # Which text layer each source shows (id => "original"|"edited"|"cleaned").
+        # Unset sources fall back to the most-refined layer present.
+        editor_tab: %{}
       )
       |> allow_upload(:rulebook_pdfs,
         accept: ["application/pdf", ".pdf"],
@@ -93,16 +99,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             game
             |> Games.list_rulebook_sources()
             |> Enum.with_index()
-            |> Enum.map(fn {s, i} ->
-              %{
-                id: i,
-                source_id: s.id,
-                label: s.label,
-                text: s.full_text,
-                pdf_path: s.pdf_path,
-                html_path: s.html_path
-              }
-            end)
+            |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
           # Overlay any not-yet-saved cleanup result so cleaned text survives a
           # refresh / tab switch until the user Saves (which clears it).
@@ -222,7 +219,18 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("add_source", _params, socket) do
     entries = socket.assigns.source_entries
     next_id = (Enum.map(entries, & &1.id) ++ [-1]) |> Enum.max() |> Kernel.+(1)
-    {:noreply, assign(socket, source_entries: entries ++ [%{id: next_id, label: "", text: ""}])}
+
+    new_entry = %{
+      id: next_id,
+      source_id: nil,
+      label: "",
+      text: "",
+      pages: [%{index: 0, sheet: 1, printed: nil, text: "", cleaned: nil}],
+      pdf_path: nil,
+      html_path: nil
+    }
+
+    {:noreply, assign(socket, source_entries: entries ++ [new_entry])}
   end
 
   @impl true
@@ -351,7 +359,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
     if entry && entry.source_id && String.trim(entry.text) != "" do
       sid = entry.source_id
-      total = entry.text |> String.split("\f") |> length()
+      total = length(entry.pages)
 
       # Persist running state so progress survives a page refresh (the work
       # runs in a detached Task and reports via PubSub keyed on source_id).
@@ -368,7 +376,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   def handle_event("expand_source", %{"id" => id}, socket) do
-    {:noreply, assign(socket, expanded_source_id: String.to_integer(id), reader_page: 0)}
+    {:noreply, assign(socket, expanded_source_id: String.to_integer(id))}
   end
 
   def handle_event("close_source", _params, socket) do
@@ -379,12 +387,68 @@ defmodule RuleMavenWeb.GameLive.Form do
     {:noreply, assign(socket, reader_mode: mode)}
   end
 
-  def handle_event("set_reader_page", %{"page" => page}, socket) do
-    {:noreply, assign(socket, reader_page: String.to_integer(page))}
+  def handle_event("set_reader_label_mode", %{"mode" => mode}, socket)
+      when mode in ~w(sheet page) do
+    {:noreply, assign(socket, reader_label_mode: mode)}
   end
 
-  def handle_event("reader_page_step", %{"delta" => delta}, socket) do
-    {:noreply, assign(socket, reader_page: socket.assigns.reader_page + String.to_integer(delta))}
+  # Set the current page index for one source entry (inline + modal share this).
+  # The select lives inside the save form, so LiveView serializes the whole form
+  # on change; the entry id is encoded in the select's name ("pagesel_<id>") and
+  # read back from _target.
+  def handle_event("set_source_page", %{"_target" => [target]} = params, socket) do
+    case target do
+      "pagesel_" <> id ->
+        id = String.to_integer(id)
+        page = String.to_integer(params[target] || "0")
+        {:noreply, assign(socket, source_page: Map.put(socket.assigns.source_page, id, page))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Edit one page's body text. The textarea name encodes entry id, page index and
+  # which layer is being edited ("pg_<id>_<idx>_<layer>" inline, "pgm_..." in the
+  # modal; layer is "orig" for unsaved manual entries, else "edit"). Both views
+  # feed the same socket state so they stay in sync; full_text (effective text) is
+  # kept current so cleanup/expand checks and Save stay consistent.
+  def handle_event("edit_page", %{"_target" => [target]} = params, socket) do
+    case Regex.run(~r/^pgm?_(\d+)_(\d+)_(orig|clean)$/, target) do
+      [_, id, idx, layer] ->
+        id = String.to_integer(id)
+        idx = String.to_integer(idx)
+        text = params[target] || ""
+        field = if layer == "orig", do: :text, else: :cleaned
+
+        entries =
+          Enum.map(socket.assigns.source_entries, fn e ->
+            if e.id == id and idx < length(e.pages) do
+              pages = List.update_at(e.pages, idx, &Map.put(&1, field, text))
+              %{e | pages: pages, text: Games.rebuild_full_text(pages)}
+            else
+              e
+            end
+          end)
+
+        {:noreply, assign(socket, source_entries: entries)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("set_editor_tab", %{"id" => id, "tab" => tab}, socket)
+      when tab in ~w(original cleaned) do
+    id = String.to_integer(id)
+    {:noreply, assign(socket, editor_tab: Map.put(socket.assigns.editor_tab, id, tab))}
+  end
+
+  def handle_event("source_page_step", %{"id" => id, "delta" => delta}, socket) do
+    id = String.to_integer(id)
+    cur = Map.get(socket.assigns.source_page, id, 0)
+    sp = Map.put(socket.assigns.source_page, id, cur + String.to_integer(delta))
+    {:noreply, assign(socket, source_page: sp)}
   end
 
   def handle_event("save_categories", _params, socket) do
@@ -747,10 +811,21 @@ defmodule RuleMavenWeb.GameLive.Form do
       socket.assigns.source_entries
       |> Enum.map(fn entry ->
         label = all_params["label_#{entry.id}"] || ""
-        text = all_params["text_#{entry.id}"] || ""
-        {label, %{full_text: text, pdf_path: nil}}
+
+        # All three layers are kept current in socket state (edit_page + cleanup),
+        # synced across the inline + expanded editors, so build straight from there.
+        pages =
+          entry.pages
+          |> Enum.with_index()
+          |> Enum.map(fn {p, i} ->
+            %{index: i, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p[:cleaned]}
+          end)
+
+        {label, %{full_text: Games.rebuild_full_text(pages), pages: pages, pdf_path: nil}}
       end)
-      |> Enum.filter(fn {l, %{full_text: t}} -> String.trim(l) != "" && String.trim(t) != "" end)
+      |> Enum.filter(fn {l, %{pages: pages}} ->
+        String.trim(l) != "" and Enum.any?(pages, &(String.trim(Games.effective_page_text(&1)) != ""))
+      end)
 
     pdf_texts =
       consume_uploaded_entries(socket, :rulebook_pdfs, fn %{path: path}, entry ->
@@ -823,9 +898,7 @@ defmodule RuleMavenWeb.GameLive.Form do
       game
       |> Games.list_rulebook_sources()
       |> Enum.with_index()
-      |> Enum.map(fn {s, i} ->
-        %{id: i, source_id: s.id, label: s.label, text: s.full_text, pdf_path: s.pdf_path, html_path: s.html_path}
-      end)
+      |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
     tab = if pdfs != [], do: "manage", else: socket.assigns.tab
 
@@ -872,16 +945,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           game
           |> Games.list_rulebook_sources()
           |> Enum.with_index()
-          |> Enum.map(fn {s, i} ->
-            %{
-              id: i,
-              source_id: s.id,
-              label: s.label,
-              text: s.full_text,
-              pdf_path: s.pdf_path,
-              html_path: s.html_path
-            }
-          end)
+          |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
         {:noreply,
          socket
@@ -924,16 +988,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           game
           |> Games.list_rulebook_sources()
           |> Enum.with_index()
-          |> Enum.map(fn {s, i} ->
-            %{
-              id: i,
-              source_id: s.id,
-              label: s.label,
-              text: s.full_text,
-              pdf_path: s.pdf_path,
-              html_path: s.html_path
-            }
-          end)
+          |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
         {:noreply,
          socket
@@ -1017,51 +1072,46 @@ defmodule RuleMavenWeb.GameLive.Form do
 
     if entry && entry.source_id do
       sid = entry.source_id
-      text = entry.text
+      # Clean the ORIGINAL text of each page (never the edited/cleaned layers).
+      originals = Enum.map(entry.pages, &(&1.text || ""))
 
       # Detached Task: outlives this LiveView process so a page refresh doesn't
       # kill the work. Progress is persisted to Settings and broadcast over
       # PubSub so the current (or a freshly remounted) LiveView can follow along.
       Task.start(fn ->
-        # Clean each page independently so the \f page separators (and thus the
-        # page numbers derived from them at chunk time) survive untouched.
-        pages = String.split(text, "\f")
-        total = length(pages)
+        total = length(originals)
         counter = :counters.new(1, [:atomics])
 
-        cleaned_pages =
-          pages
+        cleaned_pairs =
+          originals
+          |> Enum.with_index()
           |> Task.async_stream(
-            fn page ->
-              # Keep the leading "===== SHEET n PAGE n =====" marker out of the
-              # LLM's hands so the page numbers are preserved exactly; clean body.
-              {marker, body} =
-                case Games.split_page_marker(page) do
-                  {sheet, nil, rest} -> {"===== SHEET #{sheet} =====\n", rest}
-                  {sheet, printed, rest} -> {"===== SHEET #{sheet} PAGE #{printed} =====\n", rest}
-                  nil -> {"", page}
-                end
-
+            fn {body, idx} ->
               cleaned =
                 case RuleMaven.LLM.cleanup_page(body) do
-                  {:ok, text} -> marker <> text
-                  {:error, _} -> page
+                  {:ok, text} -> text
+                  {:error, _} -> body
                 end
 
               :counters.add(counter, 1, 1)
               done = :counters.get(counter, 1)
               Settings.put("cleanup_done_#{sid}", to_string(done))
               broadcast_cleanup(game_id, {:cleanup_progress, sid, done, total})
-              cleaned
+              {idx, cleaned}
             end,
             max_concurrency: 5,
             ordered: true,
             timeout: :infinity
           )
-          |> Enum.map(fn {:ok, cleaned} -> cleaned end)
+          |> Enum.map(fn {:ok, pair} -> pair end)
 
-        result = Enum.join(cleaned_pages, "\f")
-        Settings.put("cleanup_result_#{sid}", result)
+        result = Map.new(cleaned_pairs)
+        # Persist as a JSON {index => cleaned} map (durable across refresh).
+        Settings.put(
+          "cleanup_result_#{sid}",
+          Jason.encode!(Map.new(result, fn {i, c} -> {to_string(i), c} end))
+        )
+
         Settings.put("cleanup_status_#{sid}", "done")
         broadcast_cleanup(game_id, {:cleanup_done, sid, result})
       end)
@@ -1084,16 +1134,16 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:cleanup_done, sid, cleaned}, socket) do
+  def handle_info({:cleanup_done, sid, cleaned_map}, socket) do
     entries =
       Enum.map(socket.assigns.source_entries, fn e ->
-        if e.source_id == sid, do: %{e | text: cleaned}, else: e
+        if e.source_id == sid, do: apply_cleaned(e, cleaned_map), else: e
       end)
 
     {:noreply,
      socket
      |> assign(source_entries: entries, cleaning: Map.delete(socket.assigns.cleaning, sid))
-     |> put_flash(:info, "Cleaned up the rulebook text — review it and Save to apply.")}
+     |> put_flash(:info, "Cleaned up the rulebook text — review it on the Cleaned tab and Save to apply.")}
   end
 
   @impl true
@@ -1292,14 +1342,70 @@ defmodule RuleMavenWeb.GameLive.Form do
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, "game_cleanup:#{game_id}", msg)
   end
 
-  # Replace each source's text with its persisted (unsaved) cleanup result, if any.
+  # Build the LiveView source-entry map (with first-class pages) from a Document.
+  defp source_entry(s, i) do
+    %{
+      id: i,
+      source_id: s.id,
+      label: s.label,
+      text: s.full_text,
+      pages: doc_pages(s),
+      pdf_path: s.pdf_path,
+      html_path: s.html_path
+    }
+  end
+
+  # Plain page maps for the form (text/cleaned/edited layers), from the doc's
+  # embedded pages (or parsed from legacy full_text when not yet backfilled).
+  defp doc_pages(s) do
+    case s.pages do
+      [_ | _] = ps ->
+        Enum.map(ps, fn p ->
+          %{index: p.index, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p.cleaned}
+        end)
+
+      _ ->
+        Games.pages_from_full_text(s.full_text || "")
+        |> Enum.map(&Map.put(&1, :cleaned, nil))
+    end
+  end
+
+  # Apply a persisted (unsaved) cleanup result onto a source's pages so the
+  # Cleaned tab survives a refresh until the user Saves.
   defp overlay_cleanup_results(entries) do
     Enum.map(entries, fn e ->
-      case e.source_id && Settings.get("cleanup_result_#{e.source_id}") do
-        result when is_binary(result) -> %{e | text: result}
+      case e.source_id && cleanup_result_map(e.source_id) do
+        map when is_map(map) -> apply_cleaned(e, map)
         _ -> e
       end
     end)
+  end
+
+  # Set each page's :cleaned from a {index => cleaned_text} map, then refresh the
+  # derived full_text (effective text feeds the LLM/search/chunker).
+  defp apply_cleaned(entry, cleaned_map) do
+    pages =
+      entry.pages
+      |> Enum.with_index()
+      |> Enum.map(fn {p, i} ->
+        case Map.get(cleaned_map, i) do
+          c when is_binary(c) -> Map.put(p, :cleaned, c)
+          _ -> p
+        end
+      end)
+
+    %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
+  end
+
+  # Decode the persisted JSON cleanup result into %{index(int) => cleaned}.
+  # Tolerates legacy/non-JSON values (returns nil) so a stale key can't crash mount.
+  defp cleanup_result_map(sid) do
+    with json when is_binary(json) <- Settings.get("cleanup_result_#{sid}"),
+         {:ok, %{} = decoded} <- Jason.decode(json) do
+      Map.new(decoded, fn {k, v} -> {String.to_integer(k), v} end)
+    else
+      _ -> nil
+    end
   end
 
   # Build the {source_id => {done, total}} map for sources still being cleaned.
@@ -1602,13 +1708,10 @@ defmodule RuleMavenWeb.GameLive.Form do
         Enum.each(source_map, fn {label, attrs} ->
           case existing_by_label do
             %{^label => doc} ->
-              # Persist edited text on an existing source. Only touch full_text
-              # (pages are re-derived from it); leave pdf_path/metadata intact.
-              text = attrs[:full_text] || attrs["full_text"]
-
-              if is_binary(text) and text != doc.full_text do
-                Games.update_document(doc, %{full_text: text})
-              end
+              # Persist the page layers (original/cleaned/edited) + derived
+              # full_text; leave pdf_path/metadata intact. update_document
+              # re-chunks only when full_text actually changes.
+              Games.update_document(doc, %{full_text: attrs.full_text, pages: attrs.pages})
 
             _ ->
               Games.create_rulebook_source(Map.merge(attrs, %{game_id: game.id, label: label}))
@@ -1623,6 +1726,121 @@ defmodule RuleMavenWeb.GameLive.Form do
       {:error, changeset} ->
         {:noreply, assign(socket, game_changeset: changeset)}
     end
+  end
+
+  # Shared page navigator for the inline editor and the expanded reader. Selects
+  # a source's current page by Sheet number or printed Page number, with
+  # prev/next steppers. `cur` is a 0-based position into `pages`.
+  attr :id, :integer, required: true
+  attr :pages, :list, required: true
+  attr :cur, :integer, required: true
+  attr :label_mode, :string, required: true
+
+  defp page_nav(assigns) do
+    printed = Enum.filter(Enum.with_index(assigns.pages), fn {p, _i} -> p.printed end)
+    mode = if assigns.label_mode == "page" and printed != [], do: "page", else: "sheet"
+
+    assigns =
+      assign(assigns,
+        count: length(assigns.pages),
+        printed: printed,
+        mode: mode,
+        step_style:
+          "height:1.9rem;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:1rem;line-height:1;padding:0 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer",
+        select_style:
+          "width:auto;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;padding:0 0.45rem;font-size:0.85rem;background:var(--bg);color:var(--text);cursor:pointer"
+      )
+
+    ~H"""
+    <div :if={@count > 0} style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem">
+      <button
+        type="button"
+        phx-click="source_page_step"
+        phx-value-id={@id}
+        phx-value-delta="-1"
+        disabled={@cur <= 0}
+        style={@step_style}
+      >‹</button>
+
+      <div :if={@printed != []} style="display:inline-flex;align-items:stretch;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;overflow:hidden">
+        <button
+          type="button"
+          phx-click="set_reader_label_mode"
+          phx-value-mode="sheet"
+          style={"display:inline-flex;align-items:center;font-size:0.68rem;padding:0 0.5rem;border:none;cursor:pointer;background:#{if @mode == "sheet", do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if @mode == "sheet", do: "white", else: "var(--text-secondary)"}"}
+        >Sheet</button>
+        <button
+          type="button"
+          phx-click="set_reader_label_mode"
+          phx-value-mode="page"
+          style={"display:inline-flex;align-items:center;font-size:0.68rem;padding:0 0.5rem;border:none;cursor:pointer;background:#{if @mode == "page", do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if @mode == "page", do: "white", else: "var(--text-secondary)"}"}
+        >Page</button>
+      </div>
+
+      <label style="display:inline-flex;align-items:center;height:1.9rem;margin:0;gap:0.3rem;font-size:0.7rem;color:var(--text-muted)">
+        {if @mode == "page", do: "Page", else: "Sheet"}
+        <%!-- No <form> wrapper (would nest in the save form). Entry id is encoded
+              in the name ("pagesel_<id>") and read from _target on change. --%>
+        <select name={"pagesel_#{@id}"} phx-change="set_source_page" style={@select_style}>
+          <%= if @mode == "page" do %>
+            <option :for={{p, i} <- @printed} value={i} selected={i == @cur}>{p.printed}</option>
+          <% else %>
+            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>{p.sheet}</option>
+          <% end %>
+        </select>
+      </label>
+
+      <button
+        type="button"
+        phx-click="source_page_step"
+        phx-value-id={@id}
+        phx-value-delta="1"
+        disabled={@cur >= @count - 1}
+        style={@step_style}
+      >›</button>
+      <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">{@cur + 1} / {@count}</span>
+    </div>
+    """
+  end
+
+  # ── Page-layer (Original/Cleaned) helpers ──
+
+  # The layer a source shows: explicit user choice, else the editable Cleaned
+  # working copy (its content seeds from the original via layer_text/2).
+  defp editor_layer(entry, editor_tab) do
+    Map.get(editor_tab, entry.id) || "cleaned"
+  end
+
+  # Text shown for a page in a given layer. The Cleaned working copy is seeded
+  # from the original text until it's auto-cleaned or hand-edited.
+  defp layer_text(p, "original"), do: p.text || ""
+  defp layer_text(p, "cleaned"), do: if(is_binary(p[:cleaned]), do: p.cleaned, else: p.text || "")
+
+  # Cleaned is the editable working copy. Original is read-only, except for an
+  # unsaved manual entry whose first content is its original.
+  defp layer_editable?(_entry, "cleaned"), do: true
+  defp layer_editable?(entry, "original"), do: is_nil(entry.source_id)
+  defp layer_editable?(_entry, _), do: false
+
+  defp layer_field("original"), do: "orig"
+  defp layer_field(_), do: "clean"
+
+  attr :id, :integer, required: true
+  attr :current, :string, required: true
+
+  defp layer_tabs(assigns) do
+    ~H"""
+    <div style="display:inline-flex;gap:0.25rem;margin-bottom:0.4rem">
+      <button
+        :for={tab <- ~w(original cleaned)}
+        type="button"
+        phx-click="set_editor_tab"
+        phx-value-id={@id}
+        phx-value-tab={tab}
+        style={"font-size:0.68rem;padding:0.15rem 0.55rem;border-radius:0.3rem;cursor:pointer;text-transform:capitalize;border:1px solid var(--border);#{if @current == tab, do: "background:var(--accent);color:white", else: "background:var(--bg-subtle);color:var(--text-secondary)"}"}
+      >{tab}</button>
+    </div>
+    """
   end
 
   @impl true
@@ -1812,7 +2030,6 @@ defmodule RuleMavenWeb.GameLive.Form do
             Upload Rulebook
           </button>
           <button
-            :if={@source_entries != []}
             type="button"
             phx-click="switch_tab"
             phx-value-tab="manage"
@@ -2083,6 +2300,15 @@ defmodule RuleMavenWeb.GameLive.Form do
           <div style={if @tab == "manage", do: "display:block", else: "display:none"}>
             <div class="space-y-4">
               <h2 class="text-lg font-semibold">Rulebook Sources</h2>
+              <p :if={@source_entries == []} style="color:var(--text-muted);font-size:0.85rem">
+                No rulebook sources yet. Add one from the
+                <button
+                  type="button"
+                  phx-click="switch_tab"
+                  phx-value-tab="rulebook"
+                  style="color:var(--blue);background:none;border:none;padding:0;font:inherit;cursor:pointer;text-decoration:underline"
+                >Upload Rulebook</button> tab.
+              </p>
               <%= for entry <- @source_entries do %>
                 <div class="border rounded p-4">
                   <div class="flex gap-2 items-end mb-2">
@@ -2129,14 +2355,26 @@ defmodule RuleMavenWeb.GameLive.Form do
                   </div>
 
                   <label class="block text-sm font-medium mb-1">Text</label>
+                  <% page_count = length(entry.pages) %>
+                  <% cur = @source_page |> Map.get(entry.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
+                  <% cur_page = Enum.at(entry.pages, cur) %>
+                  <% layer = editor_layer(entry, @editor_tab) %>
+                  <% editable = layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil %>
+                  <.layer_tabs id={entry.id} current={layer} />
+                  <.page_nav id={entry.id} pages={entry.pages} cur={cur} label_mode={@reader_label_mode} />
+                  <%!-- Edits feed socket state via edit_page (layer encoded in the
+                        name), so this stays in sync with the expanded reader. --%>
                   <textarea
-                    name={"text_#{entry.id}"}
-                    rows="20"
+                    :if={cur_page}
+                    name={"pg_#{entry.id}_#{cur}_#{layer_field(layer)}"}
+                    phx-change="edit_page"
+                    phx-debounce="250"
+                    rows="18"
                     class="w-full border rounded px-3 py-2 font-mono text-sm"
-                    style={"resize:vertical;line-height:1.5#{if @cleaning[entry.source_id], do: ";opacity:0.6;cursor:not-allowed"}"}
+                    style={"resize:vertical;line-height:1.5#{if not editable, do: ";opacity:0.7;background:var(--bg-subtle)"}"}
                     placeholder="Paste rulebook text here..."
-                    readonly={@cleaning[entry.source_id] != nil}
-                  ><%= entry.text %></textarea>
+                    readonly={not editable}
+                  ><%= layer_text(cur_page, layer) %></textarea>
 
                   <div class="mt-2 flex gap-3 items-center flex-wrap">
                     <button
@@ -2184,37 +2422,16 @@ defmodule RuleMavenWeb.GameLive.Form do
             <%= if @expanded_source_id != nil do %>
               <% reader = Enum.find(@source_entries, &(&1.id == @expanded_source_id)) %>
               <%= if reader do %>
-                <% pages =
-                  reader.text
-                  |> String.split("\f")
-                  |> Enum.with_index(1)
-                  |> Enum.flat_map(fn {page, idx} ->
-                    {sheet, printed, body} =
-                      case Games.split_page_marker(page) do
-                        {s, p, rest} -> {s, p, rest}
-                        nil -> {idx, nil, page}
-                      end
-
-                    if String.trim(body) == "",
-                      do: [],
-                      else: [%{sheet: sheet, printed: printed, body: body}]
-                  end)
-                  |> Enum.with_index()
-                  |> Enum.map(fn {p, i} -> Map.put(p, :idx, i) end) %>
+                <% pages = reader.pages %>
                 <% page_count = length(pages) %>
-                <% cur = @reader_page |> max(0) |> min(max(page_count - 1, 0)) %>
+                <% cur = @source_page |> Map.get(reader.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
                 <% cur_page = Enum.at(pages, cur) %>
-                <% page_font =
-                  "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;white-space:pre-wrap;color:var(--text)" %>
+                <% layer = editor_layer(reader, @editor_tab) %>
                 <% page_head =
                   "font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:1.5rem 0 0.6rem 0;text-align:center" %>
                 <% page_label = fn p ->
                   if p.printed, do: "Page #{p.printed} · Sheet #{p.sheet}", else: "Sheet #{p.sheet}"
                 end %>
-                <% select_style =
-                  "border:1px solid var(--border);border-radius:0.4rem;padding:0.4rem 0.7rem;font-size:0.95rem;background:var(--bg);color:var(--text);cursor:pointer" %>
-                <% step_style =
-                  "font-size:1.3rem;line-height:1;padding:0.3rem 0.85rem;border-radius:0.4rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer" %>
                 <% tab_style = fn active ->
                   "font-size:0.72rem;padding:0.2rem 0.7rem;border-radius:0.3rem;cursor:pointer;border:1px solid var(--border);background:#{if active, do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if active, do: "white", else: "var(--text-secondary)"}"
                 end %>
@@ -2234,52 +2451,13 @@ defmodule RuleMavenWeb.GameLive.Form do
                         <button type="button" phx-click="set_reader_mode" phx-value-mode="paginated" style={tab_style.(@reader_mode == "paginated")}>Paginated</button>
                       </div>
 
-                      <%= if @reader_mode == "paginated" and page_count > 0 do %>
-                        <% printed_pages = Enum.filter(pages, & &1.printed) %>
-                        <div style="display:flex;align-items:center;gap:0.6rem;margin-left:auto;flex-wrap:wrap">
-                          <button
-                            type="button"
-                            phx-click="reader_page_step"
-                            phx-value-delta="-1"
-                            disabled={cur <= 0}
-                            style={step_style}
-                          >‹</button>
+                      <div style="margin-left:0.5rem">
+                        <.layer_tabs id={reader.id} current={layer} />
+                      </div>
 
-                          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.7rem;color:var(--text-muted)">
-                            Sheet
-                            <form phx-change="set_reader_page" style="margin:0">
-                              <select name="page" style={select_style}>
-                                <%= for p <- pages do %>
-                                  <option value={p.idx} selected={p.idx == cur}>{p.sheet}</option>
-                                <% end %>
-                              </select>
-                            </form>
-                          </label>
-
-                          <%= if printed_pages != [] do %>
-                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.7rem;color:var(--text-muted)">
-                              Page
-                              <form phx-change="set_reader_page" style="margin:0">
-                                <select name="page" style={select_style}>
-                                  <option value={cur} selected={cur_page && is_nil(cur_page.printed)} disabled>—</option>
-                                  <%= for p <- printed_pages do %>
-                                    <option value={p.idx} selected={p.idx == cur}>{p.printed}</option>
-                                  <% end %>
-                                </select>
-                              </form>
-                            </label>
-                          <% end %>
-
-                          <button
-                            type="button"
-                            phx-click="reader_page_step"
-                            phx-value-delta="1"
-                            disabled={cur >= page_count - 1}
-                            style={step_style}
-                          >›</button>
-                          <span style="font-size:0.9rem;color:var(--text-muted);white-space:nowrap">{cur + 1} / {page_count}</span>
-                        </div>
-                      <% end %>
+                      <div :if={@reader_mode == "paginated" and page_count > 0} style="margin-left:auto">
+                        <.page_nav id={reader.id} pages={pages} cur={cur} label_mode={@reader_label_mode} />
+                      </div>
 
                       <button
                         type="button"
@@ -2288,18 +2466,29 @@ defmodule RuleMavenWeb.GameLive.Form do
                       >✕</button>
                     </div>
 
-                    <div style="overflow:auto;padding:2rem clamp(1.5rem,8vw,8rem)">
+                    <% editable = layer_editable?(reader, layer) and @cleaning[reader.source_id] == nil %>
+                    <% edit_style =
+                      "width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:0.4rem;padding:1rem;resize:vertical#{if not editable, do: ";opacity:0.7;background:var(--bg-subtle)"}" %>
+                    <div style="overflow:auto;padding:2rem clamp(1.5rem,8vw,8rem);flex:1;min-height:0;display:flex;flex-direction:column">
                       <%= if @reader_mode == "paginated" do %>
                         <%= if cur_page do %>
                           <div style={page_head}>— {page_label.(cur_page)} —</div>
-                          <div style={page_font}>{cur_page.body}</div>
+                          <textarea
+                            name={"pgm_#{reader.id}_#{cur}_#{layer_field(layer)}"}
+                            phx-change="edit_page"
+                            phx-debounce="250"
+                            style={"#{edit_style};flex:1;min-height:60vh"}
+                            readonly={not editable}
+                          >{layer_text(cur_page, layer)}</textarea>
                         <% else %>
                           <p style="color:var(--text-muted)">No pages.</p>
                         <% end %>
                       <% else %>
+                        <%!-- Scroll = read-only continuous view of the selected
+                              layer (editing happens in the paginated mode). --%>
                         <%= for p <- pages do %>
                           <div style={page_head}>— {page_label.(p)} —</div>
-                          <div style={page_font}>{p.body}</div>
+                          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;white-space:pre-wrap;color:var(--text)">{layer_text(p, layer)}</div>
                         <% end %>
                       <% end %>
                     </div>

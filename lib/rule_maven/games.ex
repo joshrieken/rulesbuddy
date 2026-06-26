@@ -15,6 +15,7 @@ defmodule RuleMaven.Games do
   alias RuleMaven.Games.Chunk
   alias RuleMaven.Games.UserCollection
   alias RuleMaven.Games.UserFavorite
+  alias RuleMaven.Games.SupportRequest
   alias Oban
 
   NimbleCSV.define(RuleMaven.Games.RankCSV, separator: ",", escape: "\"")
@@ -41,6 +42,38 @@ defmodule RuleMaven.Games do
 
     Repo.all(from g in Game, where: g.id in ^base_ids)
     |> Enum.sort_by(&String.downcase(&1.name))
+  end
+
+  @doc """
+  Base games still missing their full BGG data (admin "Needs Pull" view): a
+  `bgg_id` present but no cached `bgg_data` yet. DB-paged via `limit` because the
+  rank dump can leave a very large number of un-enriched catalog rows. Ordered by
+  BGG rank (ranked games first) then name.
+  """
+  def list_games_needing_bgg(limit \\ 20) do
+    Repo.all(
+      from g in Game,
+        where: is_nil(g.parent_game_id),
+        where: not is_nil(g.bgg_id),
+        where: is_nil(g.bgg_data),
+        order_by: [asc_nulls_last: g.bgg_rank, asc: g.name],
+        limit: ^limit
+    )
+  end
+
+  @doc """
+  Base games that have at least one support request, most-requested first (admin
+  "Requested" view). Bounded set, returned in full.
+  """
+  def list_requested_games do
+    Repo.all(
+      from g in Game,
+        join: r in SupportRequest,
+        on: r.game_id == g.id,
+        where: is_nil(g.parent_game_id),
+        group_by: [g.id],
+        order_by: [desc: count(r.id), asc: g.name]
+    )
   end
 
   def list_base_games do
@@ -301,6 +334,36 @@ defmodule RuleMaven.Games do
   def favorite_game_ids(user_id) when is_integer(user_id) do
     Repo.all(from uf in UserFavorite, where: uf.user_id == ^user_id, select: uf.game_id)
     |> MapSet.new()
+  end
+
+  # ── Support requests ──
+
+  @doc "Record a user's request to support a game (deduped per user/game)."
+  def request_support(user_id, game_id) when is_integer(user_id) and is_integer(game_id) do
+    %SupportRequest{}
+    |> SupportRequest.changeset(%{user_id: user_id, game_id: game_id})
+    |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :game_id])
+  end
+
+  @doc "MapSet of game ids a user has requested support for (for button state)."
+  def requested_game_ids(user_id) when is_integer(user_id) do
+    Repo.all(from r in SupportRequest, where: r.user_id == ^user_id, select: r.game_id)
+    |> MapSet.new()
+  end
+
+  @doc """
+  Games with at least one support request, with the request count and most
+  recent request time, sorted by count desc. For the admin demand view.
+  """
+  def list_support_requests do
+    Repo.all(
+      from r in SupportRequest,
+        join: g in Game,
+        on: g.id == r.game_id,
+        group_by: [g.id],
+        order_by: [desc: count(r.id), desc: max(r.inserted_at)],
+        select: %{game: g, count: count(r.id), last_requested_at: max(r.inserted_at)}
+    )
   end
 
   # ── Documents ──
@@ -1014,14 +1077,23 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
-  Rebuilds the marker-delimited `full_text` blob from page structs/maps (the
-  derived cache consumed by the LLM, search, cheat sheet and chunker). Accepts
-  either `Document.Page` structs or plain maps with `:sheet/:printed/:text`.
+  Effective page text used everywhere downstream: the cleaned/edited working
+  copy if present, else the original. Accepts `Document.Page` structs or plain
+  maps (a missing `:cleaned` key is treated as nil).
+  """
+  def effective_page_text(p) do
+    if is_binary(Map.get(p, :cleaned)), do: p.cleaned, else: p.text || ""
+  end
+
+  @doc """
+  Rebuilds the marker-delimited `full_text` blob from page structs/maps using
+  each page's effective text (the derived cache consumed by the LLM, search,
+  cheat sheet and chunker).
   """
   def rebuild_full_text(pages) do
     Enum.map_join(pages, "", fn p ->
       marker = if p.printed, do: "SHEET #{p.sheet} PAGE #{p.printed}", else: "SHEET #{p.sheet}"
-      "\f===== #{marker} =====\n" <> (p.text || "")
+      "\f===== #{marker} =====\n" <> effective_page_text(p)
     end)
   end
 
@@ -1095,7 +1167,7 @@ defmodule RuleMaven.Games do
         [_ | _] = doc_pages ->
           Enum.map(doc_pages, fn p ->
             {kind, num} = page_label(p.sheet, p.printed)
-            {kind, num, p.text}
+            {kind, num, p.text || ""}
           end)
 
         _ ->
@@ -1283,6 +1355,9 @@ defmodule RuleMaven.Games do
   end
 
   # ── Chunk helpers ──
+
+  defp split_into_chunks(nil, _target_words), do: []
+  defp split_into_chunks("", _target_words), do: []
 
   defp split_into_chunks(text, target_words) do
     paragraphs = String.split(text, ~r{\n\s*\n})
