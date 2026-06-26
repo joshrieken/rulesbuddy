@@ -82,11 +82,12 @@ defmodule RuleMaven.CheatSheet do
   end
 
   @doc """
-  Starts async cheat sheet generation in a background Task.
-  Stores progress in Settings so it survives page refresh.
-  Sends {:cheat_done, game_id} to caller when complete.
+  Starts durable cheat sheet generation via an Oban job (survives server
+  restarts). Seeds the Settings state machine synchronously so the form shows
+  "compressing" immediately, then enqueues the worker which fills in the result
+  and broadcasts `{:cheat_done, game_id}` on `CheatSheetGenWorker.topic/1`.
   """
-  def generate_async(game, caller_pid, level \\ "compact", expansion_ids \\ []) do
+  def generate_async(game, level \\ "compact", expansion_ids \\ []) do
     game_id = game.id
     started = System.system_time(:second)
 
@@ -99,38 +100,11 @@ defmodule RuleMaven.CheatSheet do
     Settings.put("cheat_model_#{game_id}", RuleMaven.LLM.model())
     Settings.put("cheat_level_#{game_id}", level)
 
-    Task.start(fn ->
-      result =
-        try do
-          generate_content(game, level, expansion_ids)
-        rescue
-          e ->
-            {:error, "Unexpected error: #{Exception.message(e)}"}
-        catch
-          :exit, reason ->
-            {:error, "Process exited: #{inspect(reason)}"}
-        end
-
-      elapsed = System.system_time(:second) - started
-
-      # Don't overwrite if cancelled
-      if Settings.get("cheat_cancelled_#{game_id}") == "true" do
-        send(caller_pid, {:cheat_done, game_id})
-      else
-        case result do
-          {:ok, content} ->
-            Settings.put("cheat_status_#{game_id}", "done")
-            Settings.put("cheat_content_#{game_id}", content)
-
-          {:error, reason} ->
-            Settings.put("cheat_status_#{game_id}", "error")
-            Settings.put("cheat_error_#{game_id}", reason)
-        end
-
-        Settings.put("cheat_elapsed_#{game_id}", elapsed)
-        send(caller_pid, {:cheat_done, game_id})
-      end
-    end)
+    if Application.get_env(:rule_maven, Oban)[:testing] != :manual do
+      %{game_id: game_id, level: level, expansion_ids: expansion_ids}
+      |> RuleMaven.Workers.CheatSheetGenWorker.new()
+      |> Oban.insert()
+    end
 
     :ok
   end

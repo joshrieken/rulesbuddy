@@ -124,13 +124,26 @@ defmodule RuleMaven.LLM do
 
   @cleanup_system """
   You are a text-cleanup tool for board-game rulebook OCR/PDF extraction.
-  Return the SAME text with extraction artifacts fixed. STRICT RULES:
-  - Do NOT paraphrase, reword, summarize, translate, add, or remove any rules wording.
-  - Only: rejoin words split by a hyphen at a line break, merge mid-sentence line
-    wraps back into paragraphs, collapse runaway whitespace, and drop obvious
-    repeated page-header/footer noise.
-  - KEEP printed page numbers and section numbers exactly as written.
-  - Output ONLY the cleaned text, with no commentary and no code fences.
+  Return the SAME text with extraction artifacts fixed.
+
+  PRESERVE VERBATIM (never reword, summarize, translate, shorten, or drop):
+  - Every complete sentence and every rules instruction.
+  - Numbered/bulleted steps, section numbers, and printed page numbers.
+  - Headings and defined-term labels that introduce real rules text.
+
+  FIX:
+  - Rejoin words split by a hyphen at a line break (e.g. "num-\\nber" -> "number").
+  - Merge mid-sentence line wraps back into paragraphs.
+  - Collapse runaway whitespace and blank lines.
+
+  REMOVE only clearly non-prose OCR clutter from component/diagram pages:
+  - Isolated label fragments that are not sentences (e.g. "back", "front",
+    "empty", "occupied", "kiosk", stray "2", lone icon captions).
+  - Repeated page-header/footer noise and diagram callouts.
+  - Scattered component-count fragments that are not part of a sentence.
+  When unsure whether a line is a real rule or noise, KEEP it.
+
+  Output ONLY the cleaned text, with no commentary and no code fences.
   """
 
   @doc """
@@ -247,6 +260,15 @@ defmodule RuleMaven.LLM do
         {:error, %{reason: reason}} ->
           duration = System.monotonic_time(:millisecond) - start
           error = "HTTP error: #{inspect(reason)}"
+          log_llm(provider_name, model_name, opts, nil, duration, false, error)
+          {:error, error}
+
+        # Catch-all for any other Req error shape (exception structs without a
+        # :reason key) so an odd transport failure returns {:error, _} instead
+        # of raising a CaseClauseError that crashes the caller.
+        {:error, other} ->
+          duration = System.monotonic_time(:millisecond) - start
+          error = "HTTP error: #{inspect(other)}"
           log_llm(provider_name, model_name, opts, nil, duration, false, error)
           {:error, error}
       end

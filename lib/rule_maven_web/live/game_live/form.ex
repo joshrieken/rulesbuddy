@@ -101,9 +101,9 @@ defmodule RuleMavenWeb.GameLive.Form do
             |> Enum.with_index()
             |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
-          # Overlay any not-yet-saved cleanup result so cleaned text survives a
-          # refresh / tab switch until the user Saves (which clears it).
-          entries = if sources == [], do: [], else: overlay_cleanup_results(sources)
+          # Cleaned text is persisted straight into each document's pages, so the
+          # source entries already carry it — no overlay needed.
+          entries = sources
 
           cheat_status = CheatSheet.status(game.id)
           cheat_content = CheatSheet.stored_content(game.id)
@@ -151,6 +151,11 @@ defmodule RuleMavenWeb.GameLive.Form do
           socket =
             if connected?(socket) and not socket.assigns.cleanup_subscribed do
               Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game_cleanup:#{game.id}")
+              # Results of the suggestion/category/cheat-sheet Oban workers arrive
+              # via PubSub (the workers can't message this LiveView's pid).
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.SuggestionsWorker.topic(game.id))
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CategoriesWorker.topic(game.id))
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CheatSheetGenWorker.topic(game.id))
               assign(socket, cleanup_subscribed: true)
             else
               socket
@@ -361,15 +366,22 @@ defmodule RuleMavenWeb.GameLive.Form do
       sid = entry.source_id
       total = length(entry.pages)
 
-      # Persist running state so progress survives a page refresh (the work
-      # runs in a detached Task and reports via PubSub keyed on source_id).
-      Settings.delete("cleanup_result_#{sid}")
-      Settings.put("cleanup_status_#{sid}", "running")
-      Settings.put("cleanup_done_#{sid}", "0")
-      Settings.put("cleanup_total_#{sid}", to_string(total))
+      # Durable, restart-survivable cleanup via Oban. enqueue_cleanup/1 nulls the
+      # existing cleaned layer (full re-clean) and queues the worker, which
+      # writes each finished page back to the document and broadcasts progress.
+      {:ok, _job} = Games.enqueue_cleanup(Games.get_document!(sid))
 
-      send(self(), {:cleanup_source, id})
-      {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, sid, {0, total}))}
+      # Mirror the DB reset in the open form so progress tracks from 0/total.
+      entries =
+        Enum.map(socket.assigns.source_entries, fn e ->
+          if e.source_id == sid, do: reset_cleaned(e), else: e
+        end)
+
+      {:noreply,
+       assign(socket,
+         source_entries: entries,
+         cleaning: Map.put(socket.assigns.cleaning, sid, {0, total})
+       )}
     else
       {:noreply, socket}
     end
@@ -521,7 +533,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("generate_cheat", %{"level" => level} = params, socket) do
     game = socket.assigns.game
     expansion_ids = parse_expansion_ids(params)
-    CheatSheet.generate_async(game, self(), level, expansion_ids)
+    CheatSheet.generate_async(game, level, expansion_ids)
     now = System.system_time(:second)
 
     {:noreply,
@@ -855,12 +867,6 @@ defmodule RuleMavenWeb.GameLive.Form do
       end)
       |> Map.new()
 
-    # The textarea (now holding any cleaned text) is being persisted, so drop
-    # the durable cleanup state to avoid re-overlaying stale text on next load.
-    for %{source_id: sid} <- socket.assigns.source_entries, not is_nil(sid) do
-      clear_cleanup(sid)
-    end
-
     save_game(socket, socket.assigns.game, game_params, merged)
   end
 
@@ -1011,27 +1017,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_info({:refresh_suggestions, game}, socket) do
-    parent = self()
-
-    Task.start(fn ->
-      text = Games.document_full_text(game)
-
-      already_asked =
-        game
-        |> Games.recent_questions(100)
-        |> Enum.map(& &1.question)
-        |> Enum.uniq()
-
-      case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
-        {:ok, qs} ->
-          RuleMaven.Settings.put("suggestions_#{game.id}", Jason.encode!(qs))
-          send(parent, {:suggestions_ready, qs})
-
-        {:error, _} ->
-          :ok
-      end
-    end)
-
+    RuleMaven.Workers.SuggestionsWorker.enqueue(game.id)
     {:noreply, assign(socket, regenerating_suggestions: true)}
   end
 
@@ -1042,21 +1028,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_info({:refresh_categories, game}, socket) do
-    parent = self()
-
-    Task.start(fn ->
-      text = Games.document_full_text(game)
-
-      case RuleMaven.LLM.generate_categories(game.name, text) do
-        {:ok, cats} ->
-          RuleMaven.Settings.put("categories_#{game.id}", Jason.encode!(cats))
-          send(parent, {:categories_ready, cats})
-
-        {:error, _} ->
-          send(parent, {:categories_ready, []})
-      end
-    end)
-
+    RuleMaven.Workers.CategoriesWorker.enqueue(game.id)
     {:noreply, assign(socket, regenerating_categories: true)}
   end
 
@@ -1066,84 +1038,40 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:cleanup_source, id}, socket) do
-    entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
-    game_id = socket.assigns.game.id
-
-    if entry && entry.source_id do
-      sid = entry.source_id
-      # Clean the ORIGINAL text of each page (never the edited/cleaned layers).
-      originals = Enum.map(entry.pages, &(&1.text || ""))
-
-      # Detached Task: outlives this LiveView process so a page refresh doesn't
-      # kill the work. Progress is persisted to Settings and broadcast over
-      # PubSub so the current (or a freshly remounted) LiveView can follow along.
-      Task.start(fn ->
-        total = length(originals)
-        counter = :counters.new(1, [:atomics])
-
-        cleaned_pairs =
-          originals
-          |> Enum.with_index()
-          |> Task.async_stream(
-            fn {body, idx} ->
-              cleaned =
-                case RuleMaven.LLM.cleanup_page(body) do
-                  {:ok, text} -> text
-                  {:error, _} -> body
-                end
-
-              :counters.add(counter, 1, 1)
-              done = :counters.get(counter, 1)
-              Settings.put("cleanup_done_#{sid}", to_string(done))
-              broadcast_cleanup(game_id, {:cleanup_progress, sid, done, total})
-              {idx, cleaned}
-            end,
-            max_concurrency: 5,
-            ordered: true,
-            timeout: :infinity
-          )
-          |> Enum.map(fn {:ok, pair} -> pair end)
-
-        result = Map.new(cleaned_pairs)
-        # Persist as a JSON {index => cleaned} map (durable across refresh).
-        Settings.put(
-          "cleanup_result_#{sid}",
-          Jason.encode!(Map.new(result, fn {i, c} -> {to_string(i), c} end))
-        )
-
-        Settings.put("cleanup_status_#{sid}", "done")
-        broadcast_cleanup(game_id, {:cleanup_done, sid, result})
-      end)
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:cleanup_progress, sid, done, total}, socket) do
-    # PubSub delivery can race the atomic counter, so never let the count go
-    # backwards.
-    done =
-      case Map.get(socket.assigns.cleaning, sid) do
-        {prev, _} -> max(prev, done)
-        _ -> done
-      end
-
-    {:noreply, assign(socket, cleaning: Map.put(socket.assigns.cleaning, sid, {done, total}))}
-  end
-
-  @impl true
-  def handle_info({:cleanup_done, sid, cleaned_map}, socket) do
+  def handle_info({:page_cleaned, sid, idx, text}, socket) do
+    # The cleanup worker persisted one page and broadcast it — swap that page
+    # live and bump progress from the count of pages now carrying cleaned text.
     entries =
       Enum.map(socket.assigns.source_entries, fn e ->
-        if e.source_id == sid, do: apply_cleaned(e, cleaned_map), else: e
+        if e.source_id == sid, do: put_page_cleaned(e, idx, text), else: e
+      end)
+
+    cleaning =
+      case Map.get(socket.assigns.cleaning, sid) do
+        {_done, total} ->
+          done = cleaned_count(entries, sid)
+          Map.put(socket.assigns.cleaning, sid, {done, total})
+
+        _ ->
+          socket.assigns.cleaning
+      end
+
+    {:noreply, assign(socket, source_entries: entries, cleaning: cleaning)}
+  end
+
+  @impl true
+  def handle_info({:cleanup_done, sid}, socket) do
+    # Reload the source's pages from the DB so the form holds the final
+    # persisted cleaned text, then drop the progress indicator.
+    entries =
+      Enum.map(socket.assigns.source_entries, fn e ->
+        if e.source_id == sid, do: reload_entry(e), else: e
       end)
 
     {:noreply,
      socket
      |> assign(source_entries: entries, cleaning: Map.delete(socket.assigns.cleaning, sid))
-     |> put_flash(:info, "Cleaned up the rulebook text — review it on the Cleaned tab and Save to apply.")}
+     |> put_flash(:info, "Cleaned up the rulebook text.")}
   end
 
   @impl true
@@ -1338,8 +1266,36 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
-  defp broadcast_cleanup(game_id, msg) do
-    Phoenix.PubSub.broadcast(RuleMaven.PubSub, "game_cleanup:#{game_id}", msg)
+  # Null a source's cleaned layer in the open form (mirrors a fresh re-clean in
+  # the DB) so the progress indicator tracks from 0.
+  defp reset_cleaned(entry) do
+    pages = Enum.map(entry.pages, &Map.put(&1, :cleaned, nil))
+    %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
+  end
+
+  # Set one page's :cleaned (matched by physical index) and refresh full_text.
+  defp put_page_cleaned(entry, idx, text) do
+    pages =
+      Enum.map(entry.pages, fn p ->
+        if Map.get(p, :index) == idx, do: Map.put(p, :cleaned, text), else: p
+      end)
+
+    %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
+  end
+
+  # Reload a source entry's pages from the DB (final persisted cleaned text).
+  defp reload_entry(%{source_id: sid} = entry) when is_integer(sid) do
+    doc = Games.get_document!(sid)
+    %{entry | pages: doc_pages(doc), text: doc.full_text}
+  end
+
+  defp reload_entry(entry), do: entry
+
+  defp cleaned_count(entries, sid) do
+    case Enum.find(entries, &(&1.source_id == sid)) do
+      %{pages: pages} -> Enum.count(pages, &is_binary(&1[:cleaned]))
+      _ -> 0
+    end
   end
 
   # Build the LiveView source-entry map (with first-class pages) from a Document.
@@ -1370,69 +1326,16 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
-  # Apply a persisted (unsaved) cleanup result onto a source's pages so the
-  # Cleaned tab survives a refresh until the user Saves.
-  defp overlay_cleanup_results(entries) do
-    Enum.map(entries, fn e ->
-      case e.source_id && cleanup_result_map(e.source_id) do
-        map when is_map(map) -> apply_cleaned(e, map)
-        _ -> e
-      end
-    end)
-  end
-
-  # Set each page's :cleaned from a {index => cleaned_text} map, then refresh the
-  # derived full_text (effective text feeds the LLM/search/chunker).
-  defp apply_cleaned(entry, cleaned_map) do
-    pages =
-      entry.pages
-      |> Enum.with_index()
-      |> Enum.map(fn {p, i} ->
-        case Map.get(cleaned_map, i) do
-          c when is_binary(c) -> Map.put(p, :cleaned, c)
-          _ -> p
-        end
-      end)
-
-    %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
-  end
-
-  # Decode the persisted JSON cleanup result into %{index(int) => cleaned}.
-  # Tolerates legacy/non-JSON values (returns nil) so a stale key can't crash mount.
-  defp cleanup_result_map(sid) do
-    with json when is_binary(json) <- Settings.get("cleanup_result_#{sid}"),
-         {:ok, %{} = decoded} <- Jason.decode(json) do
-      Map.new(decoded, fn {k, v} -> {String.to_integer(k), v} end)
-    else
-      _ -> nil
-    end
-  end
-
-  # Build the {source_id => {done, total}} map for sources still being cleaned.
+  # Build the {source_id => {done, total}} map for sources whose cleanup is still
+  # queued/running, derived from durable state: Oban job presence (survives a
+  # server restart) plus the count of pages already carrying cleaned text.
   defp seed_cleaning(entries) do
-    for %{source_id: sid} <- entries,
+    for %{source_id: sid, pages: pages} <- entries,
         not is_nil(sid),
-        Settings.get("cleanup_status_#{sid}") == "running",
+        Games.cleanup_running?(sid),
         into: %{} do
-      done = parse_int(Settings.get("cleanup_done_#{sid}"))
-      total = parse_int(Settings.get("cleanup_total_#{sid}"))
-      {sid, {done, total}}
-    end
-  end
-
-  defp clear_cleanup(sid) do
-    Settings.delete("cleanup_status_#{sid}")
-    Settings.delete("cleanup_result_#{sid}")
-    Settings.delete("cleanup_done_#{sid}")
-    Settings.delete("cleanup_total_#{sid}")
-  end
-
-  defp parse_int(nil), do: 0
-
-  defp parse_int(val) do
-    case Integer.parse(val) do
-      {n, _} -> n
-      :error -> 0
+      done = Enum.count(pages, &is_binary(&1[:cleaned]))
+      {sid, {done, length(pages)}}
     end
   end
 

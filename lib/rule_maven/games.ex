@@ -500,6 +500,77 @@ defmodule RuleMaven.Games do
     |> Enum.map_join("\n\n", & &1.full_text)
   end
 
+  # ── Rulebook cleanup (durable, Oban-backed) ──
+
+  @cleanup_worker "RuleMaven.Workers.CleanupWorker"
+  @cleanup_active_states ~w(available scheduled executing retryable suspended)
+
+  @doc """
+  Persist one page's cleaned text into the document's embedded pages and refresh
+  the derived `full_text`. Reloads the document each call so concurrent per-page
+  writes from the cleanup worker accumulate correctly on the embeds_many column.
+  Does NOT re-chunk (the worker chunks once at the end).
+  """
+  def set_page_cleaned(doc_id, index, cleaned) do
+    doc = get_document!(doc_id)
+
+    pages =
+      Enum.map(doc.pages, fn p ->
+        attrs = page_attrs(p)
+        if p.index == index, do: %{attrs | cleaned: cleaned}, else: attrs
+      end)
+
+    doc
+    |> Document.changeset(%{pages: pages, full_text: rebuild_full_text(pages)})
+    |> Repo.update()
+  end
+
+  @doc """
+  Null every page's cleaned layer (used to start a fresh full re-clean). Returns
+  the reloaded document.
+  """
+  def clear_all_cleaned(%Document{} = doc) do
+    pages = Enum.map(doc.pages, fn p -> %{page_attrs(p) | cleaned: nil} end)
+
+    {:ok, updated} =
+      doc
+      |> Document.changeset(%{pages: pages, full_text: rebuild_full_text(pages)})
+      |> Repo.update()
+
+    updated
+  end
+
+  defp page_attrs(p) do
+    %{index: p.index, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p.cleaned}
+  end
+
+  @doc """
+  True when a cleanup job for this document is queued or running. Single source
+  of truth for "is this rulebook being cleaned" — survives server restarts since
+  it reads Oban's durable job state, not in-memory flags.
+  """
+  def cleanup_running?(doc_id) do
+    Repo.exists?(
+      from j in Oban.Job,
+        where:
+          j.worker == ^@cleanup_worker and
+            j.state in ^@cleanup_active_states and
+            fragment("?->>'document_id' = ?", j.args, ^to_string(doc_id))
+    )
+  end
+
+  @doc """
+  Enqueue (or no-op if one is already active) a durable cleanup of a document's
+  pages. Clears existing cleaned text first so it's a full re-clean.
+  """
+  def enqueue_cleanup(%Document{} = doc) do
+    clear_all_cleaned(doc)
+
+    %{document_id: doc.id, game_id: doc.game_id}
+    |> RuleMaven.Workers.CleanupWorker.new()
+    |> Oban.insert()
+  end
+
   # Backward compat aliases
   defdelegate list_rulebook_sources(game), to: __MODULE__, as: :list_documents
   defdelegate create_rulebook_source(attrs), to: __MODULE__, as: :create_document

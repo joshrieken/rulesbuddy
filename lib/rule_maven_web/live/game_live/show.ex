@@ -114,26 +114,15 @@ defmodule RuleMavenWeb.GameLive.Show do
       case RuleMaven.Settings.get("suggestions_#{game.id}") do
         nil ->
           if sources != [] do
-            parent = self()
+            # Durable generation via Oban; result arrives over PubSub.
+            if connected?(socket) do
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.SuggestionsWorker.topic(game.id)
+              )
+            end
 
-            Task.start(fn ->
-              text = Games.document_full_text(game)
-
-              already_asked =
-                game
-                |> Games.recent_questions(100)
-                |> Enum.map(& &1.question)
-                |> Enum.uniq()
-
-              case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
-                {:ok, qs} ->
-                  RuleMaven.Settings.put("suggestions_#{game.id}", Jason.encode!(qs))
-                  send(parent, {:suggestions_ready, qs})
-
-                {:error, _} ->
-                  :ok
-              end
-            end)
+            RuleMaven.Workers.SuggestionsWorker.enqueue(game.id)
           end
 
           []

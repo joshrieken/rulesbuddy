@@ -1,0 +1,51 @@
+defmodule RuleMaven.Workers.SuggestionsWorker do
+  @moduledoc """
+  Durable generation of suggested rules questions for a game. Persists the
+  result to `suggestions_<game_id>` and broadcasts `{:suggestions_ready, qs}` on
+  `topic/1` so any mounted LiveView (game form or show) updates live.
+
+  Replaces a detached `Task.start`: survives server restarts (Oban re-runs an
+  orphaned job) and `unique` keeps one job per game.
+  """
+  use Oban.Worker,
+    queue: :llm,
+    max_attempts: 3,
+    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+
+  alias RuleMaven.{Games, Settings}
+
+  def topic(game_id), do: "suggestions:#{game_id}"
+
+  @doc "Enqueue suggestion generation (no-op in test where Oban isn't supervised)."
+  def enqueue(game_id) do
+    if oban_running?() do
+      %{game_id: game_id} |> new() |> Oban.insert()
+    else
+      :ok
+    end
+  end
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+    game = Games.get_game!(game_id)
+    text = Games.document_full_text(game)
+
+    already_asked =
+      game
+      |> Games.recent_questions(100)
+      |> Enum.map(& &1.question)
+      |> Enum.uniq()
+
+    case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
+      {:ok, qs} ->
+        Settings.put("suggestions_#{game_id}", Jason.encode!(qs))
+        Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:suggestions_ready, qs})
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp oban_running?, do: Application.get_env(:rule_maven, Oban)[:testing] != :manual
+end

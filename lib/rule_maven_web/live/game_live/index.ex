@@ -566,33 +566,10 @@ defmodule RuleMavenWeb.GameLive.Index do
       end
 
     # Persist running state so a refresh can rediscover this sync (see
-    # resume_exp_syncs/1); the detached Task outlives this LiveView.
+    # resume_exp_syncs/1). The durable Oban worker survives server restarts and
+    # drives the same progress broadcasts.
     Settings.put(key, "0/#{total}")
-
-    # Throttled background pull; broadcasts an authoritative done-count after
-    # each expansion so re-subscribes can't double-count.
-    Task.start(fn ->
-      counter = :counters.new(1, [:atomics])
-
-      expansions
-      |> Task.async_stream(
-        fn exp ->
-          :timer.sleep(1500)
-          RuleMaven.BGG.enrich_game(exp, force: true)
-          :counters.add(counter, 1, 1)
-          done = :counters.get(counter, 1)
-          Settings.put(key, "#{done}/#{total}")
-          Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:expansion_progress, id, done, total})
-        end,
-        max_concurrency: 2,
-        ordered: false,
-        timeout: 60_000
-      )
-      |> Stream.run()
-
-      Settings.delete(key)
-      Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:expansion_sync_done, id})
-    end)
+    RuleMaven.Workers.ExpansionSyncWorker.enqueue(id)
 
     {:noreply,
      socket

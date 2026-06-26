@@ -1,0 +1,63 @@
+defmodule RuleMaven.Workers.ExpansionSyncWorker do
+  @moduledoc """
+  Durable BGG re-sync of a game's expansions. Throttled re-enrich of each
+  expansion that has a BGG id, persisting `exp_sync:<game_id>` = "done/total" and
+  broadcasting progress on `topic/1` so the index LiveView updates live and a
+  remount can rediscover an in-flight sync.
+
+  Replaces a detached `Task.start`: survives restarts (Oban re-runs the orphaned
+  job) and `unique` prevents overlapping syncs for the same game.
+  """
+  use Oban.Worker,
+    queue: :expansion,
+    max_attempts: 3,
+    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+
+  alias RuleMaven.{Games, Settings}
+
+  def topic(game_id), do: "expansion_sync:#{game_id}"
+  def key(game_id), do: "exp_sync:#{game_id}"
+
+  @doc "Enqueue an expansion sync (no-op in test where Oban isn't supervised)."
+  def enqueue(game_id) do
+    if oban_running?() do
+      %{game_id: game_id} |> new() |> Oban.insert()
+    else
+      :ok
+    end
+  end
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+    game = Games.get_game!(game_id)
+    expansions = game |> Games.expansions_for() |> Enum.filter(& &1.bgg_id)
+    total = length(expansions)
+    counter = :counters.new(1, [:atomics])
+
+    Settings.put(key(game_id), "0/#{total}")
+
+    expansions
+    |> Task.async_stream(
+      fn exp ->
+        :timer.sleep(1500)
+        RuleMaven.BGG.enrich_game(exp, force: true)
+        :counters.add(counter, 1, 1)
+        done = :counters.get(counter, 1)
+        Settings.put(key(game_id), "#{done}/#{total}")
+        Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:expansion_progress, game_id, done, total})
+      end,
+      max_concurrency: 2,
+      ordered: false,
+      timeout: 60_000,
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    |> Stream.run()
+
+    Settings.delete(key(game_id))
+    Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:expansion_sync_done, game_id})
+    :ok
+  end
+
+  defp oban_running?, do: Application.get_env(:rule_maven, Oban)[:testing] != :manual
+end

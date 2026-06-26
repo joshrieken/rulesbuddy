@@ -43,7 +43,7 @@ config :rule_maven, Oban,
        {"0 4 * * *", RuleMaven.Workers.DirectPromotionWorker}
      ]}
   ],
-  queues: [default: 5, cheatsheet: 2, clustering: 1]
+  queues: [default: 5, cheatsheet: 2, clustering: 1, cleanup: 2, llm: 3, expansion: 2]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
