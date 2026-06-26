@@ -108,6 +108,23 @@ defmodule RuleMaven.Games do
     |> Map.new()
   end
 
+  @doc """
+  Map of base game_id => count of its expansions still missing BGG data
+  (a `bgg_id` present but no cached `bgg_data`). Drives whether to show the
+  admin "Pull expansions" button.
+  """
+  def expansion_pull_counts(game_ids) do
+    Repo.all(
+      from g in Game,
+        where: g.parent_game_id in ^game_ids,
+        where: not is_nil(g.bgg_id),
+        where: is_nil(g.bgg_data),
+        group_by: g.parent_game_id,
+        select: {g.parent_game_id, count(g.id)}
+    )
+    |> Map.new()
+  end
+
   @doc "Map of base game_id => count of expansions that have published documents."
   def expansion_with_doc_counts(game_ids) do
     Repo.all(

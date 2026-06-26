@@ -322,9 +322,15 @@ defmodule RuleMaven.BGG do
     # Set this game's parent to the linked game
     inbound = Enum.filter(expansion_links, &(&1.inbound == "true"))
 
-    if inbound != [] do
-      parent_bgg_id = hd(inbound).id
-      parent = RuleMaven.Repo.get_by(RuleMaven.Games.Game, bgg_id: parent_bgg_id)
+    # An expansion can list several inbound parents on BGG (e.g. also linked to a
+    # bundle or a standalone). Only adopt a parent when this game has none yet —
+    # never overwrite an existing parent, or re-enriching one expansion would
+    # yank it out from under the base whose outbound link already claimed it.
+    if inbound != [] and is_nil(game.parent_game_id) do
+      parent =
+        inbound
+        |> Enum.map(&RuleMaven.Repo.get_by(RuleMaven.Games.Game, bgg_id: &1.id))
+        |> Enum.find(& &1)
 
       if parent do
         RuleMaven.Games.update_game(game, %{parent_game_id: parent.id})

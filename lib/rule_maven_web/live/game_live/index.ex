@@ -2,6 +2,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   use RuleMavenWeb, :live_view
 
   alias RuleMaven.Games
+  alias RuleMaven.Settings
 
   @impl true
   def mount(_params, _session, socket) do
@@ -33,11 +34,52 @@ defmodule RuleMavenWeb.GameLive.Index do
         selected_idx: -1,
         display_count: 20,
         expanded_games: %{},
+        # game_id => {done, total} while an expansion BGG sync is in flight.
+        expansion_sync: %{},
+        exp_sync_subscribed: MapSet.new(),
         category_filter: nil
       )
       |> assign_games(games)
+      |> resume_exp_syncs()
 
     {:ok, socket}
+  end
+
+  # Rediscover expansion BGG syncs still running (the detached Task persists
+  # "exp_sync:<id>" => "done/total" in Settings), so a refresh/remount re-shows
+  # progress and re-subscribes for live updates instead of going dark.
+  defp resume_exp_syncs(socket) do
+    if connected?(socket) do
+      active =
+        Settings.all()
+        |> Enum.flat_map(fn {k, v} ->
+          case Regex.run(~r/^exp_sync:(\d+)$/, k) do
+            [_, id] -> [{String.to_integer(id), parse_progress(v)}]
+            _ -> []
+          end
+        end)
+
+      Enum.each(active, fn {id, _} ->
+        Phoenix.PubSub.subscribe(RuleMaven.PubSub, exp_sync_topic(id))
+      end)
+
+      ids = Enum.map(active, &elem(&1, 0))
+
+      assign(socket,
+        expansion_sync: Map.new(active),
+        exp_sync_subscribed: MapSet.new(ids),
+        expanded_games: Enum.reduce(ids, socket.assigns.expanded_games, &Map.put(&2, &1, true))
+      )
+    else
+      socket
+    end
+  end
+
+  defp parse_progress(v) do
+    case String.split(to_string(v), "/") do
+      [d, t] -> {String.to_integer(d), String.to_integer(t)}
+      _ -> {0, 0}
+    end
   end
 
   @views ~w(playable mine favorites all needs_bgg requested)
@@ -163,7 +205,15 @@ defmodule RuleMavenWeb.GameLive.Index do
 
     source_counts = Games.document_counts(visible_ids)
 
-    assign(socket, expansion_counts: expansion_counts, source_counts: source_counts)
+    # Only admins see the "Pull expansions" button, so skip this query otherwise.
+    expansion_pull_counts =
+      if is_admin, do: Games.expansion_pull_counts(visible_ids), else: %{}
+
+    assign(socket,
+      expansion_counts: expansion_counts,
+      source_counts: source_counts,
+      expansion_pull_counts: expansion_pull_counts
+    )
   end
 
   # Reload the games for the current view/search/category and recompute counts.
@@ -432,6 +482,23 @@ defmodule RuleMavenWeb.GameLive.Index do
   end
 
   @impl true
+  def handle_event("pull_expansions", %{"id" => id_str}, socket) do
+    {id, _} = Integer.parse(id_str)
+
+    cond do
+      not RuleMaven.Users.game_master?(socket.assigns.current_user) ->
+        {:noreply, socket}
+
+      # Already running (button disabled, but guard against a stale/raced click).
+      Settings.get(exp_sync_key(id)) != nil ->
+        {:noreply, socket}
+
+      true ->
+        do_pull_expansions(socket, id)
+    end
+  end
+
+  @impl true
   def handle_event("request_support", %{"id" => id_str}, socket) do
     {id, _} = Integer.parse(id_str)
     Games.request_support(socket.assigns.current_user.id, id)
@@ -455,6 +522,84 @@ defmodule RuleMavenWeb.GameLive.Index do
         do: reload_games(socket),
         else: assign_games(socket, socket.assigns.games)
     {:noreply, push_event(socket, "save_count", %{count: count})}
+  end
+
+  @impl true
+  def handle_info({:expansion_progress, id, done, total}, socket) do
+    # Recompute counts (over the already-loaded games) so the "⬇ Exp (n)" button
+    # decrements live and the expanded panel re-queries each expansion's freshly
+    # pulled BGG data.
+    {:noreply,
+     socket
+     |> assign(expansion_sync: Map.put(socket.assigns.expansion_sync, id, {done, total}))
+     |> assign_games(socket.assigns.games)}
+  end
+
+  @impl true
+  def handle_info({:expansion_sync_done, id}, socket) do
+    # Final recompute so the button hits 0 and disappears without a refresh.
+    {:noreply,
+     socket
+     |> assign(expansion_sync: Map.delete(socket.assigns.expansion_sync, id))
+     |> assign_games(socket.assigns.games)}
+  end
+
+  defp exp_sync_topic(game_id), do: "expansion_sync:#{game_id}"
+  defp exp_sync_key(game_id), do: "exp_sync:#{game_id}"
+
+  defp do_pull_expansions(socket, id) do
+    game = Games.get_game!(id)
+    # Only expansions that actually have a BGG id can be pulled.
+    expansions = game |> Games.expansions_for() |> Enum.filter(& &1.bgg_id)
+    total = length(expansions)
+    topic = exp_sync_topic(id)
+    key = exp_sync_key(id)
+
+    # Subscribe once per game so progress broadcast from the background Task
+    # drives live re-renders (which re-query each expansion's fresh BGG data).
+    socket =
+      if connected?(socket) and not MapSet.member?(socket.assigns.exp_sync_subscribed, id) do
+        Phoenix.PubSub.subscribe(RuleMaven.PubSub, topic)
+        assign(socket, exp_sync_subscribed: MapSet.put(socket.assigns.exp_sync_subscribed, id))
+      else
+        socket
+      end
+
+    # Persist running state so a refresh can rediscover this sync (see
+    # resume_exp_syncs/1); the detached Task outlives this LiveView.
+    Settings.put(key, "0/#{total}")
+
+    # Throttled background pull; broadcasts an authoritative done-count after
+    # each expansion so re-subscribes can't double-count.
+    Task.start(fn ->
+      counter = :counters.new(1, [:atomics])
+
+      expansions
+      |> Task.async_stream(
+        fn exp ->
+          :timer.sleep(1500)
+          RuleMaven.BGG.enrich_game(exp, force: true)
+          :counters.add(counter, 1, 1)
+          done = :counters.get(counter, 1)
+          Settings.put(key, "#{done}/#{total}")
+          Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:expansion_progress, id, done, total})
+        end,
+        max_concurrency: 2,
+        ordered: false,
+        timeout: 60_000
+      )
+      |> Stream.run()
+
+      Settings.delete(key)
+      Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:expansion_sync_done, id})
+    end)
+
+    {:noreply,
+     socket
+     |> assign(
+       expanded_games: Map.put(socket.assigns.expanded_games, id, true),
+       expansion_sync: Map.put(socket.assigns.expansion_sync, id, {0, total})
+     )}
   end
 
   defp visible_games(assigns) do
@@ -601,11 +746,32 @@ defmodule RuleMavenWeb.GameLive.Index do
                   <%= if game.playing_time && RuleMaven.Games.Category.player_count_relevant?(game.category) do %>
                     &middot; ~{game.playing_time}m
                   <% end %>
-                  <%= if expansion_count > 0 do %>
-                    &middot;
-                    <span style="color:var(--accent);font-weight:600">{expansion_count} expansion(s)</span>
-                  <% end %>
                 </p>
+                <%!-- The expansions line doubles as the expand/collapse toggle;
+                      pointer-events re-enabled so it's clickable inside the
+                      otherwise click-through (go_to_game) metadata column. --%>
+                <div
+                  :if={expansion_count > 0}
+                  style="margin-top:0.2rem;display:flex;gap:0.5rem;align-items:center;pointer-events:auto"
+                >
+                  <button
+                    type="button"
+                    phx-click="toggle_expansions"
+                    phx-value-id={game.id}
+                    style="background:none;border:none;padding:0;color:var(--accent);font-weight:600;font-size:0.8rem;cursor:pointer;line-height:1.2"
+                  >{if expanded, do: "▲", else: "▼"} {expansion_count} expansion(s)</button>
+                  <% exp_to_pull = Map.get(@expansion_pull_counts, game.id, 0) %>
+                  <% exp_syncing = Map.has_key?(@expansion_sync, game.id) %>
+                  <button
+                    :if={RuleMaven.Users.game_master?(@current_user) and (exp_to_pull > 0 or exp_syncing)}
+                    type="button"
+                    phx-click="pull_expansions"
+                    phx-value-id={game.id}
+                    disabled={exp_syncing}
+                    title="Pull BGG data for expansions missing it"
+                    style={"background:var(--bg-subtle);color:var(--accent);border:1px solid var(--accent);font-size:0.7rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.3rem;line-height:1.2;cursor:#{if exp_syncing, do: "default", else: "pointer"};opacity:#{if exp_syncing, do: "0.6", else: "1"}"}
+                  >{if exp_syncing, do: "⟳ Syncing…", else: "⬇ Exp (#{exp_to_pull})"}</button>
+                </div>
               </div>
               <div class="flex gap-1.5 flex-shrink-0 game-actions items-center">
                 <button
@@ -635,14 +801,6 @@ defmodule RuleMavenWeb.GameLive.Index do
                   phx-value-id={game.id}
                   style="background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
                 >⬇ Pull BGG</button>
-                <%= if expansion_count > 0 do %>
-                  <button
-                    type="button"
-                    phx-click="toggle_expansions"
-                    phx-value-id={game.id}
-                    style="background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;line-height:1.2"
-                  >{if expanded, do: "▲", else: "▼"} {expansion_count}</button>
-                <% end %>
                 <a
                   :if={game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(game.category)}
                   id={"bgg-link-#{game.id}"}
@@ -715,6 +873,14 @@ defmodule RuleMavenWeb.GameLive.Index do
                 if RuleMaven.Users.game_master?(@current_user),
                   do: Games.expansions_for(game),
                   else: Games.expansions_with_documents(game) %>
+              <% sync = Map.get(@expansion_sync, game.id) %>
+              <div
+                :if={sync}
+                style="margin-left:2rem;margin-bottom:0.4rem;display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--accent);font-weight:600"
+              >
+                <% {done, total} = sync %>
+                <span class="animate-pulse">⟳ Syncing expansions {done}/{total}…</span>
+              </div>
               <%= for exp <- expansions do %>
                 <div
                   id={"exp-card-#{game.id}-#{exp.id}"}
@@ -731,7 +897,11 @@ defmodule RuleMavenWeb.GameLive.Index do
                     />
                   <% end %>
                   <div class="flex-1 min-w-0" style="pointer-events:none">
-                    <h2 class="text-base font-semibold">{exp.name}</h2>
+                    <h2 class="text-base font-semibold">
+                      {exp.name}
+                      <span :if={sync && exp.bgg_data} style="color:var(--green);font-size:0.7rem;font-weight:600">✓</span>
+                      <span :if={sync && is_nil(exp.bgg_data)} class="animate-pulse" style="color:var(--text-muted);font-size:0.7rem;font-weight:600">⏳</span>
+                    </h2>
                     <p class="text-xs text-gray-500">
                       Expansion
                       <%= if exp.year_published do %>
