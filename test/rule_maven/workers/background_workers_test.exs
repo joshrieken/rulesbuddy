@@ -2,7 +2,7 @@ defmodule RuleMaven.Workers.BackgroundWorkersTest do
   use RuleMaven.DataCase
 
   alias RuleMaven.{Games, Settings}
-  alias RuleMaven.Workers.{SuggestionsWorker, CategoriesWorker, CheatSheetGenWorker}
+  alias RuleMaven.Workers.{SuggestionsWorker, CategoriesWorker, CheatSheetGenWorker, DownloadWorker}
 
   # Stub the LLM at the do_request boundary. Each test sets its own answer.
   defp mock_llm(answer) do
@@ -77,6 +77,38 @@ defmodule RuleMaven.Workers.BackgroundWorkersTest do
       assert :ok = CheatSheetGenWorker.perform(%Oban.Job{args: args})
 
       refute Settings.get("cheat_status_#{game.id}") == "done"
+    end
+  end
+
+  describe "DownloadWorker durable state" do
+    test "running? reflects an active job for the game" do
+      {:ok, game} = Games.create_game(%{name: "DL #{System.unique_integer([:positive])}"})
+      refute DownloadWorker.running?(game.id)
+
+      %{game_id: game.id, mode: "find", url: nil, label: ""}
+      |> DownloadWorker.new()
+      |> RuleMaven.Repo.insert!()
+
+      assert DownloadWorker.running?(game.id)
+    end
+
+    test "running? ignores finished jobs" do
+      {:ok, game} = Games.create_game(%{name: "DL #{System.unique_integer([:positive])}"})
+
+      %{game_id: game.id, mode: "find", url: nil, label: ""}
+      |> DownloadWorker.new()
+      |> Ecto.Changeset.put_change(:state, "completed")
+      |> RuleMaven.Repo.insert!()
+
+      refute DownloadWorker.running?(game.id)
+    end
+
+    test "enqueue clears a prior download error" do
+      {:ok, game} = Games.create_game(%{name: "DL #{System.unique_integer([:positive])}"})
+      Settings.put("download_error_#{game.id}", "boom")
+
+      assert :ok = DownloadWorker.enqueue(game.id, "find")
+      assert Settings.get("download_error_#{game.id}") == nil
     end
   end
 end

@@ -156,12 +156,20 @@ defmodule RuleMavenWeb.GameLive.Form do
               Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.SuggestionsWorker.topic(game.id))
               Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CategoriesWorker.topic(game.id))
               Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CheatSheetGenWorker.topic(game.id))
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.DownloadWorker.topic(game.id))
               assign(socket, cleanup_subscribed: true)
             else
               socket
             end
 
           socket = assign(socket, cleaning: seed_cleaning(entries))
+
+          # Follow an in-flight download (durable Oban job) across a remount.
+          socket =
+            assign(socket,
+              downloading: RuleMaven.Workers.DownloadWorker.running?(game.id),
+              download_error: Settings.get("download_error_#{game.id}")
+            )
 
           # Land on Manage once a rulebook has been processed, else Upload.
           default_tab = if entries == [], do: "rulebook", else: "manage"
@@ -742,7 +750,7 @@ defmodule RuleMavenWeb.GameLive.Form do
     if url == "" do
       {:noreply, assign(socket, downloading: false, download_error: "Enter a PDF URL")}
     else
-      send(self(), {:download_rulebook, url, label})
+      RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "url", url, label)
       {:noreply, socket}
     end
   end
@@ -750,7 +758,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_event("find_download", _params, socket) do
     socket = assign(socket, downloading: true, download_error: nil, download_ok: nil)
-    send(self(), {:find_and_download})
+    RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "find")
     {:noreply, socket}
   end
 
@@ -807,7 +815,7 @@ defmodule RuleMavenWeb.GameLive.Form do
     url = String.trim(url)
     label = String.trim(label)
     socket = assign(socket, downloading: true, download_error: nil)
-    send(self(), {:download_rulebook, url, label})
+    RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "url", url, label)
     {:noreply, socket}
   end
 
@@ -931,87 +939,43 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:download_rulebook, url, label}, socket) do
+  def handle_info({:download_done, game_id, pdf_path}, socket) do
     game = socket.assigns.game
 
-    result =
-      try do
-        RulebookDownloader.download(game, url, label)
-      rescue
-        e ->
-          require Logger
-          Logger.error("Download crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
-          {:error, "Download failed: #{Exception.message(e)}"}
-      end
+    if game && game.id == game_id do
+      # The worker persisted a new rulebook source — reload from the DB.
+      sources =
+        game
+        |> Games.list_rulebook_sources()
+        |> Enum.with_index()
+        |> Enum.map(fn {s, i} -> source_entry(s, i) end)
 
-    case result do
-      {:ok, source} ->
-        # Reload sources to show new entry
-        sources =
-          game
-          |> Games.list_rulebook_sources()
-          |> Enum.with_index()
-          |> Enum.map(fn {s, i} -> source_entry(s, i) end)
-
-        {:noreply,
-         socket
-         |> assign(
-           downloading: false,
-           download_error: nil,
-           download_ok: source.pdf_path,
-           source_entries: sources,
-           tab: "manage"
-         )
-         |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
-         |> put_flash(:info, "Rulebook downloaded!")
-         |> then(fn s ->
-           send(self(), {:refresh_suggestions, game})
-           s
-         end)}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, downloading: false, download_error: reason)}
+      {:noreply,
+       socket
+       |> assign(
+         downloading: false,
+         download_error: nil,
+         download_ok: pdf_path,
+         source_entries: sources,
+         tab: "manage"
+       )
+       |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
+       |> put_flash(:info, "Rulebook downloaded!")
+       |> then(fn s ->
+         send(self(), {:refresh_suggestions, game})
+         s
+       end)}
+    else
+      {:noreply, socket}
     end
   end
 
   @impl true
-  def handle_info({:find_and_download}, socket) do
-    game = socket.assigns.game
-
-    result =
-      try do
-        RulebookDownloader.find_and_download(game)
-      rescue
-        e ->
-          require Logger
-          Logger.error("Find+download crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
-          {:error, "Find+download failed: #{Exception.message(e)}"}
-      end
-
-    case result do
-      {:ok, source} ->
-        sources =
-          game
-          |> Games.list_rulebook_sources()
-          |> Enum.with_index()
-          |> Enum.map(fn {s, i} -> source_entry(s, i) end)
-
-        {:noreply,
-         socket
-         |> assign(
-           downloading: false,
-           download_error: nil,
-           download_ok: source.pdf_path,
-           source_entries: sources
-         )
-         |> put_flash(:info, "Rulebook found and downloaded!")
-         |> then(fn s ->
-           send(self(), {:refresh_suggestions, game})
-           s
-         end)}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, downloading: false, download_error: reason)}
+  def handle_info({:download_error, game_id, reason}, socket) do
+    if socket.assigns.game && socket.assigns.game.id == game_id do
+      {:noreply, assign(socket, downloading: false, download_error: reason)}
+    else
+      {:noreply, socket}
     end
   end
 
