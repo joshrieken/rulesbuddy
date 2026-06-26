@@ -44,7 +44,6 @@ defmodule RuleMaven.Games.Document do
     field :printed_offset, :integer
     field :from_ocr, :boolean, default: false
     field :extracted_at, :utc_datetime
-    field :version, :integer, default: 1
     field :status, :string, default: "pending_review"
     field :file_hash, :string
     embeds_many :pages, Page, on_replace: :delete
@@ -72,7 +71,6 @@ defmodule RuleMaven.Games.Document do
       :printed_offset,
       :from_ocr,
       :extracted_at,
-      :version,
       :status,
       :file_hash,
       :reviewed_by_id,
