@@ -111,7 +111,7 @@
 <p class="lead">Upload a board-game rulebook, then ask plain-English rules questions and get cited answers pulled straight from the book.</p>
 
 <h2 id="what">What it is</h2>
-<p>Rule Maven is a Phoenix LiveView web app for tabletop gamers. You build a <b>library of games</b>, attach each game's <b>rulebook(s)</b> (PDF or pasted text), and the app turns them into a searchable knowledge base. Ask a question like <i>"Can I build on someone else's road?"</i> and it answers using <b>retrieval-augmented generation (RAG)</b> — finding the relevant rulebook passages and quoting the page they came from.</p>
+<p>Rule Maven is a Phoenix LiveView web app for tabletop gamers. You build a <b>library of games</b>, attach each game's <b>rulebook(s)</b> (PDF, Word, HTML, spreadsheet, image, or pasted text), and the app turns them into a searchable knowledge base. Ask a question like <i>"Can I build on someone else's road?"</i> and it answers using <b>retrieval-augmented generation (RAG)</b> — finding the relevant rulebook passages and quoting the page they came from.</p>
 <p>It supports board games, card games, tabletop RPGs, TCGs, video games, and more — including <b>expansions</b> that hang off a parent game.</p>
 
 <div class="grid">
@@ -126,7 +126,7 @@
   <tr><th>Term</th><th>What it means</th></tr>
   <tr><td><b>Game</b></td><td>A library entry. Has a category, metadata (often from BGG), and zero or more rulebook sources.</td></tr>
   <tr><td><b>Expansion</b></td><td>A game linked to a parent via <code>parent_game_id</code>. Its rules can be included when asking about the base game.</td></tr>
-  <tr><td><b>Source / Document</b></td><td>One rulebook attached to a game — a PDF you upload, a URL it downloads, or pasted text. Stored page-by-page.</td></tr>
+  <tr><td><b>Source / Document</b></td><td>One rulebook attached to a game — a file you upload (PDF, Word, HTML, spreadsheet, text, or image), a URL it downloads, or pasted text. Stored page-by-page, each page carrying an extraction-confidence score.</td></tr>
   <tr><td><b>Chunk</b></td><td>A small slice of rulebook text the app embeds and searches over. You never see these directly.</td></tr>
   <tr><td><b>Answer pool</b></td><td>Cache of previously answered questions. Similar new questions reuse a pooled answer instead of re-running the LLM.</td></tr>
   <tr><td><b>Cheat sheet</b></td><td>A generated quick-reference summary of a game's rules, with saved versions.</td></tr>
@@ -170,12 +170,16 @@
 <p>On the game form you manage <b>sources</b> — the rulebooks behind every answer.</p>
 <h3>Adding a source</h3>
 <ul>
-  <li><b>Upload a PDF</b> — extraction runs in the background (durable <code>DownloadWorker</code>, "upload" mode), so a scanned PDF's OCR no longer freezes the page. A <b>processing banner</b> with a <b>Cancel</b> button shows on the Manage tab while it works. Batch upload of several PDFs at once is supported.</li>
+  <li><b>Upload a file</b> — PDFs plus Word (<code>.docx</code>/<code>.odt</code>), web pages (<code>.html</code>), spreadsheets (<code>.xlsx</code>/<code>.csv</code>), plain text/Markdown, and images (<code>.png</code>/<code>.jpg</code>) of pages or cards. Extraction runs in the background (durable <code>DownloadWorker</code>, "upload" mode), so a scanned PDF's OCR no longer freezes the page. A <b>processing banner</b> with a <b>Cancel</b> button shows on the Manage tab while it works. Batch upload of several files at once is supported.</li>
   <li><b>Give a URL</b> — the same background worker fetches and extracts the PDF (timeouts, PDF validation, size caps, and a Cancel button guard the download).</li>
   <li><b>Paste text</b> — for rulebooks you already have as text.</li>
 </ul>
-<p><b>Scanned PDFs</b> are OCR'd automatically (rasterized at 200 DPI, OCR'd in parallel across cores). <b>Page detection</b> finds printed page numbers — even when numbering shifts mid-book — and extrapolates front/back matter, so reader page-nav and citations line up with the real book.</p>
+<p><b>Accuracy-first extraction.</b> Word/HTML/spreadsheet/text files carry their text exactly, so they're read structurally with no OCR or AI — the cheapest path to a perfect copy. <b>PDFs</b> are read smarter: a clean text layer is trusted as-is for free; any page that isn't clean is read <b>two cheap, independent ways</b> (the PDF text or local OCR vs. a quick AI vision read) and the two are compared. When they agree, that's the answer. When they disagree — graphic-heavy, multi-column, or hard-to-read pages — only those pages get re-read by a stronger, higher-resolution model with an <b>adversarial double-check</b> (a second AI hunts the transcription for missing text, hallucinations, wrong numbers, and dropped table rows, then it's fixed and re-checked). So you pay for the expensive model only where it actually improves accuracy. Scanned PDFs are rasterized at 300&nbsp;DPI grayscale and read in parallel across cores.</p>
+<p><b>Page detection</b> finds printed page numbers — even when numbering shifts mid-book — and extrapolates front/back matter, so reader page-nav and citations line up with the real book.</p>
 <p>Each source is stored as pages. From the game form you can open a source in the built-in <b>reader</b> (scroll or paginated mode), step through pages, and <b>hand-edit</b> any page's text. Editing text re-chunks, re-embeds, and refreshes generated suggestions/categories for the game.</p>
+
+<h3>Pages flagged for review</h3>
+<p>Each extracted page carries a <b>confidence</b> from the cross-check. Pages the app wasn't sure about (the two reads disagreed and the double-check left something unresolved) show an amber <b>"Low-confidence extraction"</b> badge in the reader, plus a per-source count of how many pages to look at. Verify a flagged page against the source and fix the text inline, or click <b>"Re-extract (stronger model)"</b> to re-render just that page and re-read it at the top tier — a durable background job swaps in the result when it's done. (Re-extract is offered for PDF and image sources, and to admins editing the game.)</p>
 
 <h3>✨ Clean up text</h3>
 <p>Raw PDF extraction is messy — broken line wraps, headers/footers, column soup. The cleanup button runs each page through an LLM to produce a clean version. It's labeled <b>Clean</b> on the first run and <b>Wipe &amp; clean</b> once cleaned text already exists; <b>Clean again</b> re-cleans the already-cleaned text for a further pass.</p>
@@ -239,6 +243,8 @@
 <ul>
   <li><b>Profile</b> — update username and email.</li>
   <li><b>LLM provider</b> — choose which model provider answers questions.</li>
+  <li><b>Vision model</b> — the multimodal model that reads PDF/image pages, plus a separate <b>vision escalation model</b> used only to re-read pages the first read couldn't nail (e.g. a fast model for the cross-check, a top-tier model for escalation).</li>
+  <li><b>Rulebook extraction</b> — choose <b>Vision</b> (the accuracy-first cross-check, recommended) or <b>OCR</b> (cheaper text-layer + OCR with AI only on the worst pages).</li>
   <li><b>Embedding provider</b> — choose the provider used to vectorize text. <span class="muted">(The default embedding model is pinned to 768 dimensions to match the search index.)</span></li>
   <li><b>Usage</b> — <code>/settings/usage</code> shows your AI usage/stats.</li>
 </ul>
@@ -247,8 +253,8 @@
 <h2 id="pipeline">Behind the scenes — how an answer is built</h2>
 <p>From upload to answer:</p>
 <div class="flow">
-  <span class="box">Upload / download PDF</span><span class="arr">→</span>
-  <span class="box">Extract pages (OCR if scanned) + detect page numbers</span><span class="arr">→</span>
+  <span class="box">Upload / download (PDF, Office, image, text)</span><span class="arr">→</span>
+  <span class="box">Extract pages: native text, or PDF cross-check (cheap reads → escalate only on disagreement) + detect page numbers</span><span class="arr">→</span>
   <span class="box">(optional) Clean text</span><span class="arr">→</span>
   <span class="box">Chunk</span><span class="arr">→</span>
   <span class="box">Embed (768-dim vectors)</span>
