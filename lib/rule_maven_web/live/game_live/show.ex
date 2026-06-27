@@ -1789,13 +1789,20 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <%= if msg.role == :assistant && !msg[:refused] &&
                          msg.content != "Thinking..." && !msg[:pending] &&
                          not String.starts_with?(to_string(msg.content), "⚠️") do %>
-                    <% {conf_label, conf_pct, conf_color} = answer_confidence(msg) %>
-                    <div
-                      style="margin-top:0.6rem"
-                      title={"Confidence: #{conf_label}"}
-                    >
+                    <% {conf_label, conf_pct, conf_color, conf_help} = answer_confidence(msg) %>
+                    <div style="margin-top:0.6rem">
                       <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.62rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">
-                        <span>{conf_label}</span>
+                        <span style="display:inline-flex;align-items:center;gap:0.3rem">
+                          {conf_label}
+                          <span class="conf-help">
+                            <button
+                              type="button"
+                              class="conf-help__btn"
+                              aria-label={"What \"#{conf_label}\" means"}
+                            >?</button>
+                            <span class="conf-help__pop" role="tooltip">{conf_help}</span>
+                          </span>
+                        </span>
                         <span style={"color:#{conf_color}"}>{conf_pct}%</span>
                       </div>
                       <div style="height:4px;border-radius:999px;background:var(--border);overflow:hidden">
@@ -2375,23 +2382,28 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   # ── Answer confidence meter ──
   # Pure heuristic from existing signals — no stored confidence column.
-  # Returns {label, percent, color}.
+  # Returns {label, percent, color, help_text}.
   defp answer_confidence(msg) do
     cond do
       msg[:pool_hit] && msg[:pool_provisional] ->
-        {"Unverified — single source", 45, "#d97706"}
+        {"Unverified — single source", 45, "#d97706",
+         "An earlier answer to a similar question. It hasn't been confirmed by other players yet."}
 
       msg[:pool_hit] ->
-        {"Community-verified", 96, "#15803d"}
+        {"Community-verified", 96, "#15803d",
+         "Other players upvoted this same answer, so it's been confirmed by the community."}
 
       present?(msg[:cited_passage]) && msg[:cited_page] ->
-        {"Cited from rulebook", 88, "#15803d"}
+        {"Cited from rulebook", 88, "#15803d",
+         "The answer quotes exact rulebook text and points to the page it came from — strong support straight from the rules."}
 
       present?(msg[:cited_passage]) ->
-        {"Cited passage, page unconfirmed", 68, "#2563eb"}
+        {"Cited passage, page unconfirmed", 68, "#2563eb",
+         "The answer quotes rulebook text, but the exact page number couldn't be confirmed."}
 
       true ->
-        {"No direct citation", 38, "#d97706"}
+        {"No direct citation", 38, "#d97706",
+         "No exact rulebook passage matched. This is the model's best read of the rules — double-check anything important."}
     end
   end
 
