@@ -136,9 +136,10 @@
 <p>Access is gated by login. You register an account (an <b>invite code</b> may be required), sign in at <code>/login</code>, and land on the game library.</p>
 <table>
   <tr><th>Role</th><th>Can do</th></tr>
-  <tr><td><span class="pill user">user</span></td><td>Browse the library, add games, upload rulebooks, ask questions, vote on community answers, build a personal collection &amp; favorites.</td></tr>
-  <tr><td><span class="pill admin">admin</span></td><td>Everything a user can, plus the <code>/admin</code> dashboard: review rulebooks, moderate questions &amp; threads, manage users, invites, the game catalog, security, and the database/Oban dashboards.</td></tr>
+  <tr><td><span class="pill user">user</span></td><td>Browse the library, add games, upload rulebooks, ask questions, vote on community answers, build a personal collection &amp; favorites. <b>Cannot</b> download or read rulebook content — see only source names.</td></tr>
+  <tr><td><span class="pill admin">admin / game master</span></td><td>Everything a user can, plus: view a rulebook's extracted-text HTML, and the <code>/admin</code> dashboard — review rulebooks, moderate questions &amp; threads, manage users, invites, the game catalog, security, and the database/Oban dashboards.</td></tr>
 </table>
+<div class="note danger"><b>Copyright lockdown.</b> Rulebooks may be copyrighted, so end users can never download the original PDF or read the full text. Original PDFs are not served over HTTP at all (kept on disk only for extraction). The extracted-text "View as HTML" view is <b>admin-only</b> — for non-admins the URL 404s so the file's existence isn't even revealed. Regular users see only the <b>source name</b> in a game's rulebook list. Answers still quote the cited page; that's the only rulebook text users see.</div>
 
 <h2 id="library">The game library</h2>
 <p>The home page (<code>/</code>) is your library. It's built for fast browsing:</p>
@@ -169,16 +170,18 @@
 <p>On the game form you manage <b>sources</b> — the rulebooks behind every answer.</p>
 <h3>Adding a source</h3>
 <ul>
-  <li><b>Upload a PDF</b> — text is extracted page by page (pages split on form-feeds, printed page numbers detected).</li>
-  <li><b>Give a URL</b> — a background <code>DownloadWorker</code> fetches and extracts the PDF.</li>
+  <li><b>Upload a PDF</b> — extraction runs in the background (durable <code>DownloadWorker</code>, "upload" mode), so a scanned PDF's OCR no longer freezes the page. A <b>processing banner</b> with a <b>Cancel</b> button shows on the Manage tab while it works. Batch upload of several PDFs at once is supported.</li>
+  <li><b>Give a URL</b> — the same background worker fetches and extracts the PDF (timeouts, PDF validation, size caps, and a Cancel button guard the download).</li>
   <li><b>Paste text</b> — for rulebooks you already have as text.</li>
 </ul>
-<p>Each source is stored as pages. You can open a source in the built-in <b>reader</b> (scroll or paginated mode), step through pages, and <b>hand-edit</b> any page's text.</p>
+<p><b>Scanned PDFs</b> are OCR'd automatically (rasterized at 200 DPI, OCR'd in parallel across cores). <b>Page detection</b> finds printed page numbers — even when numbering shifts mid-book — and extrapolates front/back matter, so reader page-nav and citations line up with the real book.</p>
+<p>Each source is stored as pages. From the game form you can open a source in the built-in <b>reader</b> (scroll or paginated mode), step through pages, and <b>hand-edit</b> any page's text. Editing text re-chunks, re-embeds, and refreshes generated suggestions/categories for the game.</p>
 
 <h3>✨ Clean up text</h3>
-<p>Raw PDF extraction is messy — broken line wraps, headers/footers, column soup. The <b>Clean up text</b> button runs each page through an LLM to produce a clean version.</p>
-<div class="note"><b>How it works:</b> A durable background job (<code>CleanupWorker</code>) cleans pages one at a time and writes each cleaned page back as it finishes — you watch them update live. It's <b>resumable</b>: if the server restarts mid-clean, the job picks up the remaining pages. Cleaned text auto-applies and stays editable afterward.</div>
-<div class="note warn">Cleaning re-cleans <b>all</b> pages from scratch (it clears prior cleaned text first), then re-chunks the document so the clean text feeds search.</div>
+<p>Raw PDF extraction is messy — broken line wraps, headers/footers, column soup. The cleanup button runs each page through an LLM to produce a clean version. It's labeled <b>Clean</b> on the first run and <b>Wipe &amp; clean</b> once cleaned text already exists; <b>Clean again</b> re-cleans the already-cleaned text for a further pass.</p>
+<p>Pick a <b>strength level</b> — <b>Light</b>, <b>Standard</b>, or <b>Aggressive</b> — to control how much the LLM rewrites. The choice is remembered per browser. Cleanup also strips the printed page number from the body (it's stored separately).</p>
+<div class="note"><b>How it works:</b> A durable background job (<code>CleanupWorker</code>) cleans pages one at a time and writes each cleaned page back as it finishes — you watch a live, restart-proof progress counter (<code>cleaning_done</code>). It's <b>resumable</b>: if the server restarts mid-clean, the job picks up the remaining pages. Cleaned text auto-applies and stays editable afterward.</div>
+<div class="note warn">"Wipe &amp; clean" re-cleans <b>all</b> pages from scratch (it clears prior cleaned text first), then re-chunks the document so the clean text feeds search. The extracted-text HTML view is regenerated from the cleaned text too.</div>
 
 <h3>What "effective text" means</h3>
 <p>For every page the app uses <code>cleaned || text</code> — the cleaned version if it exists, otherwise the raw extraction. That "effective" text is what gets chunked, embedded, and quoted in answers.</p>
@@ -211,7 +214,7 @@
 <p>Two things make repeat questions cheap and fast:</p>
 <h3>Answer pool</h3>
 <p>Before running the LLM, the app checks whether a very similar question was already answered well. If a pooled or community answer is close enough (cosine similarity ≥ <code>0.92</code> by default, trusted answers first), it <b>serves that answer instantly</b> — no retrieval, no LLM call, no cost.</p>
-<div class="note warn">When rulebook content changes (new doc, edited text, cleanup, deletion), the pool for that game is <b>invalidated</b> so stale cached answers stop serving. Community answers survive; auto-pooled ones get demoted.</div>
+<div class="note warn">When rulebook content changes (new doc, edited text, cleanup, deletion), the pool for that game is <b>invalidated</b> so stale cached answers stop serving. Auto-pooled answers get demoted; community answers are flagged <code>needs_review</code> (skipped by pool lookup) until an admin re-approves them.</div>
 <h3>FAQ page</h3>
 <p>The FAQ page (<code>/games/:id/faq</code>) collects the community's notable Q&amp;A for a game. You can filter by category. Admins can <b>promote</b> answers into the canonical FAQ or <b>reject</b> them.</p>
 
@@ -245,7 +248,7 @@
 <p>From upload to answer:</p>
 <div class="flow">
   <span class="box">Upload / download PDF</span><span class="arr">→</span>
-  <span class="box">Extract pages</span><span class="arr">→</span>
+  <span class="box">Extract pages (OCR if scanned) + detect page numbers</span><span class="arr">→</span>
   <span class="box">(optional) Clean text</span><span class="arr">→</span>
   <span class="box">Chunk</span><span class="arr">→</span>
   <span class="box">Embed (768-dim vectors)</span>
@@ -277,7 +280,8 @@
 <table>
   <tr><th>Page</th><th>Purpose</th></tr>
   <tr><td><code>/admin</code></td><td>Dashboard overview.</td></tr>
-  <tr><td><code>/games/:id/review</code></td><td>Approve/reject pending rulebooks; promote/reject pooled answers.</td></tr>
+  <tr><td><code>/games/:id/review</code></td><td>Approve/reject pending rulebooks; promote/reject pooled answers; re-approve community answers flagged after content changes.</td></tr>
+  <tr><td><code>/rulebooks/:id/html</code></td><td>View a rulebook's extracted text as HTML (admin-only; 404s for everyone else).</td></tr>
   <tr><td><code>/admin/questions</code></td><td>Moderate questions across all games.</td></tr>
   <tr><td><code>/admin/threads</code></td><td>Review conversation threads.</td></tr>
   <tr><td><code>/admin/users</code></td><td>Manage users and roles.</td></tr>

@@ -1396,6 +1396,41 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Manual fallback for when automatic printed-page detection fails: the user
+  tells us which physical sheet carries printed "Page 1", and we number every
+  page from there. Sheet `page_one_sheet` becomes printed 1, the next sheet 2,
+  and so on; sheets *before* the anchor are front matter and stay unnumbered
+  (`printed: nil`), matching how detected front matter is handled.
+
+  Returns the page maps with their `printed` field rewritten. Bodies (`text`,
+  `cleaned`) are untouched. `page_one_sheet < 1` is clamped to 1.
+  """
+  def assign_printed_from_anchor(pages, page_one_sheet) when is_integer(page_one_sheet) do
+    anchor = max(page_one_sheet, 1)
+
+    Enum.map(pages, fn p ->
+      printed = if p.sheet >= anchor, do: p.sheet - anchor + 1, else: nil
+      Map.put(p, :printed, printed)
+    end)
+  end
+
+  @doc """
+  Persists manual page numbering on a stored document: numbers every page from
+  the given page-1 anchor sheet (see `assign_printed_from_anchor/2`), preserving
+  each page's text/cleaned body, and re-chunks so citations pick up the new page
+  numbers. Returns the `update_document/2` result.
+  """
+  def set_printed_anchor(%Document{} = doc, page_one_sheet) when is_integer(page_one_sheet) do
+    pages =
+      doc.pages
+      |> Enum.sort_by(& &1.index)
+      |> assign_printed_from_anchor(page_one_sheet)
+      |> Enum.map(&page_attrs/1)
+
+    update_document(doc, %{pages: pages, full_text: rebuild_full_text(pages)})
+  end
+
+  @doc """
   Parses an existing marker-delimited `full_text` blob back into page maps.
   Handles legacy blobs without markers (positional sheet numbers, no printed
   page). Used when persisting hand-edited text and when backfilling.

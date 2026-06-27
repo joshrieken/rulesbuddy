@@ -69,6 +69,9 @@ defmodule RuleMavenWeb.GameLive.Form do
         # Current page index per source entry (id => idx) for the inline + modal
         # paginated views, plus whether the page picker selects by Sheet or Page.
         source_page: %{},
+        # Manual "page 1 is on sheet N" entry per source (id => string), for the
+        # detection-failed fallback numbering.
+        page_one_input: %{},
         # Persisted per-browser (localStorage → connect params) so the user's
         # Sheet/Page choice survives reloads. Defaults to "sheet" before connect.
         reader_label_mode: restore_reader_label(socket),
@@ -501,6 +504,68 @@ defmodule RuleMavenWeb.GameLive.Form do
     cur = Map.get(socket.assigns.source_page, id, 0)
     sp = Map.put(socket.assigns.source_page, id, cur + String.to_integer(delta))
     {:noreply, assign(socket, source_page: sp)}
+  end
+
+  # Stash the "page 1 is on sheet N" input as the user types (name encodes the
+  # entry id, read from _target), so the Number-pages button has it on click.
+  def handle_event("set_page_one_input", %{"_target" => [target]} = params, socket) do
+    case target do
+      "pageone_" <> id ->
+        id = String.to_integer(id)
+        val = String.trim(params[target] || "")
+        {:noreply, assign(socket, page_one_input: Map.put(socket.assigns.page_one_input, id, val))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Manual page numbering fallback when detection failed: the user says which
+  # physical sheet is printed "Page 1", and we number the rest from there.
+  # For a saved source we persist + re-chunk immediately, so a later Wipe & clean
+  # (which works off the stored doc and reloads pages from the DB) can't blow the
+  # numbering away. A not-yet-saved source has no doc to write to, so it stays
+  # in-memory and rides along on the next Save.
+  def handle_event("set_page_one", %{"id" => id}, socket) do
+    id = String.to_integer(id)
+    sheet_str = socket.assigns.page_one_input |> Map.get(id, "") |> String.trim()
+
+    entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
+
+    case {entry, Integer.parse(sheet_str)} do
+      {nil, _} ->
+        {:noreply, socket}
+
+      {%{source_id: sid}, {sheet, _}} when is_integer(sid) and sheet >= 1 ->
+        {:ok, _doc} = Games.set_printed_anchor(Games.get_document!(sid), sheet)
+
+        entries =
+          Enum.map(socket.assigns.source_entries, fn e ->
+            if e.id == id, do: reload_entry(e), else: e
+          end)
+
+        {:noreply,
+         socket
+         |> assign(source_entries: entries, reader_label_mode: "page")
+         |> push_event("save_reader_label", %{mode: "page"})
+         |> put_flash(:info, "Numbered pages from sheet #{sheet}.")}
+
+      {entry, {sheet, _}} when sheet >= 1 ->
+        pages = Games.assign_printed_from_anchor(entry.pages, sheet)
+        new_entry = %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
+
+        entries =
+          Enum.map(socket.assigns.source_entries, fn e -> if e.id == id, do: new_entry, else: e end)
+
+        {:noreply,
+         socket
+         |> assign(source_entries: entries, reader_label_mode: "page")
+         |> push_event("save_reader_label", %{mode: "page"})
+         |> put_flash(:info, "Numbered pages from sheet #{sheet}. Save to apply.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Enter the sheet number that shows printed page 1.")}
+    end
   end
 
   def handle_event("save_categories", _params, socket) do
@@ -1558,20 +1623,48 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   # Warns when printed page-number detection failed for a source: every page
   # fell back to its physical sheet number, so citations read "Sheet N" instead
-  # of the rulebook's real "Page N". Renders nothing when at least one printed
-  # page was detected (or the source is empty).
+  # of the rulebook's real "Page N". Offers a manual fallback: enter the sheet
+  # that carries printed "Page 1" and number the rest from there. Renders
+  # nothing when at least one printed page was detected (or the source is empty).
+  attr :id, :integer, required: true
   attr :pages, :list, required: true
+  attr :page_one, :string, default: nil
 
   defp page_detection_badge(assigns) do
     assigns = assign(assigns, fell_back?: assigns.pages != [] and Enum.all?(assigns.pages, &is_nil(&1.printed)))
 
     ~H"""
-    <div
-      :if={@fell_back?}
-      title="No printed page numbers were detected in this rulebook (common for scanned/OCR PDFs). Answers will cite physical sheet numbers instead of the book's printed page numbers."
-      style="display:inline-flex;align-items:center;gap:0.3rem;margin-bottom:0.4rem;font-size:0.68rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b);white-space:nowrap"
-    >
-      ⚠ Couldn't detect page numbers — using sheet numbers
+    <div :if={@fell_back?} style="display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem;margin-bottom:0.4rem">
+      <span
+        title="No printed page numbers were detected in this rulebook (common for scanned/OCR PDFs). Answers will cite physical sheet numbers instead of the book's printed page numbers."
+        style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.68rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b);white-space:nowrap"
+      >
+        ⚠ Couldn't detect page numbers — using sheet numbers
+      </span>
+      <%!-- No <form> wrapper (would nest in the save form). The entry id is
+            encoded in the input name ("pageone_<id>") and read from _target on
+            change; the button just triggers the numbering with the stored value. --%>
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.68rem;color:var(--text-muted)">
+        Printed page 1 is on sheet
+        <input
+          type="number"
+          min="1"
+          max={length(@pages)}
+          name={"pageone_#{@id}"}
+          value={@page_one}
+          phx-change="set_page_one_input"
+          placeholder="#"
+          style="width:3.2rem;height:1.6rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;padding:0 0.3rem;font-size:0.72rem;background:var(--bg);color:var(--text)"
+        />
+        <button
+          type="button"
+          phx-click="set_page_one"
+          phx-value-id={@id}
+          disabled={@page_one in [nil, ""]}
+          title="Number every page from this sheet, then Save to apply."
+          style="height:1.6rem;display:inline-flex;align-items:center;font-size:0.68rem;padding:0 0.55rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+        >Number pages</button>
+      </span>
     </div>
     """
   end
@@ -2208,7 +2301,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% editable = layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil %>
                   <.layer_tabs id={entry.id} current={layer} />
                   <.page_nav id={entry.id} pages={entry.pages} cur={cur} label_mode={@reader_label_mode} />
-                  <.page_detection_badge pages={entry.pages} />
+                  <.page_detection_badge id={entry.id} pages={entry.pages} page_one={@page_one_input[entry.id]} />
                   <%!-- Edits feed socket state via edit_page (layer encoded in the
                         name), so this stays in sync with the expanded reader. --%>
                   <textarea
@@ -2333,7 +2426,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                         <.page_nav id={reader.id} pages={pages} cur={cur} label_mode={@reader_label_mode} />
                       </div>
                       <div style={if(@reader_mode == "paginated" and page_count > 0, do: "", else: "margin-left:auto")}>
-                        <.page_detection_badge pages={pages} />
+                        <.page_detection_badge id={reader.id} pages={pages} page_one={@page_one_input[reader.id]} />
                       </div>
 
                       <button

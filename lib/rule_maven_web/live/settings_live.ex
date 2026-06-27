@@ -4,6 +4,52 @@ defmodule RuleMavenWeb.SettingsLive do
   alias RuleMaven.Settings
   alias RuleMaven.Users
 
+  # OpenRouter model menu, shared by the Answer / Cleanup / Vision selects so the
+  # list lives in one place. `vision: true` means multimodal (image input) — the
+  # Vision select shows only those. Slugs/prices verified against the OpenRouter
+  # API; refresh here when the catalog moves.
+  @openrouter_models [
+    {"google/gemini-3.1-pro-preview", "Gemini 3.1 Pro — $2/$12, best vision/OCR", true},
+    {"google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite — $0.25/$1.50, cheap + strong", true},
+    {"google/gemini-3-flash-preview", "Gemini 3 Flash — $0.50/$3, 1M ctx", true},
+    {"google/gemini-2.5-pro", "Gemini 2.5 Pro — $1.25/$10, 1M ctx", true},
+    {"google/gemini-2.5-flash", "Gemini 2.5 Flash — $0.30/$2.50, great value", true},
+    {"google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite — $0.10/$0.40, cheapest", true},
+    {"anthropic/claude-opus-4.8", "Claude Opus 4.8 — $5/$25, max accuracy", true},
+    {"anthropic/claude-sonnet-4.6", "Claude Sonnet 4.6 — $3/$15", true},
+    {"anthropic/claude-haiku-4.5", "Claude Haiku 4.5 — $1/$5", true},
+    {"openai/gpt-5.1", "GPT-5.1 — $1.25/$10", true},
+    {"openai/gpt-5-mini", "GPT-5 Mini — $0.25/$2", true},
+    {"openai/gpt-4o-mini", "GPT-4o Mini — $0.15/$0.60", true},
+    {"meta-llama/llama-4-maverick", "Llama 4 Maverick — $0.15/$0.60, multimodal", true},
+    {"meta-llama/llama-4-scout", "Llama 4 Scout — $0.10/$0.30, 10M ctx", true},
+    {"deepseek/deepseek-v4-flash", "DeepSeek V4 Flash — $0.09/$0.18, fast (text only)", false},
+    {"deepseek/deepseek-chat", "DeepSeek V3 — $0.20/$0.80 (text only)", false},
+    {"deepseek/deepseek-r1", "DeepSeek R1 — $0.70/$2.50, reasoning (text only)", false}
+  ]
+
+  # <option> list for an OpenRouter model <select>. Marks the current value
+  # selected; pass `vision_only` to limit it to multimodal models.
+  attr :selected, :string, default: ""
+  attr :vision_only, :boolean, default: false
+
+  defp or_model_options(assigns) do
+    assigns =
+      assign(assigns,
+        models:
+          if(assigns.vision_only,
+            do: Enum.filter(@openrouter_models, fn {_, _, v} -> v end),
+            else: @openrouter_models
+          )
+      )
+
+    ~H"""
+    <option :for={{id, label, _vision} <- @models} value={id} selected={@selected == id}>
+      {label}
+    </option>
+    """
+  end
+
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
@@ -38,6 +84,13 @@ defmodule RuleMavenWeb.SettingsLive do
        llm_cleanup_model_groq: (admin? && Settings.get("llm_cleanup_model_groq")) || "",
        llm_cleanup_model_gemini: (admin? && Settings.get("llm_cleanup_model_gemini")) || "",
        llm_cleanup_model_ollama: (admin? && Settings.get("llm_cleanup_model_ollama")) || "",
+       # Optional per-provider override for vision OCR (re-reading graphic pages).
+       # Blank = use the answering model above; it MUST be multimodal.
+       llm_vision_model_openrouter:
+         (admin? && Settings.get("llm_vision_model_openrouter")) || "",
+       llm_vision_model_groq: (admin? && Settings.get("llm_vision_model_groq")) || "",
+       llm_vision_model_gemini: (admin? && Settings.get("llm_vision_model_gemini")) || "",
+       llm_vision_model_ollama: (admin? && Settings.get("llm_vision_model_ollama")) || "",
        embedding_provider: (admin? && Settings.get("embedding_provider")) || "openrouter",
        embedding_model:
          (admin? && Settings.get("embedding_model")) || "openai/text-embedding-3-small",
@@ -149,6 +202,10 @@ defmodule RuleMavenWeb.SettingsLive do
         "llm_cleanup_model_groq" => params["llm_cleanup_model_groq"],
         "llm_cleanup_model_gemini" => params["llm_cleanup_model_gemini"],
         "llm_cleanup_model_ollama" => params["llm_cleanup_model_ollama"],
+        "llm_vision_model_openrouter" => params["llm_vision_model_openrouter"],
+        "llm_vision_model_groq" => params["llm_vision_model_groq"],
+        "llm_vision_model_gemini" => params["llm_vision_model_gemini"],
+        "llm_vision_model_ollama" => params["llm_vision_model_ollama"],
         "embedding_provider" => params["embedding_provider"],
         "embedding_model" => params["embedding_model"],
         "embedding_api_key_openrouter" => params["embedding_key"],
@@ -164,11 +221,12 @@ defmodule RuleMavenWeb.SettingsLive do
         save_setting(key, trimmed)
       end)
 
-      # Cleanup-model overrides are optional: a blank field must clear the override
-      # (fall back to the answering model), which the empty-skipping save_setting/2
-      # can't express — so delete those keys explicitly when blank.
+      # Cleanup- and vision-model overrides are optional: a blank field must clear
+      # the override (fall back to the answering model), which the empty-skipping
+      # save_setting/2 can't express — so delete those keys explicitly when blank.
       Enum.each(
-        ~w(llm_cleanup_model_openrouter llm_cleanup_model_groq llm_cleanup_model_gemini llm_cleanup_model_ollama),
+        ~w(llm_cleanup_model_openrouter llm_cleanup_model_groq llm_cleanup_model_gemini llm_cleanup_model_ollama
+           llm_vision_model_openrouter llm_vision_model_groq llm_vision_model_gemini llm_vision_model_ollama),
         fn key ->
           if trim(params[key]) == "", do: Settings.delete(key)
         end
@@ -191,6 +249,10 @@ defmodule RuleMavenWeb.SettingsLive do
          llm_cleanup_model_groq: fields["llm_cleanup_model_groq"] |> trim(),
          llm_cleanup_model_gemini: fields["llm_cleanup_model_gemini"] |> trim(),
          llm_cleanup_model_ollama: fields["llm_cleanup_model_ollama"] |> trim(),
+         llm_vision_model_openrouter: fields["llm_vision_model_openrouter"] |> trim(),
+         llm_vision_model_groq: fields["llm_vision_model_groq"] |> trim(),
+         llm_vision_model_gemini: fields["llm_vision_model_gemini"] |> trim(),
+         llm_vision_model_ollama: fields["llm_vision_model_ollama"] |> trim(),
          embedding_provider: fields["embedding_provider"] |> trim(),
          embedding_model: fields["embedding_model"] |> trim(),
          embedding_key: fields["embedding_api_key_openrouter"] |> trim(),
@@ -442,72 +504,7 @@ defmodule RuleMavenWeb.SettingsLive do
                     id="llm_model_openrouter"
                     style="width:100%;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.75rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
                   >
-                    <option
-                      value="deepseek/deepseek-v4-flash"
-                      selected={@llm_model_openrouter == "deepseek/deepseek-v4-flash"}
-                    >
-                      DeepSeek V4 Flash — $0.09/$0.18, fast, 1M ctx
-                    </option>
-                    <option
-                      value="google/gemini-2.5-flash"
-                      selected={@llm_model_openrouter == "google/gemini-2.5-flash"}
-                    >
-                      Gemini 2.5 Flash — $0.30/$2.50, 1M ctx
-                    </option>
-                    <option
-                      value="google/gemini-2.5-flash-lite"
-                      selected={@llm_model_openrouter == "google/gemini-2.5-flash-lite"}
-                    >
-                      Gemini 2.5 Flash Lite — $0.10/$0.40, 1M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-4-scout"
-                      selected={@llm_model_openrouter == "meta-llama/llama-4-scout"}
-                    >
-                      Llama 4 Scout — $0.10/$0.30, 10M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-4-maverick"
-                      selected={@llm_model_openrouter == "meta-llama/llama-4-maverick"}
-                    >
-                      Llama 4 Maverick — $0.15/$0.60, 1M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-3.3-70b-instruct:free"
-                      selected={@llm_model_openrouter == "meta-llama/llama-3.3-70b-instruct:free"}
-                    >
-                      Llama 3.3 70B — free
-                    </option>
-                    <option
-                      value="anthropic/claude-3.5-haiku"
-                      selected={@llm_model_openrouter == "anthropic/claude-3.5-haiku"}
-                    >
-                      Claude 3.5 Haiku — $1.00/$5.00
-                    </option>
-                    <option
-                      value="anthropic/claude-sonnet-4"
-                      selected={@llm_model_openrouter == "anthropic/claude-sonnet-4"}
-                    >
-                      Claude Sonnet 4 — $3/$15
-                    </option>
-                    <option
-                      value="deepseek/deepseek-chat"
-                      selected={@llm_model_openrouter == "deepseek/deepseek-chat"}
-                    >
-                      DeepSeek V3 — $0.20/$0.80
-                    </option>
-                    <option
-                      value="deepseek/deepseek-r1"
-                      selected={@llm_model_openrouter == "deepseek/deepseek-r1"}
-                    >
-                      DeepSeek R1 — $0.70/$2.50, reasoning
-                    </option>
-                    <option
-                      value="openai/gpt-4o-mini"
-                      selected={@llm_model_openrouter == "openai/gpt-4o-mini"}
-                    >
-                      GPT-4o Mini — $0.15/$0.60
-                    </option>
+                    <.or_model_options selected={@llm_model_openrouter} />
                   </select>
                 </div>
 
@@ -523,74 +520,23 @@ defmodule RuleMavenWeb.SettingsLive do
                     <option value="" selected={@llm_cleanup_model_openrouter == ""}>
                       Use Answer model
                     </option>
-                    <option
-                      value="deepseek/deepseek-v4-flash"
-                      selected={@llm_cleanup_model_openrouter == "deepseek/deepseek-v4-flash"}
-                    >
-                      DeepSeek V4 Flash — $0.09/$0.18, fast, 1M ctx
+                    <.or_model_options selected={@llm_cleanup_model_openrouter} />
+                  </select>
+                </div>
+
+                <div :if={@llm_provider == "openrouter"}>
+                  <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.25rem">
+                    Vision model <span style="font-weight:400;color:var(--text-muted)">— re-reads graphic pages OCR can't; must be multimodal. Blank = use Answer model</span>
+                  </label>
+                  <select
+                    name="llm_vision_model_openrouter"
+                    id="llm_vision_model_openrouter"
+                    style="width:100%;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.75rem;font-size:0.85rem;background:var(--bg);color:var(--text)"
+                  >
+                    <option value="" selected={@llm_vision_model_openrouter == ""}>
+                      Use Answer model
                     </option>
-                    <option
-                      value="google/gemini-2.5-flash"
-                      selected={@llm_cleanup_model_openrouter == "google/gemini-2.5-flash"}
-                    >
-                      Gemini 2.5 Flash — $0.30/$2.50, 1M ctx
-                    </option>
-                    <option
-                      value="google/gemini-2.5-flash-lite"
-                      selected={@llm_cleanup_model_openrouter == "google/gemini-2.5-flash-lite"}
-                    >
-                      Gemini 2.5 Flash Lite — $0.10/$0.40, 1M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-4-scout"
-                      selected={@llm_cleanup_model_openrouter == "meta-llama/llama-4-scout"}
-                    >
-                      Llama 4 Scout — $0.10/$0.30, 10M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-4-maverick"
-                      selected={@llm_cleanup_model_openrouter == "meta-llama/llama-4-maverick"}
-                    >
-                      Llama 4 Maverick — $0.15/$0.60, 1M ctx
-                    </option>
-                    <option
-                      value="meta-llama/llama-3.3-70b-instruct:free"
-                      selected={
-                        @llm_cleanup_model_openrouter == "meta-llama/llama-3.3-70b-instruct:free"
-                      }
-                    >
-                      Llama 3.3 70B — free
-                    </option>
-                    <option
-                      value="anthropic/claude-3.5-haiku"
-                      selected={@llm_cleanup_model_openrouter == "anthropic/claude-3.5-haiku"}
-                    >
-                      Claude 3.5 Haiku — $1.00/$5.00
-                    </option>
-                    <option
-                      value="anthropic/claude-sonnet-4"
-                      selected={@llm_cleanup_model_openrouter == "anthropic/claude-sonnet-4"}
-                    >
-                      Claude Sonnet 4 — $3/$15
-                    </option>
-                    <option
-                      value="deepseek/deepseek-chat"
-                      selected={@llm_cleanup_model_openrouter == "deepseek/deepseek-chat"}
-                    >
-                      DeepSeek V3 — $0.20/$0.80
-                    </option>
-                    <option
-                      value="deepseek/deepseek-r1"
-                      selected={@llm_cleanup_model_openrouter == "deepseek/deepseek-r1"}
-                    >
-                      DeepSeek R1 — $0.70/$2.50, reasoning
-                    </option>
-                    <option
-                      value="openai/gpt-4o-mini"
-                      selected={@llm_cleanup_model_openrouter == "openai/gpt-4o-mini"}
-                    >
-                      GPT-4o Mini — $0.15/$0.60
-                    </option>
+                    <.or_model_options selected={@llm_vision_model_openrouter} vision_only={true} />
                   </select>
                 </div>
 

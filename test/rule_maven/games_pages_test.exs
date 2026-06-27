@@ -78,6 +78,36 @@ defmodule RuleMaven.GamesPagesTest do
     end
   end
 
+  describe "assign_printed_from_anchor/2 (manual fallback)" do
+    defp from_anchor(raw, sheet) do
+      Games.paginate(raw)
+      |> Games.assign_printed_from_anchor(sheet)
+      |> Enum.map(& &1.printed)
+    end
+
+    test "anchor on sheet 1 numbers every page from 1" do
+      assert from_anchor(["a", "b", "c"], 1) == [1, 2, 3]
+    end
+
+    test "anchor mid-book leaves earlier sheets unnumbered (front matter)" do
+      assert from_anchor(["cover", "toc", "a", "b", "c"], 3) == [nil, nil, 1, 2, 3]
+    end
+
+    test "overwrites any previously detected numbers" do
+      pages = [%{sheet: 1, printed: 9}, %{sheet: 2, printed: 9}, %{sheet: 3, printed: nil}]
+      assert Games.assign_printed_from_anchor(pages, 2) |> Enum.map(& &1.printed) == [nil, 1, 2]
+    end
+
+    test "clamps a sub-1 anchor to sheet 1" do
+      assert from_anchor(["a", "b"], 0) == [1, 2]
+    end
+
+    test "leaves page bodies untouched" do
+      [p | _] = Games.paginate(["body text"]) |> Games.assign_printed_from_anchor(1)
+      assert p.text == "body text"
+    end
+  end
+
   describe "strip_printed_number/2" do
     test "drops a bare page-number footer line" do
       assert Games.strip_printed_number("Some rule text here.\n3", 3) == "Some rule text here."

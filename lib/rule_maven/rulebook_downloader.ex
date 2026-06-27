@@ -450,7 +450,7 @@ defmodule RuleMaven.RulebookDownloader do
           # OCR pages in parallel across cores (tesseract is single-threaded per
           # invocation), preserving page order. Cuts an N-page scan from N×t to
           # roughly N/cores × t.
-          text =
+          ocr_pages =
             images
             |> Task.async_stream(
               fn img ->
@@ -463,6 +463,25 @@ defmodule RuleMaven.RulebookDownloader do
                 end
               end,
               max_concurrency: System.schedulers_online(),
+              ordered: true,
+              timeout: :infinity
+            )
+            |> Enum.map(fn
+              {:ok, t} -> t
+              _ -> ""
+            end)
+
+          # Vision fallback for the pages OCR mangled (heavy graphics / overlaid
+          # decorative text) or couldn't read at all. Only the bad pages hit the
+          # vision model, so cost stays bounded. On any failure we keep the OCR
+          # text. Capped concurrency: these are remote LLM calls, not local CPU.
+          text =
+            Enum.zip(images, ocr_pages)
+            |> Task.async_stream(
+              fn {img, ocr} ->
+                if ocr_junk?(ocr), do: vision_or_ocr(img, ocr), else: ocr
+              end,
+              max_concurrency: 4,
               ordered: true,
               timeout: :infinity
             )
@@ -490,6 +509,47 @@ defmodule RuleMaven.RulebookDownloader do
     else
       {:error, "PDF has no text layer. Install tesseract for OCR: brew install tesseract"}
     end
+  end
+
+  # Re-transcribe one page image with the vision model, falling back to the OCR
+  # text if vision fails or comes back empty (never replace usable OCR with
+  # nothing).
+  defp vision_or_ocr(image_path, ocr_text) do
+    case RuleMaven.LLM.transcribe_page_image(image_path) do
+      {:ok, text} ->
+        if String.trim(text) == "", do: ocr_text, else: text
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("Vision OCR fallback failed for #{image_path}: #{inspect(reason)}")
+        ocr_text
+    end
+  end
+
+  @doc """
+  Heuristic: does this page's OCR output look like garbage (so a vision re-read
+  is worth the LLM call)? True when the page is empty (image-only page tesseract
+  couldn't read) or when fewer than half its tokens are real words — the
+  signature of graphic/decorative pages OCR scrambles into symbol soup.
+  """
+  def ocr_junk?(text) do
+    tokens = String.split(text || "", ~r/\s+/, trim: true)
+
+    case length(tokens) do
+      0 ->
+        true
+
+      total ->
+        wordish = Enum.count(tokens, &wordish_token?/1)
+        wordish / total < 0.5
+    end
+  end
+
+  # A "real word": starts with a letter, 3+ letters long, and contains a vowel.
+  # Rejects single chars, symbol fragments ("e¢", "®"), and OCR consonant soup
+  # ("YopM&y", "BOARO" passes — fine, it's recoverable; "frg" / "ttt" don't).
+  defp wordish_token?(tok) do
+    Regex.match?(~r/^[A-Za-z][A-Za-z'’-]{2,}$/u, tok) and Regex.match?(~r/[aeiouAEIOUyY]/, tok)
   end
 
   defp extract_filename(url) do

@@ -220,8 +220,14 @@ defmodule RuleMaven.LLM do
   flow can still quote it). Returns `{:ok, cleaned}` or `{:error, reason}`.
 
   Empty/whitespace input is returned unchanged. If the model returns an empty
-  result or drops more than half the characters (a likely truncation/refusal),
-  the original page is kept instead.
+  result or drops more characters than the level allows (a likely
+  truncation/refusal), the original page is kept instead.
+
+  The drop guard is level-aware: light/standard are near-verbatim, so a >50%
+  shrink signals a problem and the raw page is kept. Aggressive deliberately
+  strips headers/footers/diagram clutter and reflows badly-scanned pages, so a
+  large shrink is expected — it only reverts on a near-total wipe (likely a
+  refusal), keeping anything above ~15% of the input.
   """
   def cleanup_page(page_text, level \\ :light, page_number \\ nil) do
     if String.trim(page_text) == "" do
@@ -234,8 +240,9 @@ defmodule RuleMaven.LLM do
            ) do
         {:ok, cleaned} ->
           trimmed = String.trim(cleaned)
+          min_keep = round(String.length(page_text) * min_kept_ratio(level))
 
-          if trimmed == "" or String.length(trimmed) < div(String.length(page_text), 2) do
+          if trimmed == "" or String.length(trimmed) < min_keep do
             {:ok, page_text}
           else
             {:ok, cleaned}
@@ -244,6 +251,73 @@ defmodule RuleMaven.LLM do
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  # Smallest fraction of the input the cleaned result may shrink to before we
+  # treat it as a truncation/refusal and keep the raw page. Aggressive is meant
+  # to cut hard, so it tolerates a much larger drop than the verbatim levels.
+  defp min_kept_ratio(:aggressive), do: 0.15
+  defp min_kept_ratio(_), do: 0.5
+
+  @vision_extract_prompt """
+  You are transcribing one page of a board-game rulebook from an image — a page
+  OCR could not read (heavy graphics, decorative or overlaid text).
+
+  Output every piece of READABLE RULES TEXT exactly as written: headings,
+  paragraphs, numbered/bulleted steps, component names with their counts, and any
+  printed page number. Preserve reading order; for multi-column layouts read each
+  column top-to-bottom. Keep component lists as lines like "- 64 base cards".
+
+  Ignore purely decorative art, background textures, and illustration-only
+  regions that contain no text. Do NOT describe the images, do NOT summarize, do
+  NOT invent rules, numbers, or components that aren't visibly printed. If the
+  page has no readable text at all, output nothing.
+
+  Output only the transcribed text — no commentary, no code fences.
+  """
+
+  @doc """
+  Transcribes a single rulebook page image (PNG/JPEG path) to text via the
+  vision model, for pages OCR mangled. Sends the image inline (base64 data URL)
+  in an OpenAI-style multimodal message — works with OpenRouter/Gemini, the
+  default provider. Returns `{:ok, text}` or `{:error, reason}`.
+
+  Uses the vision model by default — `llm_vision_model_<provider>` if set, else
+  the provider's default model (gemini-2.5-flash on OpenRouter is multimodal).
+  Deliberately NOT the cleanup model, which is often a text-only model
+  (e.g. deepseek). Pass `:model` to override. The caller falls back to the OCR
+  text on error, so a non-vision model simply yields `{:error, _}` and no harm.
+  """
+  def transcribe_page_image(image_path, opts \\ []) do
+    case File.read(image_path) do
+      {:ok, bin} ->
+        mime = if String.ends_with?(image_path, ".jpg"), do: "image/jpeg", else: "image/png"
+        data_url = "data:#{mime};base64," <> Base.encode64(bin)
+
+        messages = [
+          %{
+            role: "user",
+            content: [
+              %{type: "text", text: @vision_extract_prompt},
+              %{type: "image_url", image_url: %{url: data_url}}
+            ]
+          }
+        ]
+
+        body = %{
+          model: opts[:model] || vision_model(),
+          max_tokens: opts[:max_tokens] || 4096,
+          messages: messages
+        }
+
+        case do_request(body, 1, operation: "ocr_vision") do
+          {:ok, %{answer: text}} -> {:ok, text}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, "could not read page image: #{inspect(reason)}"}
     end
   end
 
@@ -569,6 +643,18 @@ defmodule RuleMaven.LLM do
       custom && custom != "" -> custom
       provider_conf -> provider_conf.model
       true -> RuleMaven.Settings.get("llm_model") || @default_model
+    end
+  end
+
+  @doc """
+  The multimodal model used to re-read pages OCR mangled (`llm_vision_model_<provider>`
+  if set, else the provider default). Separate from `model(:cleanup)` because the
+  cleanup model is frequently a text-only model that can't take image input.
+  """
+  def vision_model do
+    case RuleMaven.Settings.get("llm_vision_model_#{provider()}") do
+      m when is_binary(m) and m != "" -> m
+      _ -> model(:default)
     end
   end
 
