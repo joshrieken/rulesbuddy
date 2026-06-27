@@ -113,10 +113,36 @@ defmodule RuleMavenWeb.SettingsLive do
        cluster_similarity_threshold:
          (admin? && Settings.get("cluster_similarity_threshold")) || "0.85",
        llm_proxy_url: (admin? && Settings.get("llm_proxy_url")) || "",
+       tab: "profile",
+       # Current prompt templates (override if set, else code default) keyed by
+       # prompt key — backs the editable textareas on the Prompts tab.
+       prompt_values:
+         (admin? && Map.new(RuleMaven.Prompts.specs(), &{&1.key, RuleMaven.Prompts.template(&1.key)})) ||
+           %{},
        saved: false,
        usage_stats: nil,
        page_title: "Settings"
      )}
+  end
+
+  @impl true
+  def handle_event("set_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, tab: tab, saved: false)}
+  end
+
+  @impl true
+  def handle_event("reset_prompt", %{"key" => key}, socket) do
+    if socket.assigns.is_admin do
+      Settings.delete("prompt_#{key}")
+
+      {:noreply,
+       assign(socket,
+         prompt_values: Map.put(socket.assigns.prompt_values, key, RuleMaven.Prompts.default(key)),
+         saved: false
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -250,6 +276,25 @@ defmodule RuleMavenWeb.SettingsLive do
         end
       )
 
+      # Prompt overrides: store only when the textarea differs from the code
+      # default (so "Reset to default" / matching text falls back to the default).
+      prompt_values =
+        Map.new(RuleMaven.Prompts.specs(), fn %{key: key} ->
+          val = params["prompt_#{key}"]
+          default = RuleMaven.Prompts.default(key)
+
+          cond do
+            is_nil(val) -> {key, RuleMaven.Prompts.template(key)}
+            normalize(val) == "" or normalize(val) == normalize(default) ->
+              Settings.delete("prompt_#{key}")
+              {key, default}
+
+            true ->
+              Settings.put("prompt_#{key}", val)
+              {key, val}
+          end
+        end)
+
       {:noreply,
        assign(socket,
          bgg_api_key: fields["bgg_api_key"] |> trim(),
@@ -285,6 +330,7 @@ defmodule RuleMavenWeb.SettingsLive do
          pool_similarity_threshold: fields["pool_similarity_threshold"] |> trim(),
          cluster_similarity_threshold: fields["cluster_similarity_threshold"] |> trim(),
          llm_proxy_url: fields["llm_proxy_url"] |> trim(),
+         prompt_values: prompt_values,
          saved: true
        )}
     else
@@ -297,6 +343,11 @@ defmodule RuleMavenWeb.SettingsLive do
 
   defp trim(nil), do: ""
   defp trim(s), do: String.trim(s)
+
+  # Compare prompt text ignoring trailing whitespace / CRLF the browser may add,
+  # so an unedited textarea round-trips as "same as default".
+  defp normalize(nil), do: ""
+  defp normalize(s), do: s |> String.replace("\r\n", "\n") |> String.trim_trailing()
 
   @impl true
   def handle_params(_params, _uri, socket) do
@@ -370,8 +421,34 @@ defmodule RuleMavenWeb.SettingsLive do
           </.link>
         </div>
 
+        <%!-- Tab bar --%>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.25rem">
+          <% tabs =
+            [{"profile", "Profile"}] ++
+              if @is_admin do
+                [
+                  {"llm", "LLM"},
+                  {"embeddings", "Embeddings & Proxy"},
+                  {"automation", "Automation"},
+                  {"bgg", "BoardGameGeek"},
+                  {"prompts", "Prompts"}
+                ]
+              else
+                []
+              end %>
+          <button
+            :for={{key, label} <- tabs}
+            type="button"
+            phx-click="set_tab"
+            phx-value-tab={key}
+            style={"display:inline-block;padding:0.3rem 0.85rem;border-radius:9999px;font-size:0.8rem;font-weight:600;cursor:pointer;border:1.5px solid var(--accent);background:#{if @tab == key, do: "var(--accent)", else: "transparent"};color:#{if @tab == key, do: "white", else: "var(--accent)"}"}
+          >{label}</button>
+        </div>
+
         <!-- Profile Section -->
-        <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);margin-bottom:1rem">
+        <section
+          style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);margin-bottom:1rem;display:#{if @tab == "profile", do: "block", else: "none"}"}
+        >
           <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.75rem 0">Profile</h2>
 
           <div phx-change="profile_form_change">
@@ -455,17 +532,18 @@ defmodule RuleMavenWeb.SettingsLive do
         </section>
 
         <%= if @is_admin do %>
-          <h1 class="text-2xl font-bold mb-2">Settings</h1>
-
           <div :if={@saved} class="alert alert-info mb-4">
             Settings saved.
           </div>
 
-          <form phx-submit="save" style="display:flex;flex-direction:column;gap:1.25rem">
+          <form
+            phx-submit="save"
+            style={"flex-direction:column;gap:1.25rem;display:#{if @tab == "profile", do: "none", else: "flex"}"}
+          >
             <%!-- ════════════════════════════════════════ --%>
             <%!-- LLM Provider --%>
             <%!-- ════════════════════════════════════════ --%>
-            <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);display:#{if @tab == "llm", do: "block", else: "none"}"}>
               <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">LLM Provider</h2>
               <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
                 Select which LLM service to use for answering questions and generating content.
@@ -794,7 +872,7 @@ defmodule RuleMavenWeb.SettingsLive do
             <%!-- ════════════════════════════════════════ --%>
             <%!-- Embeddings --%>
             <%!-- ════════════════════════════════════════ --%>
-            <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);display:#{if @tab == "embeddings", do: "block", else: "none"}"}>
               <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">Embeddings</h2>
               <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
                 Used for semantic search over rulebook chunks and FAQ similarity matching. Generated once at upload time, once per question.
@@ -869,7 +947,7 @@ defmodule RuleMavenWeb.SettingsLive do
             <%!-- ════════════════════════════════════════ --%>
             <%!-- LLM Proxy --%>
             <%!-- ════════════════════════════════════════ --%>
-            <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);display:#{if @tab == "embeddings", do: "block", else: "none"}"}>
               <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">LLM Proxy</h2>
               <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
                 Route all LLM and embedding calls through a proxy (e.g. Headroom). Leave blank to call providers directly.
@@ -898,7 +976,7 @@ defmodule RuleMavenWeb.SettingsLive do
             <%!-- ════════════════════════════════════════ --%>
             <%!-- Automation --%>
             <%!-- ════════════════════════════════════════ --%>
-            <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);display:#{if @tab == "automation", do: "block", else: "none"}"}>
               <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">Automation</h2>
               <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
                 Reduce manual admin work. Auto-approve when confidence is high. Disable to review everything manually.
@@ -980,7 +1058,7 @@ defmodule RuleMavenWeb.SettingsLive do
             <%!-- ════════════════════════════════════════ --%>
             <%!-- BGG Integration --%>
             <%!-- ════════════════════════════════════════ --%>
-            <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface)">
+            <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);display:#{if @tab == "bgg", do: "block", else: "none"}"}>
               <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.25rem 0">BoardGameGeek</h2>
               <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 1rem 0">
                 Used to import your game collection and download rulebook PDFs from BGG.
@@ -1036,6 +1114,45 @@ defmodule RuleMavenWeb.SettingsLive do
                 </div>
               </div>
             </section>
+
+            <%!-- ════════════════════════════════════════ --%>
+            <%!-- Prompts --%>
+            <%!-- ════════════════════════════════════════ --%>
+            <div
+              style={"flex-direction:column;gap:1rem;display:#{if @tab == "prompts", do: "flex", else: "none"}"}
+            >
+              <p style="font-size:0.78rem;color:var(--text-muted);margin:0">
+                Edit the LLM prompts. Placeholders like <code>{"{{game_name}}"}</code> are filled in
+                at runtime — keep them. Leaving a prompt unchanged (or clicking Reset) uses the
+                built-in default. Editing the Q&amp;A answer prompt's JSON schema can break answering.
+              </p>
+
+              <%= for %{key: key, label: label, description: desc, vars: vars} <- RuleMaven.Prompts.specs() do %>
+                <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.25rem;background:var(--bg-surface)">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+                    <h2 style="font-size:0.9rem;font-weight:700;margin:0">{label}</h2>
+                    <button
+                      type="button"
+                      phx-click="reset_prompt"
+                      phx-value-key={key}
+                      style="background:none;border:1px solid var(--border-strong);color:var(--text-muted);padding:0.2rem 0.6rem;border-radius:0.375rem;font-size:0.72rem;font-weight:600;cursor:pointer"
+                    >
+                      Reset to default
+                    </button>
+                  </div>
+                  <p style="font-size:0.72rem;color:var(--text-muted);margin:0.25rem 0 0 0">{desc}</p>
+                  <p :if={vars != []} style="font-size:0.7rem;color:var(--text-muted);margin:0.25rem 0 0 0">
+                    Variables: <%= for v <- vars do %><code style="margin-right:0.4rem">{"{{#{v}}}"}</code><% end %>
+                  </p>
+                  <textarea
+                    name={"prompt_#{key}"}
+                    rows="10"
+                    spellcheck="false"
+                    style="width:100%;margin-top:0.5rem;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.6rem;font-size:0.78rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:var(--bg);color:var(--text);resize:vertical"
+                  >{@prompt_values[key]}</textarea>
+                </section>
+              <% end %>
+            </div>
 
             <button
               type="submit"
