@@ -3019,7 +3019,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%!-- Generated tab: suggested questions + categories --%>
           <div style={if @tab == "generated", do: "display:block", else: "display:none"}>
             <%!-- Suggested questions (compact, per-category collapsible) --%>
-            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+            <div style="margin-top:1rem">
               <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem">
                 <span style="font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
                   Suggested questions
