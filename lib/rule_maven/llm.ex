@@ -957,6 +957,8 @@ defmodule RuleMaven.LLM do
       this sample does NOT mean it doesn't exist elsewhere in the rulebook. State
       what something DOES, not what it lacks or can't do.
     - Plain, friendly language. No markdown headers, no preamble.
+    - Write each fact as a plain statement. Do NOT prefix it with "Did you know"
+      — that heading is already shown above the list.
 
     Return each fact on its own line starting with "- ".
 
@@ -975,6 +977,10 @@ defmodule RuleMaven.LLM do
         facts =
           text
           |> bullet_lines()
+          |> Enum.map(&String.trim/1)
+          # Strip any stray "Did you know?" prefix the model adds anyway — the
+          # section heading already says it.
+          |> Enum.map(&String.replace(&1, ~r/^did you know[:?,!\s-]*/i, ""))
           |> Enum.map(&String.trim/1)
           # Drop blanks and truncated runt fragments (a cut-off final bullet).
           |> Enum.reject(&(String.length(&1) < 20))
