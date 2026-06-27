@@ -1789,7 +1789,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <%= if msg.role == :assistant && !msg[:refused] &&
                          msg.content != "Thinking..." && !msg[:pending] &&
                          not String.starts_with?(to_string(msg.content), "⚠️") do %>
-                    <% {conf_label, conf_pct, conf_color, conf_help} = answer_confidence(msg) %>
+                    <% {conf_label, conf_pct, conf_color, conf_help, conf_next} =
+                      answer_confidence(msg) %>
                     <div style="margin-top:0.6rem">
                       <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.62rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">
                         <span style="display:inline-flex;align-items:center;gap:0.3rem">
@@ -1800,7 +1801,15 @@ defmodule RuleMavenWeb.GameLive.Show do
                               class="conf-help__btn"
                               aria-label={"What \"#{conf_label}\" means"}
                             >?</button>
-                            <span class="conf-help__pop" role="tooltip">{conf_help}</span>
+                            <span class="conf-help__pop" role="tooltip">
+                              {conf_help}
+                              <span
+                                :if={conf_next}
+                                style="display:block;margin-top:0.4rem;padding-top:0.4rem;border-top:1px solid rgba(255,255,255,0.2)"
+                              >
+                                <span style="font-weight:700">Next level:</span> {conf_next}
+                              </span>
+                            </span>
                           </span>
                         </span>
                         <span style={"color:#{conf_color}"}>{conf_pct}%</span>
@@ -1969,9 +1978,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                       title={if cv == "up", do: "Remove vote", else: "Helpful"}
                     >👍</button>
                     <span
-                      :if={Map.get(counts, :up, 0) > 0}
                       style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
-                    >{counts[:up]}</span>
+                      title="Total helpful votes"
+                    >{Map.get(counts, :up, 0)}</span>
                     <button
                       type="button"
                       phx-click="community_vote"
@@ -1981,9 +1990,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                       title={if cv == "down", do: "Remove vote", else: "Not helpful"}
                     >👎</button>
                     <span
-                      :if={Map.get(counts, :down, 0) > 0}
                       style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
-                    >{counts[:down]}</span>
+                      title="Total not-helpful votes"
+                    >{Map.get(counts, :down, 0)}</span>
                   <% else %>
                     <%= if msg[:pool_hit] && msg[:pool_provisional] && msg[:pool_source_id] do %>
                       <!-- Provisional pool hit: vote accrues to the source row -->
@@ -1999,9 +2008,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                         title={if cv == "up", do: "Remove vote", else: "Helpful"}
                       >👍</button>
                       <span
-                        :if={Map.get(counts, :up, 0) > 0}
                         style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
-                      >{counts[:up]}</span>
+                        title="Total helpful votes"
+                      >{Map.get(counts, :up, 0)}</span>
                       <button
                         type="button"
                         phx-click="community_vote"
@@ -2011,9 +2020,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                         title={if cv == "down", do: "Remove vote", else: "Not helpful"}
                       >👎</button>
                       <span
-                        :if={Map.get(counts, :down, 0) > 0}
                         style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
-                      >{counts[:down]}</span>
+                        title="Total not-helpful votes"
+                      >{Map.get(counts, :down, 0)}</span>
                       <button
                         :if={@is_admin or cv != "up"}
                         type="button"
@@ -2382,28 +2391,34 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   # ── Answer confidence meter ──
   # Pure heuristic from existing signals — no stored confidence column.
-  # Returns {label, percent, color, help_text}.
+  # Returns {label, percent, color, help_text, next_step}. next_step is nil at
+  # the top level (Community-verified); otherwise it tells the user how to reach
+  # the next, more-trusted level.
   defp answer_confidence(msg) do
     cond do
       msg[:pool_hit] && msg[:pool_provisional] ->
         {"Unverified — single source", 45, "#d97706",
-         "An earlier answer to a similar question. It hasn't been confirmed by other players yet."}
+         "An earlier answer to a similar question. It hasn't been confirmed by other players yet.",
+         "Community-verified — once other players upvote this answer too."}
 
       msg[:pool_hit] ->
         {"Community-verified", 96, "#15803d",
-         "Other players upvoted this same answer, so it's been confirmed by the community."}
+         "Other players upvoted this same answer, so it's been confirmed by the community.", nil}
 
       present?(msg[:cited_passage]) && msg[:cited_page] ->
         {"Cited from rulebook", 88, "#15803d",
-         "The answer quotes exact rulebook text and points to the page it came from — strong support straight from the rules."}
+         "The answer quotes exact rulebook text and points to the page it came from — strong support straight from the rules.",
+         "Community-verified — when other players ask the same thing and upvote this answer."}
 
       present?(msg[:cited_passage]) ->
         {"Cited passage, page unconfirmed", 68, "#2563eb",
-         "The answer quotes rulebook text, but the exact page number couldn't be confirmed."}
+         "The answer quotes rulebook text, but the exact page number couldn't be confirmed.",
+         "Cited from rulebook — regenerate to try to pin the exact page."}
 
       true ->
         {"No direct citation", 38, "#d97706",
-         "No exact rulebook passage matched. This is the model's best read of the rules — double-check anything important."}
+         "No exact rulebook passage matched. This is the model's best read of the rules — double-check anything important.",
+         "Cited from rulebook — regenerate to pull a direct rulebook citation."}
     end
   end
 
