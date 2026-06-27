@@ -52,6 +52,8 @@ defmodule RuleMavenWeb.GameLive.Form do
         bgg_search_results: [],
         bgg_search_error: nil,
         suggestions: [],
+        dyk_facts: [],
+        regenerating_dyk: false,
         # Per-source HTML-regen result for inline feedback: source_id => :ok | :error.
         regen_html_status: %{},
         regenerating_suggestions: false,
@@ -189,6 +191,11 @@ defmodule RuleMavenWeb.GameLive.Form do
 
               Phoenix.PubSub.subscribe(
                 RuleMaven.PubSub,
+                RuleMaven.Workers.DidYouKnowWorker.topic(game.id)
+              )
+
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
                 RuleMaven.Workers.DownloadWorker.topic(game.id)
               )
 
@@ -236,7 +243,13 @@ defmodule RuleMavenWeb.GameLive.Form do
                 end)
             end
 
-          socket = assign(socket, suggestions: suggestions)
+          dyk_facts =
+            case RuleMaven.Settings.get("did_you_know_#{game.id}") do
+              nil -> []
+              json -> Jason.decode!(json)
+            end
+
+          socket = assign(socket, suggestions: suggestions, dyk_facts: dyk_facts)
 
           draft_categories =
             case RuleMaven.Settings.get("categories_#{game.id}") do
@@ -410,6 +423,20 @@ defmodule RuleMavenWeb.GameLive.Form do
     socket = assign(socket, regenerating_suggestions: true)
     send(self(), {:refresh_suggestions, game})
     {:noreply, socket}
+  end
+
+  def handle_event("clear_dyk", _params, socket) do
+    game = socket.assigns.game
+    if game, do: RuleMaven.Settings.delete("did_you_know_#{game.id}")
+    {:noreply, assign(socket, dyk_facts: [])}
+  end
+
+  def handle_event("regenerate_dyk", _params, socket) do
+    game = socket.assigns.game
+    # Clear the cached facts so a failed/empty run doesn't leave stale ones shown.
+    RuleMaven.Settings.delete("did_you_know_#{game.id}")
+    RuleMaven.Workers.DidYouKnowWorker.enqueue(game.id)
+    {:noreply, assign(socket, dyk_facts: [], regenerating_dyk: true)}
   end
 
   def handle_event("regenerate_html", %{"id" => id_str}, socket) do
@@ -1258,6 +1285,11 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_info({:suggestions_ready, qs}, socket) do
     {:noreply, assign(socket, suggestions: qs, regenerating_suggestions: false)}
+  end
+
+  @impl true
+  def handle_info({:did_you_know_ready, facts}, socket) do
+    {:noreply, assign(socket, dyk_facts: facts, regenerating_dyk: false)}
   end
 
   @impl true
@@ -2981,6 +3013,51 @@ defmodule RuleMavenWeb.GameLive.Form do
                     </details>
                   <% end %>
                 </div>
+              <% end %>
+            </div>
+
+            <%!-- "Did you know?" facts (shown on the game's empty state) --%>
+            <div style="margin-top:1.25rem">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+                <span style="font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                  💡 Did you know?
+                  <%= if @dyk_facts != [] do %>
+                    ({length(@dyk_facts)})
+                  <% end %>
+                </span>
+                <button
+                  type="button"
+                  phx-click="regenerate_dyk"
+                  disabled={@regenerating_dyk}
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                >
+                  {cond do
+                    @regenerating_dyk -> "Generating…"
+                    @dyk_facts != [] -> "Regenerate"
+                    true -> "Generate"
+                  end}
+                </button>
+                <button
+                  :if={@dyk_facts != []}
+                  type="button"
+                  phx-click="clear_dyk"
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                >
+                  Clear
+                </button>
+              </div>
+              <%= if @dyk_facts != [] do %>
+                <ul style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden;list-style:none;padding:0">
+                  <%= for fact <- @dyk_facts do %>
+                    <li style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-bottom:1px solid var(--border-subtle)">
+                      {fact}
+                    </li>
+                  <% end %>
+                </ul>
+              <% else %>
+                <p style="font-size:0.62rem;color:var(--text-muted)">
+                  Generate short, friendly rule facts shown on this game's page.
+                </p>
               <% end %>
             </div>
 
