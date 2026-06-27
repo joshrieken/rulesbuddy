@@ -525,6 +525,7 @@ defmodule RuleMaven.Games do
     case result do
       {:ok, updated} when updated.full_text != doc.full_text ->
         chunk_document(updated)
+        regenerate_document_html(updated)
         invalidate_pool(updated.game_id)
         refresh_generated(updated.game_id)
         result
@@ -533,6 +534,31 @@ defmodule RuleMaven.Games do
         result
     end
   end
+
+  @doc """
+  Re-renders the source's "View as HTML" file from its current effective
+  (cleaned||original) text. No-op for sources without a backing PDF (e.g.
+  hand-pasted text, which has no html file). Called whenever the text changes
+  (edit, cleanup) so the HTML view stays in sync.
+  """
+  def regenerate_document_html(%Document{pdf_path: pdf_path} = doc)
+      when is_binary(pdf_path) and pdf_path != "" do
+    text = rebuild_full_text(doc.pages)
+
+    case RuleMaven.RulebookDownloader.text_to_html(text, pdf_path) do
+      nil ->
+        :ok
+
+      html_path ->
+        if html_path != doc.html_path do
+          Repo.update_all(from(d in Document, where: d.id == ^doc.id), set: [html_path: html_path])
+        end
+
+        :ok
+    end
+  end
+
+  def regenerate_document_html(_doc), do: :ok
 
   @doc """
   Enqueues regeneration of the rulebook-derived suggested questions and category

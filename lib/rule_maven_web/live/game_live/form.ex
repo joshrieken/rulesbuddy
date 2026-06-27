@@ -814,6 +814,7 @@ defmodule RuleMavenWeb.GameLive.Form do
     {:noreply,
      assign(socket,
        downloading: false,
+       uploading_pdfs: false,
        download_stage: nil,
        download_error: nil
      )}
@@ -904,107 +905,86 @@ defmodule RuleMavenWeb.GameLive.Form do
         String.trim(l) != "" and Enum.any?(pages, &(String.trim(Games.effective_page_text(&1)) != ""))
       end)
 
-    pdf_texts =
+    # Any pending PDF uploads are handed to the background extraction worker
+    # (same as the Upload button) rather than extracted inline — scanned PDFs
+    # OCR in the background instead of blocking this save.
+    upload_files =
       socket
       |> consume_uploaded_entries(:rulebook_pdfs, fn %{path: path}, entry ->
-        case extract_pdf_text(path, entry.client_name) do
-          {:ok, attrs} ->
-            label =
-              entry.client_name
-              |> Path.rootname()
-              |> String.replace(~r/[_\-]/, " ")
+        label = entry.client_name |> Path.rootname() |> String.replace(~r/[_\-]/, " ")
 
-            {:ok, {:ok, label, attrs}}
-
-          # Don't persist a "document" whose body is an extraction error — it
-          # only litters the source list (mirrors the process_uploads path,
-          # which drops failures). extract_pdf_text already removes the copied
-          # PDF on failure, so nothing is orphaned.
-          {:error, _reason, _} ->
-            {:ok, :error}
+        case save_uploaded_pdf(path, entry.client_name) do
+          {:ok, pdf_path} -> {:ok, {:ok, %{"pdf_path" => pdf_path, "label" => label}}}
+          {:error, _} -> {:ok, :error}
         end
       end)
       |> Enum.flat_map(fn
-        {:ok, label, attrs} -> [{label, attrs}]
+        {:ok, file} -> [file]
         :error -> []
       end)
 
-    merged =
-      Enum.reduce(pdf_texts, source_map, fn {label, attrs}, acc ->
-        case acc do
-          %{^label => _} ->
-            acc
+    if upload_files != [] do
+      RuleMaven.Workers.DownloadWorker.enqueue_upload(socket.assigns.game.id, upload_files)
+    end
 
-          _ ->
-            Keyword.put(acc, label, attrs)
-        end
-      end)
-      |> Map.new()
+    socket = if upload_files != [], do: assign(socket, uploading_pdfs: true), else: socket
 
-    save_game(socket, socket.assigns.game, game_params, merged)
+    save_game(socket, socket.assigns.game, game_params, Map.new(source_map))
   end
 
   @impl true
   def handle_event("process_uploads", _params, socket) do
     game = socket.assigns.game
-    socket = assign(socket, uploading_pdfs: true)
 
+    # Only copy the uploaded file into place here (fast); the heavy extraction
+    # (incl. OCR for scanned PDFs, which can take minutes) runs in the durable
+    # DownloadWorker so it never blocks the LiveView. consume_uploaded_entries
+    # deletes the temp file when the callback returns, so the copy must happen
+    # now, not in the worker.
     results =
       consume_uploaded_entries(socket, :rulebook_pdfs, fn %{path: path}, entry ->
-        case extract_pdf_text(path, entry.client_name) do
-          {:ok, attrs} ->
-            label =
-              entry.client_name
-              |> Path.rootname()
-              |> String.replace(~r/[_\-]/, " ")
+        label = entry.client_name |> Path.rootname() |> String.replace(~r/[_\-]/, " ")
 
-            {:ok, {:ok, label, attrs}}
-
-          {:error, reason, _} ->
-            {:ok, {:error, "#{entry.client_name}: #{reason}"}}
+        case save_uploaded_pdf(path, entry.client_name) do
+          {:ok, pdf_path} -> {:ok, {:ok, %{"pdf_path" => pdf_path, "label" => label}}}
+          {:error, reason} -> {:ok, {:error, "#{entry.client_name}: #{reason}"}}
         end
       end)
 
+    files = for {:ok, file} <- results, do: file
     errors = for {:error, msg} <- results, do: msg
-    pdfs = for {:ok, label, attrs} <- results, do: {label, attrs}
-
-    new_sids =
-      Enum.flat_map(pdfs, fn {label, attrs} ->
-        case Games.create_rulebook_source(Map.merge(attrs, %{game_id: game.id, label: label})) do
-          {:ok, doc} -> [doc.id]
-          _ -> []
-        end
-      end)
-
-    if pdfs != [] do
-      send(self(), {:refresh_suggestions, game})
-      send(self(), {:refresh_categories, game})
-    end
-
-    sources =
-      game
-      |> Games.list_rulebook_sources()
-      |> Enum.with_index()
-      |> Enum.map(fn {s, i} -> source_entry(s, i) end)
-
-    tab = if pdfs != [], do: "manage", else: socket.assigns.tab
 
     socket =
-      socket
-      |> assign(source_entries: sources, uploading_pdfs: false, clean_prompt_sids: new_sids)
-      # Jump to Manage so the freshly extracted rulebook is visible.
-      |> assign(tab: tab)
-      # Keep the URL in sync so a refresh stays on this tab instead of falling
-      # back to a stale ?tab= param.
-      |> push_patch(to: ~p"/games/#{game}/edit?tab=#{tab}")
-      |> then(fn s ->
-        case errors do
-          [] -> put_flash(s, :info, "#{length(pdfs)} PDF(s) uploaded!")
-          _ -> put_flash(s, :error, Enum.join(errors, "; "))
-        end
-      end)
+      if files != [] do
+        RuleMaven.Workers.DownloadWorker.enqueue_upload(game.id, files)
+
+        socket
+        |> assign(uploading_pdfs: true, tab: "manage")
+        |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
+        |> put_flash(:info, "Extracting #{length(files)} PDF(s) in the background…")
+      else
+        socket
+      end
+
+    socket =
+      if errors != [], do: put_flash(socket, :error, Enum.join(errors, "; ")), else: socket
 
     {:noreply, socket}
+  end
+
+  # Copies a freshly uploaded temp file into the static uploads dir under a
+  # unique name. Returns the static-relative path for the extraction worker.
+  defp save_uploaded_pdf(temp_path, client_name) do
+    upload_dir = Application.app_dir(:rule_maven, "priv/static/uploads/rulebooks")
+    File.mkdir_p!(upload_dir)
+
+    pdf_path = Path.join("uploads/rulebooks", "#{System.system_time(:millisecond)}_#{client_name}")
+    dest = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
+
+    case File.cp(temp_path, dest) do
+      :ok -> {:ok, pdf_path}
+      {:error, reason} -> {:error, "could not save file (#{reason})"}
+    end
   end
 
   def handle_progress(:rulebook_pdfs, _entry, socket) do
@@ -1030,6 +1010,7 @@ defmodule RuleMavenWeb.GameLive.Form do
        socket
        |> assign(
          downloading: false,
+         uploading_pdfs: false,
          download_stage: nil,
          download_error: nil,
          download_ok: pdf_path,
@@ -1038,7 +1019,7 @@ defmodule RuleMavenWeb.GameLive.Form do
          clean_prompt_sids: new_sids
        )
        |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
-       |> put_flash(:info, "Rulebook downloaded!")
+       |> put_flash(:info, "Rulebook ready!")
        |> then(fn s ->
          send(self(), {:refresh_suggestions, game})
          send(self(), {:refresh_categories, game})
@@ -1052,7 +1033,13 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_info({:download_error, game_id, reason}, socket) do
     if socket.assigns.game && socket.assigns.game.id == game_id do
-      {:noreply, assign(socket, downloading: false, download_stage: nil, download_error: reason)}
+      socket =
+        socket
+        |> assign(downloading: false, uploading_pdfs: false, download_stage: nil, download_error: reason)
+        # Surface upload failures too (the upload panel doesn't show download_error).
+        |> put_flash(:error, reason)
+
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -1060,7 +1047,9 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_info({:download_progress, game_id, stage}, socket) do
-    if socket.assigns.game && socket.assigns.game.id == game_id and socket.assigns.downloading do
+    active? = socket.assigns.downloading or socket.assigns.uploading_pdfs
+
+    if socket.assigns.game && socket.assigns.game.id == game_id and active? do
       {:noreply, assign(socket, download_stage: stage)}
     else
       {:noreply, socket}
@@ -1429,226 +1418,6 @@ defmodule RuleMavenWeb.GameLive.Form do
       String.length(name) > 40 -> "Suggested"
       Regex.match?(~r/grouped by|questions for|here are/i, name) -> "Suggested"
       true -> String.trim_trailing(name, ":")
-    end
-  end
-
-  defp extract_pdf_text(path, client_name) do
-    upload_dir = Application.app_dir(:rule_maven, "priv/static/uploads/rulebooks")
-    File.mkdir_p!(upload_dir)
-
-    filename = "#{System.system_time(:millisecond)}_#{client_name}"
-    pdf_path = Path.join("uploads/rulebooks", filename)
-    dest = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
-
-    case File.cp(path, dest) do
-      :ok ->
-        # Extract page-by-page so each page is a clean unit we can number
-        # explicitly (printed page when detectable, else physical sheet).
-        case extract_text_pages(path) do
-          pages when pages != [] ->
-            {:ok, build_pdf_attrs(pages, pdf_path, dest, false)}
-
-          [] ->
-            case ocr_pages(path) do
-              {:ok, pages} ->
-                {:ok, build_pdf_attrs(pages, pdf_path, dest, true)}
-
-              {:error, reason} ->
-                # Extraction failed for good — drop the copied PDF so it doesn't
-                # linger on disk unreferenced (no document row will point at it).
-                File.rm(dest)
-                {:error, reason, pdf_path}
-            end
-        end
-
-      {:error, reason} ->
-        {:error, "Failed to save PDF: #{reason}", nil}
-    end
-  rescue
-    e ->
-      {:error, "pdftotext error: #{Exception.message(e)}", nil}
-  end
-
-  # Build the document attrs (sans game_id/label) from extracted pages: numbered
-  # text plus extraction metadata persisted alongside it.
-  defp build_pdf_attrs(pages, pdf_path, dest, from_ocr) do
-    page_structs = Games.paginate(pages)
-    text = Games.rebuild_full_text(page_structs)
-
-    %{
-      pages: page_structs,
-      full_text: text,
-      pdf_path: pdf_path,
-      html_path: text_to_html(text, pdf_path),
-      content_type: "application/pdf",
-      file_size: file_size(dest),
-      page_count: length(pages),
-      printed_offset: Games.detect_printed_offset(pages),
-      from_ocr: from_ocr,
-      extracted_at: DateTime.utc_now() |> DateTime.truncate(:second)
-    }
-  end
-
-  defp file_size(path) do
-    case File.stat(path) do
-      {:ok, %{size: size}} -> size
-      _ -> nil
-    end
-  end
-
-  # Number of pages in the PDF (via pdfinfo). Returns 0 if unknown.
-  defp pdf_page_count(path) do
-    case System.cmd("pdfinfo", [path], stderr_to_stdout: true) do
-      {out, 0} ->
-        case Regex.run(~r/^Pages:\s+(\d+)/m, out) do
-          [_, n] -> String.to_integer(n)
-          _ -> 0
-        end
-
-      _ ->
-        0
-    end
-  end
-
-  # Extract each PDF page separately so page boundaries are exact. Returns a
-  # list of per-page text strings (physical order). Empty list if pdftotext
-  # yields nothing (e.g. scanned PDF), so the caller can fall back to OCR.
-  defp extract_text_pages(path) do
-    case pdf_page_count(path) do
-      n when n > 0 ->
-        pages =
-          for p <- 1..n do
-            case System.cmd("pdftotext", ["-f", "#{p}", "-l", "#{p}", "-enc", "UTF-8", path, "-"]) do
-              {text, 0} -> text
-              _ -> ""
-            end
-          end
-
-        if Enum.all?(pages, &(String.trim(&1) == "")), do: [], else: pages
-
-      _ ->
-        # pdfinfo unavailable: fall back to a single whole-doc extraction split
-        # on the form-feed page separator pdftotext already emits.
-        case System.cmd("pdftotext", ["-enc", "UTF-8", path, "-"]) do
-          {text, 0} ->
-            if String.trim(text) == "", do: [], else: String.split(text, "\f")
-
-          _ ->
-            []
-        end
-    end
-  end
-
-  defp text_to_html(text, pdf_path) do
-    html_filename = Path.basename(pdf_path, Path.extname(pdf_path)) <> ".html"
-    html_path = Path.join(Path.dirname(pdf_path), html_filename)
-    dest = Application.app_dir(:rule_maven, "priv/static/#{html_path}")
-
-    pages = String.split(text, "\f")
-
-    {paragraphs, _para_num} =
-      pages
-      |> Enum.with_index(1)
-      |> Enum.reduce({[], 1}, fn {page_text, idx}, {acc, para_num} ->
-        # Prefer the explicit marker for the heading and page-data attribute;
-        # fall back to positional index for legacy text.
-        {label, page_num, page_text} =
-          case Games.split_page_marker(page_text) do
-            {sheet, printed, rest} ->
-              {kind, num} = Games.page_label(sheet, printed)
-              {"#{kind} #{num}", num, rest}
-
-            nil ->
-              {"Page #{idx}", idx, page_text}
-          end
-
-        page_text = String.trim(page_text)
-
-        if page_text == "" do
-          {acc, para_num}
-        else
-          page_paras =
-            page_text
-            |> String.split(~r{\n\s*\n})
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
-
-          marker = "<div class=\"page-break\">— #{label} —</div>"
-
-          {page_acc, next_para} =
-            Enum.reduce(page_paras, {[marker | acc], para_num}, fn para, {list, pn} ->
-              para_html =
-                "<p id=\"p#{pn}\" data-page=\"#{page_num}\">#{String.replace(para, "\n", "<br>")}</p>"
-
-              {[para_html | list], pn + 1}
-            end)
-
-          {page_acc, next_para}
-        end
-      end)
-
-    paragraphs_html = paragraphs |> Enum.reverse() |> Enum.join("\n")
-
-    html = """
-    <!DOCTYPE html>
-    <html><head><meta charset="utf-8">
-    <style>
-      body { font-family: Georgia, serif; font-size: 14px; line-height: 1.6; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-      p { margin: 0.5rem 0; }
-      p:hover { background: #fffde7; }
-      .page-break { margin: 1.5rem 0 0.5rem 0; font-size: 12px; color: #999; border-top: 1px dashed #ccc; padding-top: 0.5rem; font-weight: 600; }
-    </style></head>
-    <body>
-    #{paragraphs_html}
-    </body></html>
-    """
-
-    File.write!(dest, html)
-    html_path
-  rescue
-    _ -> nil
-  end
-
-  # OCR a scanned PDF one page at a time. Returns `{:ok, pages}` (a list of
-  # per-page text in physical order) or `{:error, reason}`. pdftoppm already
-  # renders one image per page, so the sorted images give the page order.
-  defp ocr_pages(pdf_path) do
-    if System.find_executable("tesseract") do
-      tmp_dir = Application.app_dir(:rule_maven, "tmp/ocr")
-      File.mkdir_p!(tmp_dir)
-      prefix = Path.join(tmp_dir, "#{System.system_time(:millisecond)}_page")
-
-      case System.cmd("pdftoppm", ["-png", "-r", "300", pdf_path, prefix]) do
-        {_, 0} ->
-          images =
-            tmp_dir
-            |> File.ls!()
-            |> Enum.filter(&String.starts_with?(&1, Path.basename(prefix)))
-            |> Enum.sort()
-            |> Enum.map(&Path.join(tmp_dir, &1))
-
-          pages =
-            Enum.map(images, fn img ->
-              case System.cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
-                     stderr_to_stdout: true
-                   ) do
-                {t, _} -> t
-              end
-            end)
-
-          Enum.each(images, &File.rm/1)
-
-          if Enum.all?(pages, &(String.trim(&1) == "")) do
-            {:error, "OCR produced no text — scanned PDF may be unreadable"}
-          else
-            {:ok, pages}
-          end
-
-        {_, _} ->
-          {:error, "pdftoppm failed"}
-      end
-    else
-      {:error, "Scanned PDF. Install tesseract: brew install tesseract"}
     end
   end
 
@@ -2342,6 +2111,21 @@ defmodule RuleMavenWeb.GameLive.Form do
             <div class="space-y-4">
               <h2 class="text-lg font-semibold">Rulebook Sources</h2>
               <div
+                :if={@uploading_pdfs}
+                style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0.85rem;border:1px solid var(--blue);background:rgba(59,130,246,0.08);border-radius:0.4rem;font-size:0.82rem;color:var(--text-secondary)"
+              >
+                <span style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:rm-spin 0.7s linear infinite"></span>
+                <span>{@download_stage || "Extracting rulebook…"} <span style="color:var(--text-muted)">— scanned PDFs run OCR in the background and can take a few minutes.</span></span>
+                <button
+                  type="button"
+                  phx-click="cancel_download"
+                  style="margin-left:auto;font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                >Cancel</button>
+              </div>
+              <style>
+                @keyframes rm-spin { to { transform: rotate(360deg); } }
+              </style>
+              <div
                 :if={@clean_prompt_sids != []}
                 class="flex items-center gap-3 flex-wrap"
                 style="padding:0.6rem 0.85rem;border:1px solid var(--blue);border-radius:0.5rem;background:var(--bg-subtle)"
@@ -2461,12 +2245,16 @@ defmodule RuleMavenWeb.GameLive.Form do
                       type="button"
                       phx-click="cleanup_source"
                       phx-value-id={entry.id}
-                      title="Discard any existing cleaned text and clean again from the original extraction."
+                      title={
+                        if has_cleaned,
+                          do: "Discard the existing cleaned text and clean again from the original extraction.",
+                          else: "Clean up the extracted rulebook text."
+                      }
                       disabled={cleaning? || String.trim(entry.text) == ""}
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >
                       <%= case @cleaning[entry.source_id] do %>
-                        <% nil -> %>✨ Wipe &amp; clean
+                        <% nil -> %>{if has_cleaned, do: "✨ Wipe & clean", else: "✨ Clean"}
                         <% {0, 0} -> %>Cleaning…
                         <% {d, t} -> %>Cleaning {d}/{t}…
                       <% end %>

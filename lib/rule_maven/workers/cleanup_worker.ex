@@ -95,6 +95,8 @@ defmodule RuleMaven.Workers.CleanupWorker do
     # retrieval, so demote stale cached answers for the game.
     doc = Games.get_document!(doc_id)
     Games.chunk_document(doc)
+    # Re-render the "View as HTML" file from the freshly cleaned text.
+    Games.regenerate_document_html(doc)
     Games.invalidate_pool(doc.game_id)
     # Cleaned text changes the rulebook content — refresh derived suggestions/cats.
     Games.refresh_generated(doc.game_id)

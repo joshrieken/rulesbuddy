@@ -27,7 +27,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
   # subprocess). The downloader has its own finer-grained timeouts; this is the
   # backstop that guarantees the job — and the UI spinner — can't run forever.
   @impl Oban.Worker
-  def timeout(_job), do: :timer.minutes(6)
+  def timeout(_job), do: :timer.minutes(15)
 
   # Human-readable label for each download stage, broadcast to the form.
   defp stage_label(:searching), do: "Searching for rulebook…"
@@ -79,6 +79,25 @@ defmodule RuleMaven.Workers.DownloadWorker do
     end
   end
 
+  @doc """
+  Enqueue extraction of one or more already-saved uploaded PDFs. `files` is a
+  list of `%{pdf_path:, label:}` (static-relative paths under priv/static). Runs
+  through the same durable, timeout-guarded pipeline as URL downloads — so
+  scanned PDFs OCR in the background instead of blocking the LiveView. A single
+  job handles the whole batch (unique per game).
+  """
+  def enqueue_upload(game_id, files) do
+    Settings.delete("download_error_#{game_id}")
+
+    if Application.get_env(:rule_maven, Oban)[:testing] != :manual do
+      %{game_id: game_id, mode: "upload", files: files}
+      |> new()
+      |> Oban.insert()
+    else
+      :ok
+    end
+  end
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"game_id" => game_id} = args}) do
     game = Games.get_game!(game_id)
@@ -97,6 +116,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
         case Map.get(args, "mode") do
           "url" -> RulebookDownloader.download(game, Map.get(args, "url"), label, on_progress)
           "find" -> RulebookDownloader.find_and_download(game, label, on_progress)
+          "upload" -> ingest_uploads(game, Map.get(args, "files", []), on_progress)
         end
       rescue
         e ->
@@ -119,6 +139,27 @@ defmodule RuleMaven.Workers.DownloadWorker do
         Settings.put("download_error_#{game_id}", reason)
         Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:download_error, game_id, reason})
         :ok
+    end
+  end
+
+  # Extract a batch of uploaded PDFs in one job. Succeeds if at least one file
+  # ingested; reports a combined error only when every file failed (so a single
+  # bad PDF doesn't sink the rest of the batch).
+  defp ingest_uploads(game, files, on_progress) do
+    results =
+      Enum.map(files, fn f ->
+        RulebookDownloader.ingest_local(game, f["pdf_path"], f["label"] || "", on_progress)
+      end)
+
+    case Enum.split_with(results, &match?({:ok, _}, &1)) do
+      {[], []} ->
+        {:error, "No files to extract"}
+
+      {[], errors} ->
+        {:error, errors |> Enum.map(fn {:error, r} -> r end) |> Enum.join("; ")}
+
+      {[{:ok, source} | _], _errors} ->
+        {:ok, source}
     end
   end
 end

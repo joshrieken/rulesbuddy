@@ -124,11 +124,31 @@ defmodule RuleMaven.RulebookDownloader do
 
     with {:ok, pdf_binary} <- fetch_pdf(url),
          :ok <- validate_pdf(pdf_binary),
-         {:ok, pdf_path} <- save_pdf(pdf_binary, url),
-         {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path, on_progress) do
+         {:ok, pdf_path} <- save_pdf(pdf_binary, url) do
+      ingest_saved_pdf(game, pdf_path, url, label, on_progress)
+    end
+  end
+
+  @doc """
+  Ingests an already-saved local PDF (e.g. a user upload copied into the uploads
+  dir) for a game: extracts text (OCR-with-timeout for scanned PDFs), numbers
+  pages, and creates the rulebook source. `pdf_path` is the static-relative path
+  under priv/static. Returns `{:ok, source}` or `{:error, reason}`.
+
+  This is the same extraction pipeline as `download/4` minus the network fetch,
+  so uploads get the identical durable/timeout-guarded handling.
+  """
+  def ingest_local(game, pdf_path, label \\ "", on_progress \\ &noop_progress/1) do
+    label = if label == "", do: extract_filename_label(pdf_path), else: label
+    ingest_saved_pdf(game, pdf_path, nil, label, on_progress)
+  end
+
+  # Shared post-save tail of both download and upload ingestion.
+  defp ingest_saved_pdf(game, pdf_path, url, label, on_progress) do
+    with {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path, on_progress) do
       on_progress.(:finalizing)
       # Number pages (printed page when detectable, else physical sheet) so the
-      # reader can distinguish them — same treatment as the upload path.
+      # reader can distinguish them.
       pages = String.split(raw_text, "\f")
       page_structs = Games.paginate(pages)
       text = Games.rebuild_full_text(page_structs)
@@ -160,7 +180,13 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp text_to_html(text, pdf_path) do
+  @doc """
+  Renders the marker-delimited rulebook `text` into a readable HTML file next to
+  the PDF (same basename, `.html`). Returns the static-relative html_path, or nil
+  on failure. Used at ingest and re-run after cleanup so the HTML reflects the
+  current (cleaned) text.
+  """
+  def text_to_html(text, pdf_path) do
     html_filename = Path.basename(pdf_path, Path.extname(pdf_path)) <> ".html"
     html_path = Path.join(Path.dirname(pdf_path), html_filename)
     dest = Application.app_dir(:rule_maven, "priv/static/#{html_path}")
@@ -169,25 +195,29 @@ defmodule RuleMaven.RulebookDownloader do
 
     {paragraphs, _para_num} =
       pages
-      |> Enum.with_index(1)
-      |> Enum.reduce({[], 1}, fn {page_text, page_num}, {acc, para_num} ->
-        page_text = String.trim(page_text)
+      |> Enum.reduce({[], 1}, fn page_chunk, {acc, para_num} ->
+        # The chunk's marker ("===== SHEET 1 PAGE 1 =====") carries the real page
+        # label. Use it for the divider, then strip it from the body so the raw
+        # sigil doesn't show. (Positional indexing was off-by-one because the
+        # text starts with a leading \f → empty first chunk.)
+        {label, body} = page_label_and_body(page_chunk)
+        body = String.trim(body)
 
-        if page_text == "" do
+        if body == "" do
           {acc, para_num}
         else
           page_paras =
-            page_text
+            body
             |> String.split(~r{\n\s*\n})
             |> Enum.map(&String.trim/1)
             |> Enum.reject(&(&1 == ""))
 
-          marker = "<div class=\"page-break\">— Page #{page_num} —</div>"
+          divider = "<div class=\"page-break\">— #{label} —</div>"
 
           {page_acc, next_para} =
-            Enum.reduce(page_paras, {[marker | acc], para_num}, fn para, {list, pn} ->
+            Enum.reduce(page_paras, {[divider | acc], para_num}, fn para, {list, pn} ->
               para_html =
-                "<p id=\"p#{pn}\" data-page=\"#{page_num}\">#{String.replace(para, "\n", "<br>")}</p>"
+                "<p id=\"p#{pn}\" data-page=\"#{label}\">#{String.replace(para, "\n", "<br>")}</p>"
 
               {[para_html | list], pn + 1}
             end)
@@ -216,6 +246,22 @@ defmodule RuleMaven.RulebookDownloader do
     html_path
   rescue
     _ -> nil
+  end
+
+  # Splits a "\f"-delimited page chunk into its display label and body. Reads the
+  # marker ("===== SHEET 3 PAGE 3 =====" → "Page 3"; "===== SHEET 4 =====" →
+  # "Sheet 4") and strips it; falls back to "Page" with no number if absent.
+  defp page_label_and_body(chunk) do
+    case Regex.run(~r/=====\s*SHEET\s+(\d+)(?:\s+PAGE\s+(\d+))?\s*=====/, chunk) do
+      [marker, _sheet, printed] when printed != "" ->
+        {"Page #{printed}", String.replace(chunk, marker, "")}
+
+      [marker, sheet | _] ->
+        {"Sheet #{sheet}", String.replace(chunk, marker, "")}
+
+      _ ->
+        {"Page", chunk}
+    end
   end
 
   defp parse_pdf_links(html) do
@@ -392,7 +438,7 @@ defmodule RuleMaven.RulebookDownloader do
       File.mkdir_p!(tmp_dir)
       prefix = Path.join(tmp_dir, "#{System.system_time(:millisecond)}_page")
 
-      case cmd("pdftoppm", ["-png", "-r", "300", pdf_path, prefix], @pdftoppm_timeout) do
+      case cmd("pdftoppm", ["-png", "-r", "200", pdf_path, prefix], @pdftoppm_timeout) do
         {:ok, {_, 0}} ->
           images =
             tmp_dir
@@ -401,16 +447,28 @@ defmodule RuleMaven.RulebookDownloader do
             |> Enum.sort()
             |> Enum.map(&Path.join(tmp_dir, &1))
 
+          # OCR pages in parallel across cores (tesseract is single-threaded per
+          # invocation), preserving page order. Cuts an N-page scan from N×t to
+          # roughly N/cores × t.
           text =
             images
-            |> Enum.map(fn img ->
-              case cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
-                     @tesseract_timeout,
-                     stderr_to_stdout: true
-                   ) do
-                {:ok, {t, _}} -> t
-                {:error, :timeout} -> ""
-              end
+            |> Task.async_stream(
+              fn img ->
+                case cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
+                       @tesseract_timeout,
+                       stderr_to_stdout: true
+                     ) do
+                  {:ok, {t, _}} -> t
+                  {:error, :timeout} -> ""
+                end
+              end,
+              max_concurrency: System.schedulers_online(),
+              ordered: true,
+              timeout: :infinity
+            )
+            |> Enum.map(fn
+              {:ok, t} -> t
+              _ -> ""
             end)
             |> Enum.join("\f")
 
