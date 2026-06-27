@@ -523,7 +523,7 @@ defmodule RuleMavenWeb.GameLive.Form do
      )
      |> put_flash(
        :info,
-       "Generating questions, facts, categories, and the setup checklist…"
+       "Generating questions, facts, categories, and the setup checklist — this can take a minute or two."
      )}
   end
 
@@ -3145,13 +3145,17 @@ defmodule RuleMavenWeb.GameLive.Form do
             </div>
 
             <%!-- Suggested questions (compact, per-category collapsible) --%>
-            <details style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem" open={MapSet.member?(@open_sections, "suggestions")}>
-              <summary phx-click="toggle_section" phx-value-section="suggestions" style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;user-select:none">
-                Suggested questions
-                <%= if @suggestions != [] do %>
-                  ({Enum.reduce(@suggestions, 0, fn c, acc -> acc + length(c.questions) end)})
-                <% end %>
-              </summary>
+            <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
+              <button type="button" phx-click="toggle_section" phx-value-section="suggestions" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "suggestions"), do: "▾", else: "▸"}</span>
+                <span>
+                  Suggested questions
+                  <%= if @suggestions != [] do %>
+                    ({Enum.reduce(@suggestions, 0, fn c, acc -> acc + length(c.questions) end)})
+                  <% end %>
+                </span>
+              </button>
+              <%= if MapSet.member?(@open_sections, "suggestions") do %>
               <div style="display:flex;align-items:center;gap:0.75rem;margin:0.5rem 0 0.4rem">
                 <button
                   type="button"
@@ -3190,16 +3194,21 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% end %>
                 </div>
               <% end %>
-            </details>
+              <% end %>
+            </div>
 
             <%!-- "Did you know?" facts (shown on the game's empty state) --%>
-            <details style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem" open={MapSet.member?(@open_sections, "dyk")}>
-              <summary phx-click="toggle_section" phx-value-section="dyk" style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;user-select:none">
-                💡 Did you know?
-                <%= if @dyk_facts != [] do %>
-                  ({length(@dyk_facts)})
-                <% end %>
-              </summary>
+            <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
+              <button type="button" phx-click="toggle_section" phx-value-section="dyk" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "dyk"), do: "▾", else: "▸"}</span>
+                <span>
+                  💡 Did you know?
+                  <%= if @dyk_facts != [] do %>
+                    ({length(@dyk_facts)})
+                  <% end %>
+                </span>
+              </button>
+              <%= if MapSet.member?(@open_sections, "dyk") do %>
               <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
                 <button
                   type="button"
@@ -3236,7 +3245,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                   Generate short, friendly rule facts shown on this game's page.
                 </p>
               <% end %>
-            </details>
+              <% end %>
+            </div>
 
             <%!-- Setup checklist (shown on the game's empty state) --%>
             <% setup_count =
@@ -3245,13 +3255,17 @@ defmodule RuleMavenWeb.GameLive.Form do
                   length(@setup_checklist["components"] || []) +
                     length(@setup_checklist["setup"] || []),
                 else: 0 %>
-            <details style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem" open={MapSet.member?(@open_sections, "setup")}>
-              <summary phx-click="toggle_section" phx-value-section="setup" style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;user-select:none">
-                🧩 Setup checklist
-                <%= if setup_count > 0 do %>
-                  ({setup_count})
-                <% end %>
-              </summary>
+            <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
+              <button type="button" phx-click="toggle_section" phx-value-section="setup" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "setup"), do: "▾", else: "▸"}</span>
+                <span>
+                  🧩 Setup checklist
+                  <%= if setup_count > 0 do %>
+                    ({setup_count})
+                  <% end %>
+                </span>
+              </button>
+              <%= if MapSet.member?(@open_sections, "setup") do %>
               <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
                 <button
                   type="button"
@@ -3275,6 +3289,11 @@ defmodule RuleMavenWeb.GameLive.Form do
                   Clear
                 </button>
               </div>
+              <%= if @regenerating_setup do %>
+                <p style="font-size:0.62rem;color:var(--text-muted);margin:0 0 0.4rem">
+                  ⏳ This can take up to a minute — extracting the checklist from the rulebook.
+                </p>
+              <% end %>
               <%= if setup_count > 0 do %>
                 <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
                   <%= if (@setup_checklist["components"] || []) != [] do %>
@@ -3306,16 +3325,21 @@ defmodule RuleMavenWeb.GameLive.Form do
                   Generate a setup checklist (components to gather + ordered steps) shown on this game's page.
                 </p>
               <% end %>
-            </details>
+              <% end %>
+            </div>
 
             <%!-- Categories section --%>
-            <details style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem" open={MapSet.member?(@open_sections, "categories")}>
-              <summary phx-click="toggle_section" phx-value-section="categories" style="font-size:0.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer;user-select:none">
-                Question categories
-                <%= if @saved_categories != [] do %>
-                  ({length(@saved_categories)})
-                <% end %>
-              </summary>
+            <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
+              <button type="button" phx-click="toggle_section" phx-value-section="categories" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "categories"), do: "▾", else: "▸"}</span>
+                <span>
+                  Question categories
+                  <%= if @saved_categories != [] do %>
+                    ({length(@saved_categories)})
+                  <% end %>
+                </span>
+              </button>
+              <%= if MapSet.member?(@open_sections, "categories") do %>
               <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
                 <button
                   type="button"
@@ -3382,7 +3406,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% end %>
                 </div>
               <% end %>
-            </details>
+              <% end %>
+            </div>
           </div>
 
           <%!-- Danger tab --%>
