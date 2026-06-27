@@ -34,7 +34,6 @@ defmodule RuleMavenWeb.GameLive.Show do
        community_questions: [],
        community_count: 0,
        refresh: 0,
-       show_onboarding: false,
        stale_timer: nil,
        question_categories: %{},
        # Persona voices: per-answer selected voice, lazily-loaded restyle cache
@@ -105,6 +104,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     question_categories = Games.categories_for_questions(all_thread_ids ++ cq_ids)
 
     dyk_facts = load_did_you_know(game, sources, connected?(socket))
+    {setup_status, setup_checklist} = load_setup(game, sources)
 
     socket =
       assign(socket,
@@ -125,11 +125,10 @@ defmodule RuleMavenWeb.GameLive.Show do
         community_vote_counts: cv_counts,
         community_user_votes: cv_user,
         question_categories: question_categories,
-        show_onboarding: conversation == [] && sources != [] && pending_count == 0,
         dyk_facts: dyk_facts,
         rule_card: fact_card(dyk_facts),
-        setup_status: RuleMaven.Setup.status(game.id),
-        setup_checklist: RuleMaven.Setup.stored_checklist(game.id)
+        setup_status: setup_status,
+        setup_checklist: setup_checklist
       )
 
     suggestions =
@@ -361,11 +360,6 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   def handle_event("shuffle_rule", _params, socket) do
     {:noreply, assign(socket, rule_card: fact_card(socket.assigns.dyk_facts))}
-  end
-
-  def handle_event("generate_setup", _params, socket) do
-    RuleMaven.Setup.generate_async(socket.assigns.game)
-    {:noreply, assign(socket, setup_status: "generating")}
   end
 
   def handle_event("toggle_step", %{"key" => key}, socket) do
@@ -610,7 +604,6 @@ defmodule RuleMavenWeb.GameLive.Show do
          conversation: [],
          active_thread_id: nil,
          pending_count: pending_count,
-         show_onboarding: socket.assigns.source_count > 0,
          confirm_delete_id: nil
        )
        |> push_patch(to: ~p"/games/#{game.id}")}
@@ -625,11 +618,6 @@ defmodule RuleMavenWeb.GameLive.Show do
          confirm_delete_id: nil
        )}
     end
-  end
-
-  @impl true
-  def handle_event("dismiss_onboarding", _params, socket) do
-    {:noreply, assign(socket, show_onboarding: false)}
   end
 
   @impl true
@@ -1531,88 +1519,21 @@ defmodule RuleMavenWeb.GameLive.Show do
           <% end %>
 
           <%= if @conversation == [] && @source_count > 0 do %>
-            <!-- Onboarding card (first visit) -->
-            <div
-              :if={@show_onboarding}
-              style="text-align:center;padding:1.5rem 1rem;color:var(--text);max-width:32rem;margin:0 auto"
-            >
-              <div style="font-size:1.5rem;margin-bottom:0.75rem">🎲</div>
-              <h2 style="font-size:1.15rem;font-weight:700;margin:0 0 0.5rem;color:var(--text)">
-                Welcome to {@game.name} Rules
-              </h2>
-              <p style="font-size:0.82rem;color:var(--text-secondary);margin:0 0 1.25rem;line-height:1.5">
-                Ask any rules question in plain English. Answers are grounded in the actual rulebook text with exact citations.
+            <!-- Empty state: lead with the primary action, suggestions visible immediately -->
+            <div style="text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.6">
+              <div style="font-size:1.5rem;margin-bottom:0.4rem">🎲</div>
+              <p style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:0.4rem">
+                {@game.name} Rules
               </p>
-              <div style="display:flex;flex-direction:column;gap:0.75rem;text-align:left;margin-bottom:1.25rem">
-                <div style="display:flex;gap:0.75rem;align-items:flex-start">
-                  <span style="font-size:1.1rem;flex-shrink:0">1.</span>
-                  <div>
-                    <div style="font-weight:600;font-size:0.82rem;color:var(--text)">
-                      Ask a question
-                    </div>
-                    <div style="font-size:0.72rem;color:var(--text-muted)">
-                      Type below. Plain English works — "Can I play a card out of turn?"
-                    </div>
-                  </div>
-                </div>
-                <div style="display:flex;gap:0.75rem;align-items:flex-start">
-                  <span style="font-size:1.1rem;flex-shrink:0">2.</span>
-                  <div>
-                    <div style="font-weight:600;font-size:0.82rem;color:var(--text)">
-                      Get a cited answer
-                    </div>
-                    <div style="font-size:0.72rem;color:var(--text-muted)">
-                      Answers quote the rulebook. Tap the citation to see exactly where it came from.
-                    </div>
-                  </div>
-                </div>
-                <div style="display:flex;gap:0.75rem;align-items:flex-start">
-                  <span style="font-size:1.1rem;flex-shrink:0">3.</span>
-                  <div>
-                    <div style="font-weight:600;font-size:0.82rem;color:var(--text)">
-                      Upvote or follow up
-                    </div>
-                    <div style="font-size:0.72rem;color:var(--text-muted)">
-                      👍 helpful answers. Ask follow-up questions — they'll be grouped together.
-                    </div>
-                  </div>
-                </div>
+              <p style="max-width:30rem;margin:0 auto">
+                Ask any rules question in plain English — answers cite the exact rulebook passage.
                 <%= if @community_count > 0 do %>
-                  <div style="display:flex;gap:0.75rem;align-items:flex-start">
-                    <span style="font-size:1.1rem;flex-shrink:0">★</span>
-                    <div>
-                      <div style="font-weight:600;font-size:0.82rem;color:var(--text)">
-                        Browse community answers ({@community_count})
-                      </div>
-                      <div style="font-size:0.72rem;color:var(--text-muted)">
-                        <.link
-                          navigate={~p"/games/#{@game.id}/faq"}
-                          style="color:var(--accent);font-weight:600"
-                        >Browse FAQ</.link>
-                        — curated answers from other players.
-                      </div>
-                    </div>
-                  </div>
+                  <.link
+                    navigate={~p"/games/#{@game.id}/faq"}
+                    style="color:var(--accent);font-weight:600;white-space:nowrap"
+                  >Or browse {@community_count} community answers →</.link>
                 <% end %>
-              </div>
-              <div style="display:flex;gap:0.5rem;justify-content:center">
-                <button
-                  type="button"
-                  phx-click="dismiss_onboarding"
-                  style="background:var(--accent);color:#fff;border:none;padding:0.4rem 1.5rem;border-radius:0.4rem;font-size:0.8rem;font-weight:600;cursor:pointer"
-                >See suggested questions</button>
-              </div>
-            </div>
-
-            <!-- Simple empty state (after onboarding dismissed) -->
-            <div
-              :if={!@show_onboarding}
-              style="text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.6"
-            >
-              <p style="font-size:1.1rem;font-weight:600;color:var(--text);margin-bottom:0.5rem">
-                Ask a rules question
               </p>
-              <p>Type your question below. Answers cite the exact rulebook passage.</p>
 
               <%= if @rule_card do %>
                 <div style="margin:1.5rem auto 0;max-width:30rem;text-align:left;background:linear-gradient(135deg,var(--bg-subtle),var(--bg-surface));border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.1rem;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
@@ -1638,14 +1559,12 @@ defmodule RuleMavenWeb.GameLive.Show do
                 </div>
               <% end %>
 
-              <%= if @source_count > 0 do %>
+              <%= if @setup_checklist && (@setup_checklist["components"] != [] || @setup_checklist["setup"] != []) do %>
                 <div style="margin:1.25rem auto 0;max-width:30rem;text-align:left">
-                  <%= cond do %>
-                    <% @setup_checklist && (@setup_checklist["components"] != [] || @setup_checklist["setup"] != []) -> %>
-                      <% total =
-                        length(@setup_checklist["components"]) + length(@setup_checklist["setup"]) %>
-                      <% done = MapSet.size(@checklist_done) %>
-                      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.1rem">
+                  <% total =
+                    length(@setup_checklist["components"]) + length(@setup_checklist["setup"]) %>
+                  <% done = MapSet.size(@checklist_done) %>
+                  <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.1rem">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
                           <span style="font-size:0.78rem;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;color:var(--text)">
                             🧩 Setup checklist
@@ -1709,32 +1628,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                           phx-click="reset_checklist"
                           style="margin-top:0.6rem;background:none;border:1px solid var(--border);border-radius:0.3rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.5rem;color:var(--text-muted);font-weight:600"
                         >↺ Reset</button>
-                      </div>
-
-                    <% @setup_status == "generating" -> %>
-                      <div style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.6rem;padding:0.75rem 1rem;font-size:0.8rem;color:var(--text-muted)">
-                        🧩 Building your setup checklist…
-                      </div>
-
-                    <% @setup_status == "error" -> %>
-                      <div style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:0.6rem;padding:0.75rem 1rem;font-size:0.8rem;color:var(--text-muted)">
-                        Couldn't build the checklist.
-                        <button
-                          type="button"
-                          phx-click="generate_setup"
-                          style="margin-left:0.4rem;background:var(--accent);color:#fff;border:none;border-radius:0.3rem;font-size:0.72rem;cursor:pointer;padding:0.2rem 0.6rem;font-weight:600"
-                        >Retry</button>
-                      </div>
-
-                    <% true -> %>
-                      <button
-                        type="button"
-                        phx-click="generate_setup"
-                        style="background:var(--bg-surface);border:1px dashed var(--border);border-radius:0.6rem;padding:0.6rem 1rem;font-size:0.82rem;cursor:pointer;color:var(--text);font-weight:600;width:100%"
-                      >
-                        🧩 Generate setup checklist
-                      </button>
-                  <% end %>
+                  </div>
                 </div>
               <% end %>
 
@@ -2507,6 +2401,29 @@ defmodule RuleMavenWeb.GameLive.Show do
 
       json ->
         Jason.decode!(json)
+    end
+  end
+
+  # Load the cached setup checklist; kick off durable generation the first time a
+  # game with published rules has none. Result arrives over Setup.topic (already
+  # subscribed in mount). Returns {status, checklist}.
+  defp load_setup(game, sources) do
+    checklist = RuleMaven.Setup.stored_checklist(game.id)
+    status = RuleMaven.Setup.status(game.id)
+
+    cond do
+      checklist != nil ->
+        {status, checklist}
+
+      sources == [] ->
+        {status, nil}
+
+      status in ["generating", "error"] ->
+        {status, nil}
+
+      true ->
+        RuleMaven.Setup.generate_async(game)
+        {"generating", nil}
     end
   end
 
