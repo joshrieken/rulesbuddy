@@ -56,39 +56,96 @@ defmodule RuleMaven.Setup do
     if String.trim(text) == "" do
       {:error, "No rulebook text available for #{game.name}"}
     else
-      # Setup + components live early in most rulebooks; cap the input.
-      source = String.slice(text, 0, 30_000)
+      # Setup + components live early in most rulebooks; cap the input. Keep this
+      # modest (≈16k) — a larger context makes the reasoning model slow enough to
+      # hit the HTTP timeout, and adds little since setup is front-loaded.
+      source = String.slice(text, 0, 16_000)
 
-      system =
-        "You extract game setup instructions. Output ONLY valid JSON, no prose, no code fences."
+      system = "You extract board game setup instructions from rulebook text."
 
+      # Plain-text bullets, NOT JSON, and deliberately loosely specified. A strict
+      # "output only JSON" instruction — or an over-structured spec — makes our
+      # reasoning model (deepseek-v4-flash) spend its whole budget "thinking" and
+      # return empty content. A simple labelled-bullet ask generates reliably.
       prompt = """
-      From this rulebook for "#{game.name}", produce a setup checklist as JSON with this exact shape:
-      {
-        "components": ["short item a player must get out / sort / place", ...],
-        "setup": [{"title": "short imperative step", "detail": "one-sentence how-to"}, ...]
-      }
-
-      Rules:
-      - "components": physical things to gather or sort before play (board, decks, tokens, starting hands). 4-12 short items.
-      - "setup": the ordered steps to set up a game, first to last. 4-12 steps. "title" is a tappable one-liner; "detail" is a single clarifying sentence (numbers in plain text).
-      - Use ONLY what the rulebook states. Do not invent. If something is unknown, omit it.
-      - No markdown, no commentary. JSON only.
+      From this rulebook for "#{game.name}", list the setup using only the rulebook.
+      First a "COMPONENTS:" section — one item to gather per line, prefixed "- ".
+      Then a "STEPS:" section — one ordered setup step per line, prefixed "- ",
+      each a short imperative optionally followed by " — " and a brief clarifying
+      sentence.
 
       RULEBOOK:
       #{source}
       """
 
-      case LLM.chat(prompt, "setup_#{game.name}", system: system, max_tokens: 1200) do
+      # Generous budget for the reasoning-model overhead (see Did-you-know).
+      case LLM.chat(prompt, "setup_#{game.name}", system: system, max_tokens: 8000) do
         {:ok, content} ->
-          case decode(content) do
+          case parse_sections(content) do
             nil -> {:error, "Could not parse the setup checklist. Please retry."}
-            _ok -> {:ok, extract_json(content)}
+            map -> {:ok, Jason.encode!(map)}
           end
 
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  # Parse the model's two-section bullet text into the stored shape
+  # `%{"components" => [string], "setup" => [%{"title", "detail"}]}`. Returns nil
+  # when neither section yields any items.
+  defp parse_sections(content) do
+    lines = String.split(to_string(content), ~r/\r?\n/)
+
+    {components, steps, _section} =
+      Enum.reduce(lines, {[], [], nil}, fn line, {comps, steps, section} ->
+        trimmed = String.trim(line)
+        header = trimmed |> String.downcase() |> String.trim_trailing(":")
+        item = bullet_text(trimmed)
+
+        cond do
+          header in ["components", "component"] ->
+            {comps, steps, :components}
+
+          header in ["steps", "step", "setup"] ->
+            {comps, steps, :steps}
+
+          item == nil ->
+            {comps, steps, section}
+
+          section == :components ->
+            {[item | comps], steps, section}
+
+          section == :steps ->
+            {comps, [parse_step(item) | steps], section}
+
+          true ->
+            {comps, steps, section}
+        end
+      end)
+
+    components = Enum.reverse(components)
+    steps = steps |> Enum.reverse() |> Enum.reject(&(&1["title"] in [nil, "", "nil"]))
+
+    if components == [] and steps == [],
+      do: nil,
+      else: %{"components" => components, "setup" => steps}
+  end
+
+  # Strip a leading bullet/number marker; nil if the line isn't a list item.
+  defp bullet_text(line) do
+    case Regex.run(~r/^\s*(?:[-*•]|\d+[.)])\s+(.*\S)\s*$/, line) do
+      [_, text] -> text
+      _ -> nil
+    end
+  end
+
+  # Split a step into title + detail on the first em/en dash, colon, or " - ".
+  defp parse_step(item) do
+    case Regex.split(~r/\s+[—–-]\s+|:\s+/, item, parts: 2) do
+      [title, detail] -> %{"title" => String.trim(title), "detail" => String.trim(detail)}
+      [title] -> %{"title" => String.trim(title), "detail" => ""}
     end
   end
 
