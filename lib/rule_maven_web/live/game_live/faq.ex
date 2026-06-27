@@ -104,16 +104,14 @@ defmodule RuleMavenWeb.GameLive.Faq do
     ~H"""
     <div style="max-width:52rem;margin:0 auto;padding:1.5rem 1rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-        <.link
-          navigate={~p"/games/#{@game.id}"}
-          style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem"
-        >
+        <.link navigate={~p"/games/#{@game.id}"} class="back-link" style="margin-bottom:0">
           &larr; Back to {@game.name}
         </.link>
         <.link
           :if={@is_admin}
           navigate={~p"/games/#{@game.id}/review"}
-          style="font-size:0.7rem;color:var(--text-secondary);text-decoration:none"
+          class="back-link"
+          style="margin-bottom:0"
         >
           Admin Review →
         </.link>

@@ -1898,17 +1898,30 @@ textarea {
 }
 
 /* ===== Back Link ===== */
+/* Navigation links (back/next links at the top & bottom of pages) styled as
+   buttons. Used via class="back-link" on <.link>/<a> elements. */
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--blue);
+  font-size: 0.82rem;
+  color: var(--accent);
+  background: var(--bg-surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.85rem;
   margin-bottom: 1.5rem;
-  transition: color 0.15s;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .back-link:hover {
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px var(--shadow-hover);
 }
 
 /* ===== Prose-like Answer ===== */

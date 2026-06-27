@@ -1162,7 +1162,7 @@ defmodule RuleMavenWeb.SettingsLive do
             </button>
           </form>
           <div class="mt-6 pt-4 border-t">
-            <.link navigate={~p"/settings/usage"} class="text-blue-600 hover:underline text-sm">
+            <.link navigate={~p"/settings/usage"} class="back-link" style="margin-bottom:0">
               View LLM Usage &rarr;
             </.link>
           </div>
