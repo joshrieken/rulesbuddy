@@ -916,6 +916,15 @@ a:not([class]):hover {
   animation: content-rise 0.45s ease both;
 }
 
+/* The Q&A page's chat-layout is position:fixed. The rise animation leaves a
+   lingering transform on .main-content (fill-mode both), which would turn it
+   into the containing block for that fixed child and offset it by the header
+   height — a blank band above the sub bar. Drop the animation when a fixed
+   chat-layout is present so it positions against the viewport as intended. */
+.main-content:has(.chat-layout) {
+  animation: none;
+}
+
 @keyframes content-rise {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
