@@ -6,7 +6,7 @@ defmodule RuleMaven.RulebookDownloader do
   """
 
   alias RuleMaven.Games
-  alias RuleMaven.Extract.{Critic, Gate}
+  alias RuleMaven.Extract.{Critic, Gate, Native}
 
   @bgg_base "https://boardgamegeek.com"
   @pdf_link_re ~r{<a[^>]*href="([^"]*\.pdf)"[^>]*>(.*?)</a>}s
@@ -171,7 +171,7 @@ defmodule RuleMaven.RulebookDownloader do
         pdf_path: pdf_path,
         html_path: html_path,
         source_url: url,
-        content_type: "application/pdf",
+        content_type: content_type_for(pdf_path),
         file_size: file_size(full_path),
         page_count: length(pages),
         printed_offset: Games.detect_printed_offset(pages),
@@ -201,6 +201,29 @@ defmodule RuleMaven.RulebookDownloader do
     case File.stat(path) do
       {:ok, %{size: size}} -> size
       _ -> nil
+    end
+  end
+
+  # MIME type from the stored file's extension, for the Document.content_type
+  # field. Defaults to application/pdf (the historical assumption and URL-download
+  # case).
+  defp content_type_for(path) do
+    case Path.extname(path) |> String.downcase() do
+      ".docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ".odt" -> "application/vnd.oasis.opendocument.text"
+      ".xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ".csv" -> "text/csv"
+      ".html" -> "text/html"
+      ".htm" -> "text/html"
+      ".txt" -> "text/plain"
+      ".md" -> "text/markdown"
+      ".markdown" -> "text/markdown"
+      ".png" -> "image/png"
+      ".jpg" -> "image/jpeg"
+      ".jpeg" -> "image/jpeg"
+      ".webp" -> "image/webp"
+      ".gif" -> "image/gif"
+      _ -> "application/pdf"
     end
   end
 
@@ -410,9 +433,58 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp extract_text_with_source(pdf_path, on_progress) do
-    full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
+  defp extract_text_with_source(doc_path, on_progress) do
+    full_path = Application.app_dir(:rule_maven, "priv/static/#{doc_path}")
 
+    cond do
+      Native.native?(doc_path) ->
+        native_extract(full_path, on_progress)
+
+      image?(doc_path) ->
+        image_extract(full_path, on_progress)
+
+      true ->
+        pdf_extract(full_path, on_progress)
+    end
+  rescue
+    e ->
+      {:error, "Document extraction error: #{Exception.message(e)}"}
+  end
+
+  # Native-text formats (docx/odt/html/xlsx/csv/txt/md): structural parse, no OCR,
+  # no model — the cheapest path to max accuracy. No per-page provenance (nil meta).
+  defp native_extract(full_path, on_progress) do
+    on_progress.(:extracting)
+
+    case Native.extract(full_path) do
+      {:ok, text} ->
+        if String.trim(text) == "" do
+          {:error, "Document had no readable text"}
+        else
+          {:ok, text, false, nil}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A single uploaded image is one page with no text layer — run the same
+  # per-page decision (local OCR vs vision, escalate on disagreement) the PDF
+  # engine uses, with an empty layer.
+  defp image_extract(full_path, on_progress) do
+    on_progress.(:ocr)
+    r = decide_page(full_path, "")
+
+    if String.trim(r.text) == "" do
+      {:error, "Image produced no readable text"}
+    else
+      {:ok, r.text, true, [r]}
+    end
+  end
+
+  # PDF: accuracy-first cross-check (mode "vision") or the legacy OCR path.
+  defp pdf_extract(full_path, on_progress) do
     case extract_mode() do
       "vision" ->
         case crosscheck_extract(full_path, on_progress) do
@@ -428,9 +500,10 @@ defmodule RuleMaven.RulebookDownloader do
       _ ->
         legacy_extract(full_path, on_progress)
     end
-  rescue
-    e ->
-      {:error, "PDF extraction error: #{Exception.message(e)}"}
+  end
+
+  defp image?(path) do
+    Path.extname(path) |> String.downcase() |> Kernel.in(~w(.png .jpg .jpeg .webp .gif))
   end
 
   # Extraction mode: "vision" runs the accuracy-first cross-check engine (trust a

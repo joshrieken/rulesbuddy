@@ -80,7 +80,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         editor_tab: %{}
       )
       |> allow_upload(:rulebook_pdfs,
-        accept: ["application/pdf", ".pdf"],
+        accept: ~w(.pdf .docx .odt .html .htm .xlsx .csv .txt .md .png .jpg .jpeg .webp .gif),
         max_entries: @max_pdfs,
         max_file_size: 50_000_000,
         auto_upload: true
@@ -165,10 +165,26 @@ defmodule RuleMavenWeb.GameLive.Form do
               Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game_cleanup:#{game.id}")
               # Results of the suggestion/category/cheat-sheet Oban workers arrive
               # via PubSub (the workers can't message this LiveView's pid).
-              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.SuggestionsWorker.topic(game.id))
-              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CategoriesWorker.topic(game.id))
-              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.CheatSheetGenWorker.topic(game.id))
-              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.DownloadWorker.topic(game.id))
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.SuggestionsWorker.topic(game.id)
+              )
+
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.CategoriesWorker.topic(game.id)
+              )
+
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.CheatSheetGenWorker.topic(game.id)
+              )
+
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.DownloadWorker.topic(game.id)
+              )
+
               assign(socket, cleanup_subscribed: true)
             else
               socket
@@ -207,14 +223,19 @@ defmodule RuleMavenWeb.GameLive.Form do
             case RuleMaven.Settings.get("categories_#{game.id}") do
               nil ->
                 []
+
               json ->
                 json
                 |> Jason.decode!()
-                |> Enum.map(fn %{"name" => n, "description" => d} -> %{name: n, description: d} end)
+                |> Enum.map(fn %{"name" => n, "description" => d} ->
+                  %{name: n, description: d}
+                end)
             end
 
           saved_categories = RuleMaven.Games.list_game_categories(game)
-          socket = assign(socket, draft_categories: draft_categories, saved_categories: saved_categories)
+
+          socket =
+            assign(socket, draft_categories: draft_categories, saved_categories: saved_categories)
 
           parent = if game.parent_game_id, do: Games.get_game!(game.parent_game_id)
 
@@ -435,7 +456,8 @@ defmodule RuleMavenWeb.GameLive.Form do
     {:noreply, assign(socket, expanded_source_id: nil)}
   end
 
-  def handle_event("set_reader_mode", %{"mode" => mode}, socket) when mode in ~w(scroll paginated) do
+  def handle_event("set_reader_mode", %{"mode" => mode}, socket)
+      when mode in ~w(scroll paginated) do
     {:noreply, assign(socket, reader_mode: mode)}
   end
 
@@ -513,7 +535,9 @@ defmodule RuleMavenWeb.GameLive.Form do
       "pageone_" <> id ->
         id = String.to_integer(id)
         val = String.trim(params[target] || "")
-        {:noreply, assign(socket, page_one_input: Map.put(socket.assigns.page_one_input, id, val))}
+
+        {:noreply,
+         assign(socket, page_one_input: Map.put(socket.assigns.page_one_input, id, val))}
 
       _ ->
         {:noreply, socket}
@@ -555,7 +579,9 @@ defmodule RuleMavenWeb.GameLive.Form do
         new_entry = %{entry | pages: pages, text: Games.rebuild_full_text(pages)}
 
         entries =
-          Enum.map(socket.assigns.source_entries, fn e -> if e.id == id, do: new_entry, else: e end)
+          Enum.map(socket.assigns.source_entries, fn e ->
+            if e.id == id, do: new_entry, else: e
+          end)
 
         {:noreply,
          socket
@@ -842,6 +868,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("download", %{"url" => url, "label" => label}, socket) do
     url = String.trim(url)
     label = String.trim(label)
+
     socket =
       assign(socket,
         downloading: true,
@@ -851,7 +878,8 @@ defmodule RuleMavenWeb.GameLive.Form do
       )
 
     if url == "" do
-      {:noreply, assign(socket, downloading: false, download_stage: nil, download_error: "Enter a PDF URL")}
+      {:noreply,
+       assign(socket, downloading: false, download_stage: nil, download_error: "Enter a PDF URL")}
     else
       RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "url", url, label)
       {:noreply, socket}
@@ -961,13 +989,20 @@ defmodule RuleMavenWeb.GameLive.Form do
           entry.pages
           |> Enum.with_index()
           |> Enum.map(fn {p, i} ->
-            %{index: i, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p[:cleaned]}
+            %{
+              index: i,
+              sheet: p.sheet,
+              printed: p.printed,
+              text: p.text || "",
+              cleaned: p[:cleaned]
+            }
           end)
 
         {label, %{full_text: Games.rebuild_full_text(pages), pages: pages, pdf_path: nil}}
       end)
       |> Enum.filter(fn {l, %{pages: pages}} ->
-        String.trim(l) != "" and Enum.any?(pages, &(String.trim(Games.effective_page_text(&1)) != ""))
+        String.trim(l) != "" and
+          Enum.any?(pages, &(String.trim(Games.effective_page_text(&1)) != ""))
       end)
 
     # Any pending PDF uploads are handed to the background extraction worker
@@ -1043,7 +1078,9 @@ defmodule RuleMavenWeb.GameLive.Form do
     upload_dir = Application.app_dir(:rule_maven, "priv/static/uploads/rulebooks")
     File.mkdir_p!(upload_dir)
 
-    pdf_path = Path.join("uploads/rulebooks", "#{System.system_time(:millisecond)}_#{client_name}")
+    pdf_path =
+      Path.join("uploads/rulebooks", "#{System.system_time(:millisecond)}_#{client_name}")
+
     dest = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
 
     case File.cp(temp_path, dest) do
@@ -1100,7 +1137,12 @@ defmodule RuleMavenWeb.GameLive.Form do
     if socket.assigns.game && socket.assigns.game.id == game_id do
       socket =
         socket
-        |> assign(downloading: false, uploading_pdfs: false, download_stage: nil, download_error: reason)
+        |> assign(
+          downloading: false,
+          uploading_pdfs: false,
+          download_stage: nil,
+          download_error: reason
+        )
         # Surface upload failures too (the upload panel doesn't show download_error).
         |> put_flash(:error, reason)
 
@@ -1114,7 +1156,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_info({:download_progress, game_id, stage}, socket) do
     active? = socket.assigns.downloading or socket.assigns.uploading_pdfs
 
-    if socket.assigns.game && socket.assigns.game.id == game_id and active? do
+    if (socket.assigns.game && socket.assigns.game.id == game_id) and active? do
       {:noreply, assign(socket, download_stage: stage)}
     else
       {:noreply, socket}
@@ -1379,7 +1421,7 @@ defmodule RuleMavenWeb.GameLive.Form do
     entry = Enum.find(socket.assigns.source_entries, &(&1.source_id == sid))
     level = String.to_existing_atom(socket.assigns.clean_level)
 
-    if entry && String.trim(entry.text) != "" and not Map.has_key?(socket.assigns.cleaning, sid) do
+    if (entry && String.trim(entry.text) != "") and not Map.has_key?(socket.assigns.cleaning, sid) do
       {:ok, _job} = Games.enqueue_cleanup(Games.get_document!(sid), level, mode)
 
       entries =
@@ -1440,7 +1482,13 @@ defmodule RuleMavenWeb.GameLive.Form do
     case s.pages do
       [_ | _] = ps ->
         Enum.map(ps, fn p ->
-          %{index: p.index, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p.cleaned}
+          %{
+            index: p.index,
+            sheet: p.sheet,
+            printed: p.printed,
+            text: p.text || "",
+            cleaned: p.cleaned
+          }
         end)
 
       _ ->
@@ -1561,7 +1609,10 @@ defmodule RuleMavenWeb.GameLive.Form do
       )
 
     ~H"""
-    <div :if={@count > 0} style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem">
+    <div
+      :if={@count > 0}
+      style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem"
+    >
       <button
         type="button"
         phx-click="source_page_step"
@@ -1571,7 +1622,10 @@ defmodule RuleMavenWeb.GameLive.Form do
         style={@step_style}
       >‹</button>
 
-      <div :if={@printed != []} style="display:inline-flex;align-items:stretch;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;overflow:hidden">
+      <div
+        :if={@printed != []}
+        style="display:inline-flex;align-items:stretch;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;overflow:hidden"
+      >
         <button
           type="button"
           phx-click="set_reader_label_mode"
@@ -1603,7 +1657,9 @@ defmodule RuleMavenWeb.GameLive.Form do
               {if p.printed, do: "#{p.printed}", else: "Sheet #{p.sheet} (unnumbered)"}
             </option>
           <% else %>
-            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>{p.sheet}</option>
+            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>
+              {p.sheet}
+            </option>
           <% end %>
         </select>
       </label>
@@ -1631,10 +1687,16 @@ defmodule RuleMavenWeb.GameLive.Form do
   attr :page_one, :string, default: nil
 
   defp page_detection_badge(assigns) do
-    assigns = assign(assigns, fell_back?: assigns.pages != [] and Enum.all?(assigns.pages, &is_nil(&1.printed)))
+    assigns =
+      assign(assigns,
+        fell_back?: assigns.pages != [] and Enum.all?(assigns.pages, &is_nil(&1.printed))
+      )
 
     ~H"""
-    <div :if={@fell_back?} style="display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem;margin-bottom:0.4rem">
+    <div
+      :if={@fell_back?}
+      style="display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem;margin-bottom:0.4rem"
+    >
       <span
         title="No printed page numbers were detected in this rulebook (common for scanned/OCR PDFs). Answers will cite physical sheet numbers instead of the book's printed page numbers."
         style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.68rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b);white-space:nowrap"
@@ -1767,7 +1829,6 @@ defmodule RuleMavenWeb.GameLive.Form do
         <% end %>
       </h1>
 
-
       <%!-- New game: simple form, no tabs --%>
       <%= if is_nil(@game) do %>
         <div>
@@ -1843,14 +1904,26 @@ defmodule RuleMavenWeb.GameLive.Form do
             </div>
             <div style="margin-bottom:1rem">
               <label for="new_game_category" class="block text-sm font-medium mb-1">Category</label>
-              <select name="game[category]" id="new_game_category" class="w-full border rounded px-3 py-2">
+              <select
+                name="game[category]"
+                id="new_game_category"
+                class="w-full border rounded px-3 py-2"
+              >
                 <%= for {label, value} <- RuleMaven.Games.Category.options() do %>
-                  <option value={value} selected={(@game_changeset && @game_changeset.data.category || "board_game") == value}>{label}</option>
+                  <option
+                    value={value}
+                    selected={
+                      ((@game_changeset && @game_changeset.data.category) || "board_game") == value
+                    }
+                  >
+                    {label}
+                  </option>
                 <% end %>
               </select>
             </div>
             <div style="margin-bottom:1.25rem">
-              <label for="new_game_bgg_id" class="block text-sm font-medium mb-1">BGG ID <span class="text-gray-400">(optional)</span></label>
+              <label for="new_game_bgg_id" class="block text-sm font-medium mb-1">BGG ID
+              <span class="text-gray-400">(optional)</span></label>
               <input
                 type="number"
                 name="game[bgg_id]"
@@ -2075,7 +2148,12 @@ defmodule RuleMavenWeb.GameLive.Form do
               <label for="game_category" class="block text-sm font-medium mb-1">Category</label>
               <select name="game[category]" id="game_category" class="w-full border rounded px-3 py-2">
                 <%= for {label, value} <- RuleMaven.Games.Category.options() do %>
-                  <option value={value} selected={(@game_changeset.data.category || "board_game") == value}>{label}</option>
+                  <option
+                    value={value}
+                    selected={(@game_changeset.data.category || "board_game") == value}
+                  >
+                    {label}
+                  </option>
                 <% end %>
               </select>
             </div>
@@ -2093,7 +2171,8 @@ defmodule RuleMavenWeb.GameLive.Form do
 
             <%= if @game do %>
               <div style="margin-bottom:1.25rem">
-                <label class="block text-sm font-medium mb-1">Base Game
+                <label class="block text-sm font-medium mb-1">
+                  Base Game
                   <span class="text-gray-400">(optional — set if this is an expansion)</span>
                 </label>
 
@@ -2178,7 +2257,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                       <span>{entry.progress}%</span>
                     </div>
                     <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-                      <div style={"height:100%;background:var(--blue);border-radius:2px;width:#{entry.progress}%;transition:width 0.2s"}></div>
+                      <div style={"height:100%;background:var(--blue);border-radius:2px;width:#{entry.progress}%;transition:width 0.2s"}>
+                      </div>
                     </div>
                     <%= for err <- upload_errors(@uploads.rulebook_pdfs, entry) do %>
                       <p class="text-xs text-red-500 mt-1">{err}</p>
@@ -2195,7 +2275,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 phx-click="process_uploads"
                 disabled={pdf_btn_disabled}
                 style={"margin-top:0.5rem;background:var(--accent);color:white;border:none;padding:0.4rem 0.875rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer;opacity:#{if pdf_btn_disabled, do: 0.5, else: 1}"}
-              ><%= if @uploading_pdfs, do: "Processing…", else: "Upload" %></button>
+              >{if @uploading_pdfs, do: "Processing…", else: "Upload"}</button>
             </div>
           </div>
 
@@ -2208,7 +2288,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                 style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0.85rem;border:1px solid var(--blue);background:rgba(59,130,246,0.08);border-radius:0.4rem;font-size:0.82rem;color:var(--text-secondary)"
               >
                 <span style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:rm-spin 0.7s linear infinite"></span>
-                <span>{@download_stage || "Extracting rulebook…"} <span style="color:var(--text-muted)">— scanned PDFs run OCR in the background and can take a few minutes.</span></span>
+                <span>{@download_stage || "Extracting rulebook…"}
+                <span style="color:var(--text-muted)">— scanned PDFs run OCR in the background and can take a few minutes.</span></span>
                 <button
                   type="button"
                   phx-click="cancel_download"
@@ -2246,7 +2327,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                   phx-click="switch_tab"
                   phx-value-tab="rulebook"
                   style="color:var(--blue);background:none;border:none;padding:0;font:inherit;cursor:pointer;text-decoration:underline"
-                >Upload Rulebook</button> tab.
+                >Upload Rulebook</button>
+                tab.
               </p>
               <%= for entry <- @source_entries do %>
                 <div class="border rounded p-4">
@@ -2295,13 +2377,23 @@ defmodule RuleMavenWeb.GameLive.Form do
 
                   <label class="block text-sm font-medium mb-1">Text</label>
                   <% page_count = length(entry.pages) %>
-                  <% cur = @source_page |> Map.get(entry.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
+                  <% cur =
+                    @source_page |> Map.get(entry.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
                   <% cur_page = Enum.at(entry.pages, cur) %>
                   <% layer = editor_layer(entry, @editor_tab) %>
                   <% editable = layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil %>
                   <.layer_tabs id={entry.id} current={layer} />
-                  <.page_nav id={entry.id} pages={entry.pages} cur={cur} label_mode={@reader_label_mode} />
-                  <.page_detection_badge id={entry.id} pages={entry.pages} page_one={@page_one_input[entry.id]} />
+                  <.page_nav
+                    id={entry.id}
+                    pages={entry.pages}
+                    cur={cur}
+                    label_mode={@reader_label_mode}
+                  />
+                  <.page_detection_badge
+                    id={entry.id}
+                    pages={entry.pages}
+                    page_one={@page_one_input[entry.id]}
+                  />
                   <%!-- Edits feed socket state via edit_page (layer encoded in the
                         name), so this stays in sync with the expanded reader. --%>
                   <textarea
@@ -2340,16 +2432,20 @@ defmodule RuleMavenWeb.GameLive.Form do
                       phx-value-id={entry.id}
                       title={
                         if has_cleaned,
-                          do: "Discard the existing cleaned text and clean again from the original extraction.",
+                          do:
+                            "Discard the existing cleaned text and clean again from the original extraction.",
                           else: "Clean up the extracted rulebook text."
                       }
                       disabled={cleaning? || String.trim(entry.text) == ""}
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >
                       <%= case @cleaning[entry.source_id] do %>
-                        <% nil -> %>{if has_cleaned, do: "✨ Wipe & clean", else: "✨ Clean"}
-                        <% {0, 0} -> %>Cleaning…
-                        <% {d, t} -> %>Cleaning {d}/{t}…
+                        <% nil -> %>
+                          {if has_cleaned, do: "✨ Wipe & clean", else: "✨ Clean"}
+                        <% {0, 0} -> %>
+                          Cleaning…
+                        <% {d, t} -> %>
+                          Cleaning {d}/{t}…
                       <% end %>
                     </button>
                     <button
@@ -2391,7 +2487,8 @@ defmodule RuleMavenWeb.GameLive.Form do
               <%= if reader do %>
                 <% pages = reader.pages %>
                 <% page_count = length(pages) %>
-                <% cur = @source_page |> Map.get(reader.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
+                <% cur =
+                  @source_page |> Map.get(reader.id, 0) |> max(0) |> min(max(page_count - 1, 0)) %>
                 <% cur_page = Enum.at(pages, cur) %>
                 <% layer = editor_layer(reader, @editor_tab) %>
                 <% page_head =
@@ -2414,19 +2511,46 @@ defmodule RuleMavenWeb.GameLive.Form do
                         {if String.trim(reader.label) != "", do: reader.label, else: "Rulebook"}
                       </strong>
                       <div style="display:flex;gap:0.35rem;margin-left:0.5rem">
-                        <button type="button" phx-click="set_reader_mode" phx-value-mode="scroll" style={tab_style.(@reader_mode == "scroll")}>Scroll</button>
-                        <button type="button" phx-click="set_reader_mode" phx-value-mode="paginated" style={tab_style.(@reader_mode == "paginated")}>Paginated</button>
+                        <button
+                          type="button"
+                          phx-click="set_reader_mode"
+                          phx-value-mode="scroll"
+                          style={tab_style.(@reader_mode == "scroll")}
+                        >Scroll</button>
+                        <button
+                          type="button"
+                          phx-click="set_reader_mode"
+                          phx-value-mode="paginated"
+                          style={tab_style.(@reader_mode == "paginated")}
+                        >Paginated</button>
                       </div>
 
                       <div style="margin-left:0.5rem">
                         <.layer_tabs id={reader.id} current={layer} />
                       </div>
 
-                      <div :if={@reader_mode == "paginated" and page_count > 0} style="margin-left:auto">
-                        <.page_nav id={reader.id} pages={pages} cur={cur} label_mode={@reader_label_mode} />
+                      <div
+                        :if={@reader_mode == "paginated" and page_count > 0}
+                        style="margin-left:auto"
+                      >
+                        <.page_nav
+                          id={reader.id}
+                          pages={pages}
+                          cur={cur}
+                          label_mode={@reader_label_mode}
+                        />
                       </div>
-                      <div style={if(@reader_mode == "paginated" and page_count > 0, do: "", else: "margin-left:auto")}>
-                        <.page_detection_badge id={reader.id} pages={pages} page_one={@page_one_input[reader.id]} />
+                      <div style={
+                        if(@reader_mode == "paginated" and page_count > 0,
+                          do: "",
+                          else: "margin-left:auto"
+                        )
+                      }>
+                        <.page_detection_badge
+                          id={reader.id}
+                          pages={pages}
+                          page_one={@page_one_input[reader.id]}
+                        />
                       </div>
 
                       <button
@@ -2436,7 +2560,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                       >✕</button>
                     </div>
 
-                    <% editable = layer_editable?(reader, layer) and @cleaning[reader.source_id] == nil %>
+                    <% editable =
+                      layer_editable?(reader, layer) and @cleaning[reader.source_id] == nil %>
                     <% edit_style =
                       "width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:0.4rem;padding:1rem;resize:vertical#{if not editable, do: ";opacity:0.7;background:var(--bg-subtle)"}" %>
                     <div style="overflow:auto;padding:2rem clamp(1.5rem,8vw,8rem);flex:1;min-height:0;display:flex;flex-direction:column">
@@ -2458,7 +2583,9 @@ defmodule RuleMavenWeb.GameLive.Form do
                               layer (editing happens in the paginated mode). --%>
                         <%= for p <- pages do %>
                           <div style={page_head}>— {page_label.(p)} —</div>
-                          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;white-space:pre-wrap;color:var(--text)">{layer_text(p, layer)}</div>
+                          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;white-space:pre-wrap;color:var(--text)">
+                            {layer_text(p, layer)}
+                          </div>
                         <% end %>
                       <% end %>
                     </div>
@@ -2485,7 +2612,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   disabled={@regenerating_suggestions}
                   style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                 >
-                  <%= if @regenerating_suggestions, do: "Regenerating…", else: "Regenerate" %>
+                  {if @regenerating_suggestions, do: "Regenerating…", else: "Regenerate"}
                 </button>
                 <button
                   :if={@suggestions != []}
@@ -2517,7 +2644,7 @@ defmodule RuleMavenWeb.GameLive.Form do
               <% end %>
             </div>
 
-          <%!-- Categories section --%>
+            <%!-- Categories section --%>
             <div style="margin-top:1.25rem">
               <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
                 <span style="font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
@@ -2532,7 +2659,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   disabled={@regenerating_categories}
                   style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                 >
-                  <%= if @regenerating_categories, do: "Generating…", else: "Generate" %>
+                  {if @regenerating_categories, do: "Generating…", else: "Generate"}
                 </button>
                 <button
                   :if={@draft_categories != []}
@@ -2558,8 +2685,12 @@ defmodule RuleMavenWeb.GameLive.Form do
                 <div style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
                   <%= for cat <- @draft_categories do %>
                     <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle)">
-                      <div style="font-size:0.72rem;font-weight:600;color:var(--text)">{cat.name}</div>
-                      <div style="font-size:0.65rem;color:var(--text-secondary)">{cat.description}</div>
+                      <div style="font-size:0.72rem;font-weight:600;color:var(--text)">
+                        {cat.name}
+                      </div>
+                      <div style="font-size:0.65rem;color:var(--text-secondary)">
+                        {cat.description}
+                      </div>
                     </div>
                   <% end %>
                 </div>
@@ -2569,8 +2700,12 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <%= for cat <- @saved_categories do %>
                     <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;gap:0.5rem">
                       <div style="flex:1;min-width:0">
-                        <div style="font-size:0.72rem;font-weight:600;color:var(--text)">{cat.name}</div>
-                        <div style="font-size:0.65rem;color:var(--text-secondary)">{cat.description}</div>
+                        <div style="font-size:0.72rem;font-weight:600;color:var(--text)">
+                          {cat.name}
+                        </div>
+                        <div style="font-size:0.65rem;color:var(--text-secondary)">
+                          {cat.description}
+                        </div>
                       </div>
                       <button
                         type="button"
