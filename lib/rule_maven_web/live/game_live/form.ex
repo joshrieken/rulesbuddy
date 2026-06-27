@@ -14,6 +14,9 @@ defmodule RuleMavenWeb.GameLive.Form do
       |> assign(
         game: nil,
         source_entries: [],
+        # Source ids with a single-page re-extraction job in flight (=> true), so
+        # the review badge can show a busy state until {:reextract_done} arrives.
+        reextracting: %{},
         game_changeset: nil,
         download_url: "",
         download_label: "",
@@ -591,6 +594,26 @@ defmodule RuleMavenWeb.GameLive.Form do
 
       _ ->
         {:noreply, put_flash(socket, :error, "Enter the sheet number that shows printed page 1.")}
+    end
+  end
+
+  # Re-extract one low-confidence page at the top tier (strong model + critic),
+  # durably via Oban. Marks the source busy; {:reextract_done} reloads it.
+  def handle_event("reextract_page", %{"id" => id, "page" => page}, socket) do
+    id = String.to_integer(id)
+    page = String.to_integer(page)
+    entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
+
+    with %{source_id: sid} when is_integer(sid) <- entry,
+         %{index: index} <- Enum.at(entry.pages, page) do
+      RuleMaven.Workers.ReextractPageWorker.enqueue(sid, index)
+
+      {:noreply,
+       socket
+       |> assign(reextracting: Map.put(socket.assigns.reextracting, sid, true))
+       |> put_flash(:info, "Re-extracting page with the strongest model…")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Save the rulebook before re-extracting a page.")}
     end
   end
 
@@ -1218,6 +1241,23 @@ defmodule RuleMavenWeb.GameLive.Form do
      |> put_flash(:info, "Cleaned up the rulebook text.")}
   end
 
+  # A single-page re-extraction finished — reload that source from the DB (the
+  # worker persisted the new page) and clear its busy flag.
+  def handle_info({:reextract_done, sid}, socket) do
+    entries =
+      Enum.map(socket.assigns.source_entries, fn e ->
+        if e.source_id == sid, do: reload_entry(e), else: e
+      end)
+
+    {:noreply,
+     socket
+     |> assign(
+       source_entries: entries,
+       reextracting: Map.delete(socket.assigns.reextracting, sid)
+     )
+     |> put_flash(:info, "Re-extracted the page.")}
+  end
+
   @impl true
   def handle_info({:search_bgg, bgg_id}, socket) do
     cookies = resolve_bgg_cookies()
@@ -1734,10 +1774,25 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   # Review badge: a per-source count of low-confidence pages and, when the current
-  # page is one of them, a banner prompting verification. Driven entirely by the
-  # persisted gate confidence (page.needs_review).
+  # page is one of them, a banner with a durable "re-extract one tier up" action.
+  # Driven by the persisted gate confidence (page.needs_review). `busy` reflects a
+  # re-extraction job already running for this source. Re-extract only offered for
+  # saved sources (source_id) of PDF/image type (sheet render needed).
+  attr :id, :integer, required: true
   attr :pages, :list, required: true
   attr :cur, :integer, required: true
+  attr :can_reextract, :boolean, default: false
+  attr :busy, :boolean, default: false
+
+  # Re-extraction renders a single page, so it only applies to saved PDF/image
+  # sources (native docx/xlsx/etc. have no page image — and never flag for review
+  # anyway, since they carry no extraction confidence).
+  defp reextractable_source?(%{source_id: sid, pdf_path: path})
+       when is_integer(sid) and is_binary(path) do
+    Path.extname(path) |> String.downcase() |> Kernel.in(~w(.pdf .png .jpg .jpeg .webp .gif))
+  end
+
+  defp reextractable_source?(_), do: false
 
   defp review_flag(assigns) do
     assigns =
@@ -1748,11 +1803,22 @@ defmodule RuleMavenWeb.GameLive.Form do
 
     ~H"""
     <div :if={@flagged > 0} style="margin-bottom:0.4rem">
-      <span
+      <div
         :if={@cur_flagged?}
-        title="The extraction gate had low confidence in this page (two reads disagreed and the adversarial check left residual defects). Verify it against the PDF and fix the text if needed."
-        style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.7rem;padding:0.2rem 0.55rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b)"
-      >⚠ Low-confidence extraction — verify or fix this page.</span>
+        title="The extraction gate had low confidence in this page (two reads disagreed and the adversarial check left residual defects). Verify it against the source and fix the text if needed."
+        style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:0.5rem;font-size:0.7rem;padding:0.25rem 0.55rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b)"
+      >
+        <span>⚠ Low-confidence extraction — verify or fix this page.</span>
+        <button
+          :if={@can_reextract}
+          type="button"
+          phx-click="reextract_page"
+          phx-value-id={@id}
+          phx-value-page={@cur}
+          disabled={@busy}
+          style="font-size:0.68rem;padding:0.1rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer"
+        >{if @busy, do: "Re-extracting…", else: "Re-extract (stronger model)"}</button>
+      </div>
       <span
         :if={not @cur_flagged?}
         style="font-size:0.68rem;color:var(--text-muted)"
@@ -2424,7 +2490,13 @@ defmodule RuleMavenWeb.GameLive.Form do
                     pages={entry.pages}
                     page_one={@page_one_input[entry.id]}
                   />
-                  <.review_flag pages={entry.pages} cur={cur} />
+                  <.review_flag
+                    id={entry.id}
+                    pages={entry.pages}
+                    cur={cur}
+                    can_reextract={reextractable_source?(entry)}
+                    busy={@reextracting[entry.source_id] == true}
+                  />
                   <%!-- Edits feed socket state via edit_page (layer encoded in the
                         name), so this stays in sync with the expanded reader. --%>
                   <textarea
@@ -2599,7 +2671,13 @@ defmodule RuleMavenWeb.GameLive.Form do
                       <%= if @reader_mode == "paginated" do %>
                         <%= if cur_page do %>
                           <div style={page_head}>— {page_label.(cur_page)} —</div>
-                          <.review_flag pages={pages} cur={cur} />
+                          <.review_flag
+                            id={reader.id}
+                            pages={pages}
+                            cur={cur}
+                            can_reextract={reextractable_source?(reader)}
+                            busy={@reextracting[reader.source_id] == true}
+                          />
                           <textarea
                             name={"pgm_#{reader.id}_#{cur}_#{layer_field(layer)}"}
                             phx-change="edit_page"

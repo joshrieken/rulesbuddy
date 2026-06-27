@@ -646,6 +646,67 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
+  @doc """
+  Re-extracts a single page at the top tier: renders just that sheet (or uses the
+  image directly), then runs the strong/high-res model + adversarial critic. For
+  the admin "re-extract this page" action. Returns `{:ok, %{text, confidence,
+  lane, source}}` or `{:error, reason}`.
+  """
+  def reextract_page(doc_path, sheet) when is_integer(sheet) do
+    full = Application.app_dir(:rule_maven, "priv/static/#{doc_path}")
+
+    cond do
+      image?(doc_path) ->
+        {:ok, escalate_page(full, "")}
+
+      System.find_executable("pdftoppm") ->
+        tmp = Application.app_dir(:rule_maven, "tmp/ocr")
+        File.mkdir_p!(tmp)
+        prefix = Path.join(tmp, "#{System.system_time(:millisecond)}_re")
+
+        args =
+          [
+            "-png",
+            "-gray",
+            "-r",
+            to_string(@render_dpi),
+            "-f",
+            to_string(sheet),
+            "-l",
+            to_string(sheet),
+            full,
+            prefix
+          ]
+
+        case cmd("pdftoppm", args, @pdftoppm_timeout) do
+          {:ok, {_, 0}} ->
+            tmp
+            |> File.ls!()
+            |> Enum.filter(&String.starts_with?(&1, Path.basename(prefix)))
+            |> Enum.sort()
+            |> case do
+              [img | _] ->
+                path = Path.join(tmp, img)
+                # try/after so the temp image is removed even if escalate_page raises.
+                try do
+                  {:ok, escalate_page(path, "")}
+                after
+                  File.rm(path)
+                end
+
+              [] ->
+                {:error, "page #{sheet} did not render"}
+            end
+
+          _ ->
+            {:error, "could not render page #{sheet}"}
+        end
+
+      true ->
+        {:error, "no renderer available"}
+    end
+  end
+
   # Disagreement escalation: re-read the page with the strong/high-res model, take
   # the richer of that and the cheap candidate, then run the adversarial critic
   # loop. A critic-clean result is treated as the accuracy ceiling (high

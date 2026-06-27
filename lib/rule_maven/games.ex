@@ -1461,6 +1461,34 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Replaces one page's extracted text and provenance (used by a single-page
+  re-extraction). `fields` is `%{text:, confidence:, lane:, source:}`. Clears any
+  cleaned/edited body (the fresh extraction supersedes it), preserves the page's
+  printed number, rebuilds full_text, and re-chunks via `update_document/2`.
+  """
+  def replace_page(%Document{} = doc, index, fields) do
+    pages =
+      doc.pages
+      |> Enum.sort_by(& &1.index)
+      |> Enum.map(fn p ->
+        if p.index == index do
+          %{
+            page_attrs(p)
+            | text: fields.text,
+              cleaned: nil,
+              confidence: fields.confidence,
+              lane: fields.lane,
+              source: fields.source
+          }
+        else
+          page_attrs(p)
+        end
+      end)
+
+    update_document(doc, %{pages: pages, full_text: rebuild_full_text(pages)})
+  end
+
+  @doc """
   Parses an existing marker-delimited `full_text` blob back into page maps.
   Handles legacy blobs without markers (positional sheet numbers, no printed
   page). Used when persisting hand-edited text and when backfilling.
