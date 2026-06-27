@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Users.game_master?(socket.assigns.current_user) do
+    if Users.can?(socket.assigns.current_user, :admin) do
       all_users = Users.list_users()
 
       {:ok,

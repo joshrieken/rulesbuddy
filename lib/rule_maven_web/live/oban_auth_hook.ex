@@ -11,7 +11,7 @@ defmodule RuleMavenWeb.ObanAuthHook do
 
     user = if user_id, do: RuleMaven.Users.get_user(user_id), else: nil
 
-    if user && RuleMaven.Users.game_master?(user) do
+    if user && RuleMaven.Users.can?(user, :admin) do
       {:cont, assign(socket, current_user: user)}
     else
       {:halt, redirect(socket, to: "/")}

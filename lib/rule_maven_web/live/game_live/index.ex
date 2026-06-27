@@ -111,14 +111,14 @@ defmodule RuleMavenWeb.GameLive.Index do
   defp view_tabs(user) do
     base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
 
-    if RuleMaven.Users.game_master?(user),
+    if RuleMaven.Users.can?(user, :admin),
       do: [{"all", "All Games"}] ++ base ++ [{"needs_bgg", "Needs Pull"}, {"requested", "Requested"}],
       else: base
   end
 
   defp allowed_view?(user, view) do
     view in ~w(playable mine favorites) or
-      (view in ~w(all needs_bgg requested) and RuleMaven.Users.game_master?(user))
+      (view in ~w(all needs_bgg requested) and RuleMaven.Users.can?(user, :admin))
   end
 
   # Friendly, view-specific copy shown when a pill has no games to list.
@@ -213,7 +213,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   # batched aggregate queries, so this stays cheap even on a 150k catalog.
   defp assign_games(socket, games) do
     socket = assign(socket, games: games)
-    is_admin = RuleMaven.Users.game_master?(socket.assigns.current_user)
+    is_admin = RuleMaven.Users.can?(socket.assigns.current_user, :admin)
 
     visible_ids = socket.assigns |> visible_games() |> Enum.map(& &1.id)
 
@@ -304,7 +304,7 @@ defmodule RuleMavenWeb.GameLive.Index do
     source_count = Map.get(socket.assigns.source_counts, id, 0)
 
     dest =
-      if source_count == 0 and RuleMaven.Users.game_master?(socket.assigns.current_user),
+      if source_count == 0 and RuleMaven.Users.can?(socket.assigns.current_user, :admin),
         do: ~p"/games/#{id}/edit",
         else: ~p"/games/#{id}"
 
@@ -339,7 +339,7 @@ defmodule RuleMavenWeb.GameLive.Index do
           source_count = Map.get(socket.assigns.source_counts, game.id, 0)
 
           dest =
-            if source_count == 0 and RuleMaven.Users.game_master?(socket.assigns.current_user),
+            if source_count == 0 and RuleMaven.Users.can?(socket.assigns.current_user, :admin),
               do: ~p"/games/#{game.id}/edit",
               else: ~p"/games/#{game.id}"
 
@@ -349,7 +349,7 @@ defmodule RuleMavenWeb.GameLive.Index do
         end
 
       "e" ->
-        if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+        if RuleMaven.Users.can?(socket.assigns.current_user, :admin) do
           idx = socket.assigns.selected_idx
 
           if idx >= 0 && idx < length(visible) do
@@ -483,7 +483,7 @@ defmodule RuleMavenWeb.GameLive.Index do
 
   @impl true
   def handle_event("pull_bgg", %{"id" => id_str}, socket) do
-    if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+    if RuleMaven.Users.can?(socket.assigns.current_user, :admin) do
       {id, _} = Integer.parse(id_str)
       game = Games.get_game!(id)
 
@@ -511,7 +511,7 @@ defmodule RuleMavenWeb.GameLive.Index do
     {id, _} = Integer.parse(id_str)
 
     cond do
-      not RuleMaven.Users.game_master?(socket.assigns.current_user) ->
+      not RuleMaven.Users.can?(socket.assigns.current_user, :admin) ->
         {:noreply, socket}
 
       # Already running (button disabled, but guard against a stale/raced click).
@@ -713,7 +713,7 @@ defmodule RuleMavenWeb.GameLive.Index do
 
       <div class="flex gap-2 flex-wrap">
         <.button
-          :if={RuleMaven.Users.game_master?(@current_user)}
+          :if={RuleMaven.Users.can?(@current_user, :admin)}
           variant="primary"
           navigate={~p"/games/new"}
         >+ Add Game</.button>
@@ -735,7 +735,7 @@ defmodule RuleMavenWeb.GameLive.Index do
             <% unsupported = @view == "mine" and not playable %>
             <%!-- Admins can pull BGG data for any showing game that lacks it. --%>
             <% needs_pull =
-              RuleMaven.Users.game_master?(@current_user) and not is_nil(game.bgg_id) and
+              RuleMaven.Users.can?(@current_user, :admin) and not is_nil(game.bgg_id) and
                 is_nil(game.bgg_data) %>
             <div
               id={"game-card-#{idx}"}
@@ -782,7 +782,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                   <% exp_to_pull = Map.get(@expansion_pull_counts, game.id, 0) %>
                   <% exp_syncing = Map.has_key?(@expansion_sync, game.id) %>
                   <button
-                    :if={RuleMaven.Users.game_master?(@current_user) and (exp_to_pull > 0 or exp_syncing)}
+                    :if={RuleMaven.Users.can?(@current_user, :admin) and (exp_to_pull > 0 or exp_syncing)}
                     type="button"
                     phx-click="pull_expansions"
                     phx-value-id={game.id}
@@ -857,11 +857,11 @@ defmodule RuleMavenWeb.GameLive.Index do
                   style={"background:#{if favorited, do: "color-mix(in srgb,var(--red) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if favorited, do: "var(--red)", else: "var(--text-muted)"};border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem;line-height:1.2"}
                 >{if favorited, do: "♥", else: "♡"}</button>
                 <.link
-                  :if={RuleMaven.Users.game_master?(@current_user)}
+                  :if={RuleMaven.Users.can?(@current_user, :admin)}
                   navigate={~p"/games/#{game.id}/edit"}
                   class="action-link"
                 >Edit</.link>
-                <%= if RuleMaven.Users.game_master?(@current_user) do %>
+                <%= if RuleMaven.Users.can?(@current_user, :admin) do %>
                   <%= if @delete_id == game.id do %>
                     <span class="text-xs" style="color:var(--red);padding:0.2rem 0">Delete?</span>
                     <button
@@ -891,7 +891,7 @@ defmodule RuleMavenWeb.GameLive.Index do
 
             <%= if expanded && expansion_count > 0 do %>
               <% expansions =
-                if RuleMaven.Users.game_master?(@current_user),
+                if RuleMaven.Users.can?(@current_user, :admin),
                   do: Games.expansions_for(game),
                   else: Games.expansions_with_documents(game) %>
               <% sync = Map.get(@expansion_sync, game.id) %>
@@ -950,11 +950,11 @@ defmodule RuleMavenWeb.GameLive.Index do
                       style="display:inline-block;visibility:hidden;font-size:0.7rem;font-weight:600;padding:0.15rem 0.45rem;line-height:1.2"
                     >Ask</span>
                     <.link
-                      :if={RuleMaven.Users.game_master?(@current_user)}
+                      :if={RuleMaven.Users.can?(@current_user, :admin)}
                       navigate={~p"/games/#{exp.id}/edit"}
                       class="action-link"
                     >Edit</.link>
-                    <%= if RuleMaven.Users.game_master?(@current_user) do %>
+                    <%= if RuleMaven.Users.can?(@current_user, :admin) do %>
                       <%= if @delete_id == exp.id do %>
                         <span class="text-xs" style="color:var(--red);padding:0.2rem 0">Delete?</span>
                         <button

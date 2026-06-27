@@ -6,7 +6,7 @@ defmodule RuleMavenWeb.AdminLive.Db do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Users.game_master?(socket.assigns.current_user) do
+    if Users.can?(socket.assigns.current_user, :admin) do
       tables = fetch_tables()
 
       {:ok,

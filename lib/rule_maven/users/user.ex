@@ -13,8 +13,23 @@ defmodule RuleMaven.Users.User do
     timestamps(type: :utc_datetime)
   end
 
-  @admin_roles ["game_master"]
   @all_roles ["player", "game_master"]
+
+  # Capabilities granted to each role. To add a role: add it to @all_roles and
+  # give it an entry here. To grant/revoke a power: edit its capability list.
+  # All authorization flows through can?/2 so nothing is tied to a role name.
+  @role_capabilities %{
+    "player" => [],
+    "game_master" => [:admin]
+  }
+
+  def all_roles, do: @all_roles
+
+  @doc "Whether the user's role grants the given capability."
+  def can?(%{role: role}, capability),
+    do: capability in Map.get(@role_capabilities, role, [])
+
+  def can?(_, _), do: false
 
   def changeset(user, attrs) do
     user
@@ -46,8 +61,8 @@ defmodule RuleMaven.Users.User do
     |> unique_constraint(:email)
   end
 
-  def game_master?(%{role: role}), do: role in @admin_roles
-  def game_master?(_), do: false
+  # Back-compat alias: a game master is anyone with the :admin capability.
+  def game_master?(user), do: can?(user, :admin)
 
   defp put_password_hash(changeset) do
     case changeset do

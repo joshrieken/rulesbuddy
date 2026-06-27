@@ -6,7 +6,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game!(id)
-    is_admin = RuleMaven.Users.game_master?(socket.assigns.current_user)
+    is_admin = RuleMaven.Users.can?(socket.assigns.current_user, :admin)
     categories = Games.list_game_categories(game)
     community_questions = Games.faq_questions(game)
 

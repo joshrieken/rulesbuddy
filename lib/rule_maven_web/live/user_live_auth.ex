@@ -22,7 +22,7 @@ defmodule RuleMavenWeb.UserLiveAuth do
       user_id ->
         user = RuleMaven.Users.get_user(user_id)
 
-        if RuleMaven.Users.game_master?(user) do
+        if RuleMaven.Users.can?(user, :admin) do
           {:cont, assign(socket, :current_user, user)}
         else
           {:halt, redirect(socket, to: "/")}

@@ -106,7 +106,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    if RuleMaven.Users.game_master?(socket.assigns.current_user) do
+    if RuleMaven.Users.can?(socket.assigns.current_user, :admin) do
       do_handle_params(params, socket)
     else
       {:noreply,

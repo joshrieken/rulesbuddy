@@ -50,7 +50,7 @@
             assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
               (assigns[:conn] && RuleMavenWeb.Layouts.current_user(assigns[:conn])) %>
 
-          <%= if me && RuleMaven.Users.game_master?(me) do %>
+          <%= if me && RuleMaven.Users.can?(me, :admin) do %>
             <button class="hamburger" id="hamburger-btn" aria-label="Menu">
               <span></span><span></span><span></span>
             </button>
@@ -58,7 +58,7 @@
 
           <!-- Desktop nav -->
           <nav class="header-nav" id="header-nav">
-            <%= if me && RuleMaven.Users.game_master?(me) do %>
+            <%= if me && RuleMaven.Users.can?(me, :admin) do %>
               <.link href={~p"/admin"} class="nav-link">Dashboard</.link>
               <.link href={~p"/admin/questions"} class="nav-link">Questions</.link>
               <.link href={~p"/admin/security"} class="nav-link">Security</.link>
@@ -105,7 +105,7 @@
                     <span class="header-user">
                       {me.username}
                       <span
-                        :if={RuleMaven.Users.game_master?(me)}
+                        :if={RuleMaven.Users.can?(me, :admin)}
                         style="font-size:0.6rem;background:var(--accent);color:#fff;padding:0.1rem 0.35rem;border-radius:0.25rem;margin-left:0.3rem;font-weight:700;vertical-align:middle"
                       >GM</span>
                     </span>
@@ -132,7 +132,7 @@
         </div>
         <nav class="drawer-nav">
           <.link href={~p"/"} class="drawer-link">🏠 Home</.link>
-          <%= if me && RuleMaven.Users.game_master?(me) do %>
+          <%= if me && RuleMaven.Users.can?(me, :admin) do %>
             <div class="drawer-section">Admin</div>
             <.link href={~p"/admin"} class="drawer-link">Dashboard</.link>
             <.link href={~p"/admin/questions"} class="drawer-link">Questions</.link>

@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Users.game_master?(socket.assigns.current_user) do
+    if Users.can?(socket.assigns.current_user, :admin) do
       {:ok,
        assign(socket,
          page_title: "Game Catalog",

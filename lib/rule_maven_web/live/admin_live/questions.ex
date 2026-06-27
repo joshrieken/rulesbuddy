@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.AdminLive.Questions do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Users.game_master?(socket.assigns.current_user) do
+    if Users.can?(socket.assigns.current_user, :admin) do
       questions = Games.admin_list_questions()
 
       {:ok,

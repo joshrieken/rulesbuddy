@@ -53,7 +53,7 @@ defmodule RuleMavenWeb.SettingsLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
-    admin? = Users.game_master?(user)
+    admin? = Users.can?(user, :admin)
 
     {:ok,
      assign(socket,

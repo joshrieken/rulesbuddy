@@ -13,7 +13,7 @@ defmodule RuleMavenWeb.RulebookController do
   def html(conn, %{"id" => id}) do
     user = conn.assigns[:current_user]
 
-    with true <- user && Users.game_master?(user),
+    with true <- user && Users.can?(user, :admin),
          %Games.Document{html_path: html_path} when is_binary(html_path) <-
            Games.get_document(id),
          full_path = Application.app_dir(:rule_maven, "priv/static/#{html_path}"),

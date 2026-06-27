@@ -1046,7 +1046,7 @@ defmodule RuleMaven.Games do
     alias RuleMaven.Users
     alias RuleMaven.Settings
 
-    if Users.game_master?(user) do
+    if Users.can?(user, :admin) do
       :ok
     else
       now = DateTime.utc_now()

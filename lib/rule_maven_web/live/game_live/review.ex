@@ -6,7 +6,7 @@ defmodule RuleMavenWeb.GameLive.Review do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game!(id)
-    is_admin = RuleMaven.Users.game_master?(socket.assigns.current_user)
+    is_admin = RuleMaven.Users.can?(socket.assigns.current_user, :admin)
 
     if !is_admin do
       {:ok, push_navigate(socket, to: ~p"/games/#{id}/faq")}

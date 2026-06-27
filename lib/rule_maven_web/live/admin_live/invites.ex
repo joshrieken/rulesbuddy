@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.AdminLive.Invites do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Users.game_master?(socket.assigns.current_user) do
+    if Users.can?(socket.assigns.current_user, :admin) do
       invite_codes = InviteCodes.list_codes()
       {:ok, assign(socket, page_title: "Invite Codes", invite_codes: invite_codes)}
     else

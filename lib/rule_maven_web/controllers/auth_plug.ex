@@ -14,7 +14,7 @@ defmodule RuleMavenWeb.AuthPlug do
     user = conn.assigns[:current_user]
 
     cond do
-      user && RuleMaven.Users.game_master?(user) ->
+      user && RuleMaven.Users.can?(user, :admin) ->
         conn
 
       user ->

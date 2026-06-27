@@ -69,6 +69,16 @@ defmodule RuleMaven.UsersTest do
     test "game_master?/1 returns false for player role", %{player: player} do
       refute Users.game_master?(player)
     end
+
+    test "can?/2 grants :admin to game_master, denies to player", %{gm: gm, player: player} do
+      assert Users.can?(gm, :admin)
+      refute Users.can?(player, :admin)
+    end
+
+    test "can?/2 denies unknown capabilities and nil users", %{gm: gm} do
+      refute Users.can?(gm, :nonexistent)
+      refute Users.can?(nil, :admin)
+    end
   end
 
   describe "create user with temp password" do

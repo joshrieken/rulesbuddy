@@ -10,7 +10,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       is_admin: RuleMaven.Users.game_master?(socket.assigns.current_user),
+       is_admin: RuleMaven.Users.can?(socket.assigns.current_user, :admin),
        game: nil,
        question: "",
        conversation: [],
@@ -1296,7 +1296,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               </.link>
             <% end %>
             <.link
-              :if={RuleMaven.Users.game_master?(@current_user)}
+              :if={RuleMaven.Users.can?(@current_user, :admin)}
               navigate={~p"/games/#{@game.id}/edit"}
               class="action-link"
               style="flex-shrink:0"
@@ -1304,7 +1304,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               Edit
             </.link>
             <.link
-              :if={RuleMaven.Users.game_master?(@current_user)}
+              :if={RuleMaven.Users.can?(@current_user, :admin)}
               navigate={~p"/games/#{@game.id}/review"}
               class="action-link"
               style="flex-shrink:0"
@@ -1516,7 +1516,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <div class="text-center text-gray-400 py-8">
               <p class="text-sm">No rulebook sources yet.</p>
               <.link
-                :if={RuleMaven.Users.game_master?(@current_user)}
+                :if={RuleMaven.Users.can?(@current_user, :admin)}
                 navigate={~p"/games/#{@game.id}/edit"}
                 style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.3rem 0.75rem;border-radius:0.3rem"
               >
@@ -2067,7 +2067,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
                 <!-- Message actions (admin only) -->
                 <div
-                  :if={RuleMaven.Users.game_master?(@current_user) && msg.role == :assistant}
+                  :if={RuleMaven.Users.can?(@current_user, :admin) && msg.role == :assistant}
                   class="flex items-center gap-1 mt-0.5"
                   style="padding-left:0.25rem"
                 >
@@ -2207,7 +2207,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                           title={if msg[:pending], do: "Cancel", else: "Delete"}
                         >✕</button>
                       <% end %>
-                      <%= if RuleMaven.Users.game_master?(@current_user) && (msg[:llm_provider] || msg[:llm_model]) do %>
+                      <%= if RuleMaven.Users.can?(@current_user, :admin) && (msg[:llm_provider] || msg[:llm_model]) do %>
                         <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem">{msg[
                           :llm_provider
                         ]} &middot; {msg[:llm_model]}</span>
@@ -2216,7 +2216,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <% end %>
                 </div>
                 <!-- Admin debug: raw LLM response -->
-                <%= if RuleMaven.Users.game_master?(@current_user) && msg.role == :assistant && msg[:raw_response] && msg.content != "Thinking..." do %>
+                <%= if RuleMaven.Users.can?(@current_user, :admin) && msg.role == :assistant && msg[:raw_response] && msg.content != "Thinking..." do %>
                   <details style="margin-top:0.25rem;font-size:0.6rem;color:var(--text-muted);opacity:0.6">
                     <summary style="cursor:pointer">raw</summary>
                     <pre style="white-space:pre-wrap;word-break:break-word;margin-top:0.15rem;padding:0.25rem 0.5rem;background:var(--bg-subtle);border-radius:0.25rem;max-height:12rem;overflow-y:auto"><%= msg[:raw_response] %></pre>
