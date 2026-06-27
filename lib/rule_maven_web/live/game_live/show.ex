@@ -1946,16 +1946,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                     phx-hook="ClipboardCopy"
                     data-clipboard-text={"Q: #{q_text}\n\nA: #{plain_text}"}
                     style="background:none;border:1px solid var(--border);border-radius:0.25rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.4rem;color:var(--text-muted);font-weight:500"
-                    title="Copy as plain text"
-                  >Text</button>
-                  <button
-                    type="button"
-                    id={"copy-md-btn-#{idx}"}
-                    phx-hook="ClipboardCopy"
-                    data-clipboard-text={msg.content}
-                    style="background:none;border:1px solid var(--border);border-radius:0.25rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.4rem;color:var(--text-muted);font-weight:500"
-                    title="Copy as markdown"
-                  >MD</button>
+                    title="Copy question and answer"
+                  >Copy</button>
 
                   <!-- Community vote buttons -->
                   <%= if is_community_msg do %>
