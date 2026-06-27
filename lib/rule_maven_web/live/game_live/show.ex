@@ -1789,7 +1789,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <%= if msg.role == :assistant && !msg[:refused] &&
                          msg.content != "Thinking..." && !msg[:pending] &&
                          not String.starts_with?(to_string(msg.content), "⚠️") do %>
-                    <% {conf_label, conf_pct, conf_color, conf_help, conf_next} =
+                    <% {conf_label, conf_level, conf_color, conf_help, conf_next} =
                       answer_confidence(msg) %>
                     <div style="margin-top:0.6rem">
                       <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.62rem;font-weight:600;color:var(--text-muted);margin-bottom:0.2rem">
@@ -1812,11 +1812,16 @@ defmodule RuleMavenWeb.GameLive.Show do
                             </span>
                           </span>
                         </span>
-                        <span style={"color:#{conf_color}"}>{conf_pct}%</span>
+                        <span style={"color:#{conf_color}"}>{conf_word(conf_level)}</span>
                       </div>
-                      <div style="height:4px;border-radius:999px;background:var(--border);overflow:hidden">
-                        <div style={"height:100%;width:#{conf_pct}%;background:#{conf_color};border-radius:999px"}>
-                        </div>
+                      <div
+                        style="display:flex;gap:3px"
+                        aria-label={"Confidence: #{conf_word(conf_level)} (#{conf_level} of #{conf_max()})"}
+                      >
+                        <span
+                          :for={seg <- 1..conf_max()}
+                          style={"flex:1;height:4px;border-radius:999px;background:#{if seg <= conf_level, do: conf_color, else: "var(--border)"}"}
+                        />
                       </div>
                     </div>
                   <% end %>
@@ -2050,6 +2055,15 @@ defmodule RuleMavenWeb.GameLive.Show do
                         style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if msg[:feedback] == "down", do: "1", else: "0.4"}"}
                         title={if msg[:feedback] == "down", do: "Remove vote", else: "Not helpful"}
                       >👎</button>
+                      <button
+                        :if={!msg[:pool_hit] && (@is_admin or msg[:feedback] != "up")}
+                        type="button"
+                        phx-click="regenerate_answer"
+                        phx-value-id={msg.id}
+                        data-confirm="Regenerate this answer? The current one will be replaced."
+                        style="background:none;border:1px solid var(--border);border-radius:0.25rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.4rem;color:var(--text-muted);font-weight:500"
+                        title="Generate a fresh answer from the rulebook"
+                      >Regenerate</button>
                     <% end %>
                   <% end %>
                 </div>
@@ -2391,36 +2405,46 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   # ── Answer confidence meter ──
   # Pure heuristic from existing signals — no stored confidence column.
-  # Returns {label, percent, color, help_text, next_step}. next_step is nil at
-  # the top level (Community-verified); otherwise it tells the user how to reach
-  # the next, more-trusted level.
+  # Returns {label, level, color, help_text, next_step}. `level` is 1..conf_max()
+  # and drives a segmented meter (a coarse tier reads more honestly than a fake
+  # exact percentage). next_step is nil at the top level (Community-verified);
+  # otherwise it tells the user how to reach the next, more-trusted level.
+  @conf_max 5
+  defp conf_max, do: @conf_max
   defp answer_confidence(msg) do
     cond do
       msg[:pool_hit] && msg[:pool_provisional] ->
-        {"Unverified — single source", 45, "#d97706",
+        {"Unverified — single source", 2, "#d97706",
          "An earlier answer to a similar question. It hasn't been confirmed by other players yet.",
          "Community-verified — once other players upvote this answer too."}
 
       msg[:pool_hit] ->
-        {"Community-verified", 96, "#15803d",
+        {"Community-verified", 5, "#15803d",
          "Other players upvoted this same answer, so it's been confirmed by the community.", nil}
 
       present?(msg[:cited_passage]) && msg[:cited_page] ->
-        {"Cited from rulebook", 88, "#15803d",
+        {"Cited from rulebook", 4, "#15803d",
          "The answer quotes exact rulebook text and points to the page it came from — strong support straight from the rules.",
          "Community-verified — when other players ask the same thing and upvote this answer."}
 
       present?(msg[:cited_passage]) ->
-        {"Cited passage, page unconfirmed", 68, "#2563eb",
+        {"Cited passage, page unconfirmed", 3, "#2563eb",
          "The answer quotes rulebook text, but the exact page number couldn't be confirmed.",
          "Cited from rulebook — regenerate to try to pin the exact page."}
 
       true ->
-        {"No direct citation", 38, "#d97706",
+        {"No direct citation", 1, "#d97706",
          "No exact rulebook passage matched. This is the model's best read of the rules — double-check anything important.",
          "Cited from rulebook — regenerate to pull a direct rulebook citation."}
     end
   end
+
+  # Short tier word for a confidence level, shown beside the segmented meter.
+  defp conf_word(1), do: "Low"
+  defp conf_word(2), do: "Fair"
+  defp conf_word(3), do: "Good"
+  defp conf_word(4), do: "Strong"
+  defp conf_word(5), do: "Verified"
 
   defp present?(s), do: is_binary(s) and String.trim(s) != ""
 
