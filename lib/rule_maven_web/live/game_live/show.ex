@@ -1217,10 +1217,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       >
         <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:0.35rem">
           <div class="flex items-center gap-1" style="min-width:0;flex-wrap:wrap">
-            <.link
-              navigate={~p"/"}
-              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
-            >
+            <.link navigate={~p"/"} class="action-link" style="flex-shrink:0">
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:300px">{@game.name}</h1>
@@ -1305,14 +1302,16 @@ defmodule RuleMavenWeb.GameLive.Show do
             <.link
               :if={RuleMaven.Users.game_master?(@current_user)}
               navigate={~p"/games/#{@game.id}/edit"}
-              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
+              class="action-link"
+              style="flex-shrink:0"
             >
               Edit
             </.link>
             <.link
               :if={RuleMaven.Users.game_master?(@current_user)}
               navigate={~p"/games/#{@game.id}/review"}
-              style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
+              class="action-link"
+              style="flex-shrink:0"
             >
               Review
             </.link>
@@ -1845,11 +1844,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <blockquote style={"margin:0;padding:0.55rem 0.7rem 0.55rem 0.85rem;border-left:3px solid #{if on_user, do: "rgba(255,255,255,0.5)", else: "var(--accent)"};font-style:italic;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#{if on_user, do: "rgba(255,255,255,0.92)", else: "var(--text)"}"}>{String.trim(msg.cited_passage)}</blockquote>
                       <%= if msg[:cited_html_link] do %>
                         <div style={"padding:0 0.7rem 0.5rem 0.85rem"}>
-                          <.link
-                            href={msg.cited_html_link}
-                            target="_blank"
-                            style={"font-size:0.72rem;font-weight:600;#{if on_user, do: "color:#fff", else: "color:var(--blue)"}"}
-                          >
+                          <.link href={msg.cited_html_link} target="_blank" class="action-link">
                             View in rulebook &rarr;
                           </.link>
                         </div>

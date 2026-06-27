@@ -303,7 +303,7 @@ defmodule RuleMavenWeb.AdminLive.Questions do
               >⚠ stale — review</span>
               <a
                 href={"/admin/threads#thread-#{q.parent_question_id || q.id}"}
-                style="font-size:0.65rem;color:var(--text-muted);text-decoration:none"
+                class="action-link"
                 title="View this question's thread in Review Threads"
               >thread →</a>
               <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">

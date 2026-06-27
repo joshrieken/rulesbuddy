@@ -859,7 +859,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                 <.link
                   :if={RuleMaven.Users.game_master?(@current_user)}
                   navigate={~p"/games/#{game.id}/edit"}
-                  style="background:var(--bg-subtle);color:var(--text-secondary);text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
+                  class="action-link"
                 >Edit</.link>
                 <%= if RuleMaven.Users.game_master?(@current_user) do %>
                   <%= if @delete_id == game.id do %>
@@ -952,7 +952,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     <.link
                       :if={RuleMaven.Users.game_master?(@current_user)}
                       navigate={~p"/games/#{exp.id}/edit"}
-                      style="background:var(--bg-subtle);color:var(--text-secondary);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
+                      class="action-link"
                     >Edit</.link>
                     <%= if RuleMaven.Users.game_master?(@current_user) do %>
                       <%= if @delete_id == exp.id do %>

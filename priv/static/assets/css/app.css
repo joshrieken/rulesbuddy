@@ -1924,6 +1924,32 @@ textarea {
   box-shadow: 0 2px 8px var(--shadow-hover);
 }
 
+/* Compact sibling of .back-link for inline/in-row action buttons (Edit, Review,
+   "View in rulebook", etc.) — same accent-outline look, no block margin. */
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--accent);
+  background: var(--bg-surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.action-link:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 /* ===== Prose-like Answer ===== */
 .prose {
   max-width: none;

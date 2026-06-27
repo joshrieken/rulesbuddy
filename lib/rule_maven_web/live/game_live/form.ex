@@ -2826,7 +2826,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                       <.link
                         href={~p"/rulebooks/#{entry.source_id}/html"}
                         target="_blank"
-                        class="text-green-600 hover:underline text-xs"
+                        class="action-link"
                       >View as HTML</.link>
                       <button
                         type="button"
@@ -3394,7 +3394,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 <.link
                   href={"/games/#{@game.id}/cheatsheet"}
                   target="_blank"
-                  class="text-blue-600 hover:underline text-sm font-semibold"
+                  class="action-link"
                 >
                   View active cheat sheet
                 </.link>

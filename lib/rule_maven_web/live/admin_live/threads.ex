@@ -194,10 +194,9 @@ defmodule RuleMavenWeb.AdminLive.Threads do
                   phx-value-id={root.id}
                   style="background:var(--accent);color:#fff;border:none;padding:0.25rem 0.6rem;border-radius:0.3rem;font-size:0.65rem;font-weight:600;cursor:pointer;white-space:nowrap"
                 >Promote to Community<br/>(Merge thread)</button>
-                <.link
-                  navigate={~p"/admin/questions?focus=#{root.id}"}
-                  style="text-align:center;font-size:0.6rem;color:var(--text-muted);text-decoration:none"
-                >Moderate in Questions →</.link>
+                <.link navigate={~p"/admin/questions?focus=#{root.id}"} class="action-link">
+                  Moderate in Questions →
+                </.link>
               </div>
             </div>
           </div>
