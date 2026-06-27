@@ -944,11 +944,18 @@ defmodule RuleMaven.LLM do
     facts about the rules — the kind of surprising, easy-to-miss, or clarifying
     details a player would enjoy learning.
 
+    The text below is SAMPLED from across the rulebook, so you are NOT seeing
+    every rule. Treat it as partial.
+
     Rules:
     - Each fact must be a single self-contained sentence (two at most), readable
       out of context. No "see above", no references to page numbers or sections.
-    - Only state things actually supported by the rulebook text. Do not invent
-      rules. If the text is thin, write fewer facts rather than guessing.
+    - Only state things explicitly and positively stated in the text below. Do
+      not invent rules. If the text is thin, write fewer facts rather than guessing.
+    - NEVER make a negative or absolute claim — no "only", "never", "cannot",
+      "no action", "the sole", "always", "the only way". Absence of a rule in
+      this sample does NOT mean it doesn't exist elsewhere in the rulebook. State
+      what something DOES, not what it lacks or can't do.
     - Plain, friendly language. No markdown headers, no preamble.
 
     Return each fact on its own line starting with "- ".
