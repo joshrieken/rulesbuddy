@@ -652,7 +652,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   def render(assigns) do
     ~H"""
     <div class="game-list">
-      <div class="list-controls" id="list-controls" phx-hook="StickyControls">
+      <div class="list-controls">
       <form phx-change="search" phx-submit="search" class="mb-4">
         <div style="position:relative;display:flex;align-items:center">
           <input

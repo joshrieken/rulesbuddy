@@ -133,28 +133,6 @@ Hooks.Refocus = {
   }
 };
 
-// Parks the game-list controls (search/filters/actions) directly beneath the
-// sticky header by setting `top` to the live header height. Re-measures on
-// resize since the header height can change across breakpoints.
-Hooks.StickyControls = {
-  mounted() {
-    this.sync();
-    this._onResize = () => this.sync();
-    window.addEventListener("resize", this._onResize);
-  },
-  updated() {
-    this.sync();
-  },
-  destroyed() {
-    window.removeEventListener("resize", this._onResize);
-  },
-  sync() {
-    const header = document.querySelector(".header");
-    const h = header ? header.offsetHeight : 0;
-    this.el.style.top = h + "px";
-  }
-};
-
 Hooks.GameListScroll = {
   mounted() {
     this.handleEvent("scroll_to_game", ({idx}) => {
@@ -403,6 +381,20 @@ window.addEventListener("phx:save_reader_label", (e) => {
 window.addEventListener("phx:save_clean_level", (e) => {
   localStorage.setItem("rm:clean:level", e.detail.level);
 });
+
+// Keep --header-height in sync with the real sticky-header height so fixed/
+// sticky layouts (Q&A page, game-list controls) sit flush beneath it with no
+// gap. CSS ships a sensible fallback; this refines it to the measured value.
+function syncHeaderHeight() {
+  const header = document.querySelector(".header");
+  if (header) {
+    document.documentElement.style.setProperty("--header-height", header.offsetHeight + "px");
+  }
+}
+window.addEventListener("resize", syncHeaderHeight);
+window.addEventListener("phx:page-loading-stop", syncHeaderHeight);
+window.addEventListener("DOMContentLoaded", syncHeaderHeight);
+syncHeaderHeight();
 
 // Track first successful WebSocket connection on the LiveView root element.
 // Classes phx-connected/phx-loading/phx-error are set on [data-phx-main], not body.

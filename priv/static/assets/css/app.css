@@ -12,6 +12,9 @@
 
 /* Lavender — soft purple, daylight */
 :root {
+  /* Real sticky-header height; refined to the measured px value in app.js. The
+     fallback matches the default header (icon + padding + border). */
+  --header-height: 3.125rem;
   --font-display: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --bg: #F8F6F0;
@@ -820,12 +823,12 @@ body {
 
 /* Game cards in list */
 /* Search + view/category filters + actions stay pinned just below the sticky
-   header while the game list scrolls underneath. `top` is set in JS to the
-   live header height (StickyControls hook). The solid page-bg masks cards
+   header while the game list scrolls underneath. `--header-height` is the live
+   header height (kept current in app.js). The solid page-bg masks cards
    sliding under the bottom edge. */
 .list-controls {
   position: sticky;
-  top: 0;
+  top: var(--header-height);
   z-index: 50;
   background: var(--bg);
   padding-top: 0.5rem;
