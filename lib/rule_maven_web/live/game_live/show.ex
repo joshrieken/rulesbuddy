@@ -2016,6 +2016,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                         style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
                       >{counts[:down]}</span>
                       <button
+                        :if={@is_admin or cv != "up"}
                         type="button"
                         phx-click="regenerate_answer"
                         phx-value-id={msg.id}
