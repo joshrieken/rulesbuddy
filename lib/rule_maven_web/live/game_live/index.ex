@@ -468,17 +468,29 @@ defmodule RuleMavenWeb.GameLive.Index do
       {id, _} = Integer.parse(id_str)
       game = Games.get_game!(id)
 
-      case RuleMaven.BGG.enrich_game(game, force: true) do
-        {:ok, _} ->
-          {:noreply,
-           socket |> reload_games() |> put_flash(:info, "Pulled BGG data for #{game.name}.")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "BGG pull failed: #{reason}")}
+      # Durable + non-blocking: enqueue the (throttled, retry-prone) BGG pull and
+      # refresh when {:bgg_enriched, ...} arrives, instead of blocking the LV.
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.BggEnrichWorker.topic(id))
       end
+
+      %{game_id: id}
+      |> RuleMaven.Workers.BggEnrichWorker.new()
+      |> Oban.insert()
+
+      {:noreply, put_flash(socket, :info, "Pulling BGG data for #{game.name}…")}
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:bgg_enriched, _game_id, :ok}, socket) do
+    {:noreply, socket |> reload_games() |> put_flash(:info, "BGG data updated.")}
+  end
+
+  def handle_info({:bgg_enriched, _game_id, {:error, reason}}, socket) do
+    {:noreply, put_flash(socket, :error, "BGG pull failed: #{reason}")}
   end
 
   @impl true

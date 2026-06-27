@@ -192,6 +192,11 @@ defmodule RuleMavenWeb.GameLive.Form do
                 RuleMaven.Workers.DownloadWorker.topic(game.id)
               )
 
+              Phoenix.PubSub.subscribe(
+                RuleMaven.PubSub,
+                RuleMaven.Workers.BggEnrichWorker.topic(game.id)
+              )
+
               assign(socket, cleanup_subscribed: true)
             else
               socket
@@ -384,9 +389,13 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_event("refresh_bgg", _params, socket) do
-    socket = assign(socket, generating: true)
-    send(self(), {:refresh_bgg})
-    {:noreply, socket}
+    # Durable + non-blocking: enqueue the BGG pull and let the result arrive over
+    # PubSub (subscribed in mount) instead of blocking the LiveView process.
+    %{game_id: socket.assigns.game.id}
+    |> RuleMaven.Workers.BggEnrichWorker.new()
+    |> Oban.insert()
+
+    {:noreply, assign(socket, generating: true)}
   end
 
   @impl true
@@ -977,7 +986,13 @@ defmodule RuleMavenWeb.GameLive.Form do
       {:noreply, assign(socket, bgg_search_results: [], bgg_search_error: nil)}
     else
       socket = assign(socket, bgg_search: query, bgg_searching: true, bgg_search_error: nil)
-      send(self(), {:bgg_search, query})
+
+      # Run the BGG API call off the LiveView process so it stays responsive.
+      socket =
+        start_async(socket, :bgg_search, fn ->
+          {query, RuleMaven.BGG.search(query)}
+        end)
+
       {:noreply, socket}
     end
   end
@@ -998,7 +1013,10 @@ defmodule RuleMavenWeb.GameLive.Form do
         changes: Map.merge(changeset.changes, %{name: name, bgg_id: bgg_id})
     }
 
-    send(self(), {:pull_bgg_info, changeset})
+    socket =
+      start_async(socket, :pull_bgg_info, fn ->
+        {changeset, RuleMaven.BGG.fetch_game_info(changeset.data.bgg_id)}
+      end)
 
     {:noreply,
      socket
@@ -1013,7 +1031,16 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("search_bgg", _params, socket) do
     game = socket.assigns.game
     socket = assign(socket, searching: true, bgg_results: [], search_error: nil)
-    send(self(), {:search_bgg, game.bgg_id})
+    bgg_id = game.bgg_id
+
+    # resolve_bgg_cookies/0 logs into BGG (with retry sleeps) — must not run on
+    # the LiveView process. Do the whole login+search off-process.
+    socket =
+      start_async(socket, :search_bgg, fn ->
+        cookies = resolve_bgg_cookies()
+        {cookies, RulebookDownloader.find_on_bgg(bgg_id, cookies: cookies)}
+      end)
+
     {:noreply, socket}
   end
 
@@ -1312,21 +1339,15 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:search_bgg, bgg_id}, socket) do
-    cookies = resolve_bgg_cookies()
+  def handle_async(:search_bgg, {:ok, {cookies, result}}, socket) do
     require Logger
-    Logger.debug("Searching BGG for bgg_id=#{bgg_id} cookies=#{inspect(cookies != nil)}")
 
-    case RulebookDownloader.find_on_bgg(bgg_id, cookies: cookies) do
+    case result do
       {:ok, results} ->
         Logger.debug("BGG search found #{length(results)} PDFs")
 
         search_error =
-          cond do
-            results == [] -> "No PDF rulebooks found on BGG files page"
-            cookies == nil -> nil
-            true -> nil
-          end
+          if results == [], do: "No PDF rulebooks found on BGG files page"
 
         {:noreply,
          assign(socket,
@@ -1347,6 +1368,15 @@ defmodule RuleMavenWeb.GameLive.Form do
 
         {:noreply, assign(socket, searching: false, search_error: reason, bgg_results: [])}
     end
+  end
+
+  def handle_async(:search_bgg, {:exit, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       searching: false,
+       bgg_results: [],
+       search_error: "BGG search failed: #{inspect(reason)}"
+     )}
   end
 
   @impl true
@@ -1427,34 +1457,23 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:refresh_bgg}, socket) do
-    game = socket.assigns.game
+  def handle_info({:bgg_enriched, game_id, :ok}, socket) do
+    game = if socket.assigns.game, do: Games.get_game!(game_id), else: nil
 
-    case RuleMaven.BGG.enrich_game(game, force: true) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(generating: false, game: updated)
-         |> put_flash(:info, "Game info refreshed from BGG!")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(generating: false)
-         |> put_flash(:error, "Failed to refresh: #{reason}")}
-    end
+    {:noreply,
+     socket
+     |> assign(generating: false, game: game)
+     |> put_flash(:info, "Game info refreshed from BGG!")}
   end
 
-  @impl true
-  def handle_info({:bgg_search, query}, socket) do
-    result =
-      try do
-        RuleMaven.BGG.search(query)
-      rescue
-        e ->
-          {:error, Exception.message(e)}
-      end
+  def handle_info({:bgg_enriched, _game_id, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(generating: false)
+     |> put_flash(:error, "Failed to refresh: #{reason}")}
+  end
 
+  def handle_async(:bgg_search, {:ok, {query, result}}, socket) do
     case result do
       {:ok, results} ->
         {:noreply,
@@ -1469,9 +1488,13 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
-  @impl true
-  def handle_info({:pull_bgg_info, changeset}, socket) do
-    case RuleMaven.BGG.fetch_game_info(changeset.data.bgg_id) do
+  def handle_async(:bgg_search, {:exit, reason}, socket) do
+    {:noreply,
+     assign(socket, bgg_searching: false, bgg_search_error: "Search failed: #{inspect(reason)}")}
+  end
+
+  def handle_async(:pull_bgg_info, {:ok, {changeset, result}}, socket) do
+    case result do
       {:ok, info, _raw_xml} ->
         changeset = %{
           changeset
@@ -1501,6 +1524,10 @@ defmodule RuleMavenWeb.GameLive.Form do
       {:error, _} ->
         {:noreply, socket}
     end
+  end
+
+  def handle_async(:pull_bgg_info, {:exit, _reason}, socket) do
+    {:noreply, socket}
   end
 
   # Enqueue a durable, restart-survivable cleanup for one source at the selected
