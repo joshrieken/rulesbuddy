@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule Maven — User Guide</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #181b24;
+    --panel-2: #1f2330;
+    --ink: #e7e9ee;
+    --muted: #9aa0ad;
+    --accent: #6ea8fe;
+    --accent-2: #7ee0a8;
+    --warn: #f6c177;
+    --danger: #f08a8a;
+    --border: #2a2f3d;
+    --code: #11141b;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { display: grid; grid-template-columns: 260px 1fr; max-width: 1200px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 24px 18px; border-right: 1px solid var(--border); background: var(--panel);
+  }
+  nav h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 18px 0 8px; }
+  nav a { display: block; color: var(--ink); text-decoration: none; padding: 4px 8px; border-radius: 6px; font-size: 14px; }
+  nav a:hover { background: var(--panel-2); color: var(--accent); }
+  nav .brand { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  nav .brand span { color: var(--accent); }
+  nav .tag { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  main { padding: 36px 48px 120px; min-width: 0; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  h2 { font-size: 23px; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 18px; margin: 26px 0 8px; color: var(--accent-2); }
+  p, li { color: var(--ink); }
+  .lead { color: var(--muted); font-size: 18px; }
+  code { background: var(--code); padding: 1.5px 6px; border-radius: 5px; font-size: 13.5px; font-family: "SF Mono", ui-monospace, Menlo, monospace; color: #d6deeb; }
+  pre { background: var(--code); padding: 14px 16px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 16px 0; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+  .pill.admin { color: var(--warn); border-color: #4a3d22; }
+  .pill.user { color: var(--accent-2); border-color: #234a32; }
+  .note { border-left: 3px solid var(--accent); background: var(--panel-2); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .note.warn { border-color: var(--warn); }
+  .note.danger { border-color: var(--danger); }
+  .note b { color: var(--ink); }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps li { position: relative; padding-left: 40px; margin: 12px 0; }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 0; width: 26px; height: 26px;
+    background: var(--accent); color: #0b0d12; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  }
+  .muted { color: var(--muted); }
+  .kbd { font-family: ui-monospace, monospace; background: var(--panel-2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 7px; font-size: 13px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); }
+  a.inline { color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+  .flow .box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13.5px; }
+  .flow .arr { color: var(--accent); font-weight: 700; }
+  @media (max-width: 820px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    main { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="brand">Rule <span>Maven</span></div>
+  <div class="tag">Board-game rules Q&amp;A</div>
+  <h2>Start</h2>
+  <a href="#what">What it is</a>
+  <a href="#concepts">Core concepts</a>
+  <a href="#accounts">Accounts &amp; roles</a>
+  <h2>Using it</h2>
+  <a href="#library">The game library</a>
+  <a href="#adding">Adding a game</a>
+  <a href="#rulebooks">Rulebooks &amp; cleanup</a>
+  <a href="#asking">Asking questions</a>
+  <a href="#answers">Working with answers</a>
+  <a href="#faq">FAQ &amp; community pool</a>
+  <a href="#cheatsheet">Cheat sheets</a>
+  <a href="#import">Import from BGG</a>
+  <a href="#settings">Settings</a>
+  <h2>Behind the scenes</h2>
+  <a href="#pipeline">How answers are built</a>
+  <a href="#background">Background jobs</a>
+  <a href="#admin">Admin tools</a>
+  <a href="#run">Running the app</a>
+</nav>
+
+<main>
+<h1>Rule Maven — User Guide</h1>
+<p class="lead">Upload a board-game rulebook, then ask plain-English rules questions and get cited answers pulled straight from the book.</p>
+
+<h2 id="what">What it is</h2>
+<p>Rule Maven is a Phoenix LiveView web app for tabletop gamers. You build a <b>library of games</b>, attach each game's <b>rulebook(s)</b> (PDF or pasted text), and the app turns them into a searchable knowledge base. Ask a question like <i>"Can I build on someone else's road?"</i> and it answers using <b>retrieval-augmented generation (RAG)</b> — finding the relevant rulebook passages and quoting the page they came from.</p>
+<p>It supports board games, card games, tabletop RPGs, TCGs, video games, and more — including <b>expansions</b> that hang off a parent game.</p>
+
+<div class="grid">
+  <div class="card"><b>Cited answers</b><br><span class="muted">Every answer points back to the rulebook page it used.</span></div>
+  <div class="card"><b>Community pool</b><br><span class="muted">Good answers get reused, so repeat questions are instant and free.</span></div>
+  <div class="card"><b>Cheat sheets</b><br><span class="muted">Auto-generated quick-reference summaries per game.</span></div>
+  <div class="card"><b>BGG import</b><br><span class="muted">Pull your collection straight from BoardGameGeek.</span></div>
+</div>
+
+<h2 id="concepts">Core concepts</h2>
+<table>
+  <tr><th>Term</th><th>What it means</th></tr>
+  <tr><td><b>Game</b></td><td>A library entry. Has a category, metadata (often from BGG), and zero or more rulebook sources.</td></tr>
+  <tr><td><b>Expansion</b></td><td>A game linked to a parent via <code>parent_game_id</code>. Its rules can be included when asking about the base game.</td></tr>
+  <tr><td><b>Source / Document</b></td><td>One rulebook attached to a game — a PDF you upload, a URL it downloads, or pasted text. Stored page-by-page.</td></tr>
+  <tr><td><b>Chunk</b></td><td>A small slice of rulebook text the app embeds and searches over. You never see these directly.</td></tr>
+  <tr><td><b>Answer pool</b></td><td>Cache of previously answered questions. Similar new questions reuse a pooled answer instead of re-running the LLM.</td></tr>
+  <tr><td><b>Cheat sheet</b></td><td>A generated quick-reference summary of a game's rules, with saved versions.</td></tr>
+</table>
+
+<h2 id="accounts">Accounts &amp; roles</h2>
+<p>Access is gated by login. You register an account (an <b>invite code</b> may be required), sign in at <code>/login</code>, and land on the game library.</p>
+<table>
+  <tr><th>Role</th><th>Can do</th></tr>
+  <tr><td><span class="pill user">user</span></td><td>Browse the library, add games, upload rulebooks, ask questions, vote on community answers, build a personal collection &amp; favorites.</td></tr>
+  <tr><td><span class="pill admin">admin</span></td><td>Everything a user can, plus the <code>/admin</code> dashboard: review rulebooks, moderate questions &amp; threads, manage users, invites, the game catalog, security, and the database/Oban dashboards.</td></tr>
+</table>
+
+<h2 id="library">The game library</h2>
+<p>The home page (<code>/</code>) is your library. It's built for fast browsing:</p>
+<ul>
+  <li><b>Search</b> — type to filter by name; results update live.</li>
+  <li><b>Category filter</b> — narrow to board games, RPGs, TCGs, etc.</li>
+  <li><b>Views</b> — switch how the list is displayed.</li>
+  <li><b>Expansions</b> — toggle a game open to see its expansions inline.</li>
+  <li><b>Collection &amp; favorites</b> — mark games as owned (your collection) or favorite them for quick access.</li>
+  <li><b>Keyboard nav</b> — move through the list and open a game without the mouse.</li>
+  <li><b>BGG actions</b> — pull metadata (<code>pull_bgg</code>) or fetch a game's expansions (<code>pull_expansions</code>) on demand.</li>
+  <li><b>Request support</b> — flag a game you want the catalog to cover.</li>
+</ul>
+<p>Click any game to open its <b>Q&amp;A page</b>.</p>
+
+<h2 id="adding">Adding a game</h2>
+<p>Use <b>New Game</b> (<code>/games/new</code>) to open the form. The same form edits an existing game (<code>/games/:id/edit</code>).</p>
+<ol class="steps">
+  <li>Enter the name and pick a <b>category</b> (board_game, card_game, tabletop_rpg, tcg, video_game, other).</li>
+  <li>Optionally link a <b>parent game</b> to make this an expansion.</li>
+  <li>Let it pull <b>BGG metadata</b> (or refresh later). The app can also auto-suggest categories and related info via the LLM.</li>
+  <li>Attach one or more <b>rulebook sources</b> (next section).</li>
+  <li>Save. Embedding and cheat-sheet generation kick off in the background.</li>
+</ol>
+<div class="note"><b>Suggestions &amp; categories</b> are generated by background LLM workers. You can regenerate or clear them from the form if they look off.</div>
+
+<h2 id="rulebooks">Rulebooks &amp; cleanup</h2>
+<p>On the game form you manage <b>sources</b> — the rulebooks behind every answer.</p>
+<h3>Adding a source</h3>
+<ul>
+  <li><b>Upload a PDF</b> — text is extracted page by page (pages split on form-feeds, printed page numbers detected).</li>
+  <li><b>Give a URL</b> — a background <code>DownloadWorker</code> fetches and extracts the PDF.</li>
+  <li><b>Paste text</b> — for rulebooks you already have as text.</li>
+</ul>
+<p>Each source is stored as pages. You can open a source in the built-in <b>reader</b> (scroll or paginated mode), step through pages, and <b>hand-edit</b> any page's text.</p>
+
+<h3>✨ Clean up text</h3>
+<p>Raw PDF extraction is messy — broken line wraps, headers/footers, column soup. The <b>Clean up text</b> button runs each page through an LLM to produce a clean version.</p>
+<div class="note"><b>How it works:</b> A durable background job (<code>CleanupWorker</code>) cleans pages one at a time and writes each cleaned page back as it finishes — you watch them update live. It's <b>resumable</b>: if the server restarts mid-clean, the job picks up the remaining pages. Cleaned text auto-applies and stays editable afterward.</div>
+<div class="note warn">Cleaning re-cleans <b>all</b> pages from scratch (it clears prior cleaned text first), then re-chunks the document so the clean text feeds search.</div>
+
+<h3>What "effective text" means</h3>
+<p>For every page the app uses <code>cleaned || text</code> — the cleaned version if it exists, otherwise the raw extraction. That "effective" text is what gets chunked, embedded, and quoted in answers.</p>
+
+<h2 id="asking">Asking questions</h2>
+<p>The game's <b>Show page</b> (<code>/games/:id</code>) is where you ask. Type a natural-language question and submit.</p>
+<ul>
+  <li><b>Quick-ask &amp; suggestions</b> — one-click common questions to get started.</li>
+  <li><b>Expansion toggle</b> — include an expansion's rules in the answer scope.</li>
+  <li><b>Threads</b> — questions are grouped into conversation threads; multi-turn follow-ups keep context. Switch between threads in the sidebar.</li>
+  <li><b>Search</b> — search within this game's existing questions/answers.</li>
+</ul>
+<div class="note"><b>Answers are asynchronous.</b> When you ask, a placeholder appears immediately and a background <code>AskWorker</code> fills it in, then pushes the result to your screen live. You don't have to wait on the page.</div>
+
+<h2 id="answers">Working with answers</h2>
+<p>Each answer comes with a <b>cited page</b> from the rulebook and a set of controls:</p>
+<table>
+  <tr><th>Action</th><th>What it does</th></tr>
+  <tr><td>👍 / 👎 Thumbs</td><td>Rate answer quality. Feeds moderation and pooling.</td></tr>
+  <tr><td>Community vote</td><td>Up/down-vote answers shared with the community.</td></tr>
+  <tr><td>Favorite</td><td>Save an answer to find it again fast.</td></tr>
+  <tr><td>Pin</td><td>Keep an important answer at the top of the game.</td></tr>
+  <tr><td>Regenerate / Retry</td><td>Re-run the LLM for a fresh answer (e.g. after fixing rulebook text).</td></tr>
+  <tr><td>Visibility</td><td>Toggle a question between private and community-shared.</td></tr>
+  <tr><td>Delete</td><td>Remove a question from your history (with confirm).</td></tr>
+  <tr><td>Show refused</td><td>Reveal answers the model declined to answer (out of scope / not in rulebook).</td></tr>
+</table>
+
+<h2 id="faq">FAQ &amp; the community pool</h2>
+<p>Two things make repeat questions cheap and fast:</p>
+<h3>Answer pool</h3>
+<p>Before running the LLM, the app checks whether a very similar question was already answered well. If a pooled or community answer is close enough (cosine similarity ≥ <code>0.92</code> by default, trusted answers first), it <b>serves that answer instantly</b> — no retrieval, no LLM call, no cost.</p>
+<div class="note warn">When rulebook content changes (new doc, edited text, cleanup, deletion), the pool for that game is <b>invalidated</b> so stale cached answers stop serving. Community answers survive; auto-pooled ones get demoted.</div>
+<h3>FAQ page</h3>
+<p>The FAQ page (<code>/games/:id/faq</code>) collects the community's notable Q&amp;A for a game. You can filter by category. Admins can <b>promote</b> answers into the canonical FAQ or <b>reject</b> them.</p>
+
+<h2 id="cheatsheet">Cheat sheets</h2>
+<p>Each game can have an auto-generated <b>cheat sheet</b> — a condensed rules summary. Generation is async (<code>generate_async</code>) at a chosen detail level (e.g. <code>compact</code>), and can include selected expansions.</p>
+<ul>
+  <li>View at <code>/games/:id/cheatsheet</code>; specific saved versions at <code>/games/:id/cheatsheet/:version_id</code>.</li>
+  <li>Multiple <b>versions</b> are kept; set one as active or delete old ones.</li>
+  <li>Generation status, provider, model, level, and timing are tracked while it runs.</li>
+</ul>
+
+<h2 id="import">Import from BoardGameGeek</h2>
+<p>The Import page (<code>/games/import</code>) bootstraps your library from BGG:</p>
+<ol class="steps">
+  <li>Enter your <b>BGG username</b> and fetch your collection.</li>
+  <li>Review the games it found.</li>
+  <li>Import — they're added to your library with BGG metadata attached.</li>
+</ol>
+
+<h2 id="settings">Settings</h2>
+<p><code>/settings</code> manages your profile and AI providers:</p>
+<ul>
+  <li><b>Profile</b> — update username and email.</li>
+  <li><b>LLM provider</b> — choose which model provider answers questions.</li>
+  <li><b>Embedding provider</b> — choose the provider used to vectorize text. <span class="muted">(The default embedding model is pinned to 768 dimensions to match the search index.)</span></li>
+  <li><b>Usage</b> — <code>/settings/usage</code> shows your AI usage/stats.</li>
+</ul>
+<div class="note danger">Changing the embedding model's dimensions would corrupt existing search vectors — the app pins this deliberately. Leave it unless you know you're re-embedding everything.</div>
+
+<h2 id="pipeline">Behind the scenes — how an answer is built</h2>
+<p>From upload to answer:</p>
+<div class="flow">
+  <span class="box">Upload / download PDF</span><span class="arr">→</span>
+  <span class="box">Extract pages</span><span class="arr">→</span>
+  <span class="box">(optional) Clean text</span><span class="arr">→</span>
+  <span class="box">Chunk</span><span class="arr">→</span>
+  <span class="box">Embed (768-dim vectors)</span>
+</div>
+<div class="flow">
+  <span class="box">You ask a question</span><span class="arr">→</span>
+  <span class="box">Embed question</span><span class="arr">→</span>
+  <span class="box">Pool hit? serve cached</span><span class="arr">→</span>
+  <span class="box">else retrieve top chunks</span><span class="arr">→</span>
+  <span class="box">LLM answers + cites page</span><span class="arr">→</span>
+  <span class="box">Maybe pool the answer</span>
+</div>
+<p class="muted">Retrieval ranks chunks by vector (cosine) similarity over <b>published</b>, embedded documents, pulls in cross-referenced chunks, and falls back to full-text then keyword search if vectors come up short. Only documents that pass a quality check are published and therefore retrievable; lower-quality uploads sit in <b>pending review</b> until an admin approves them.</p>
+
+<h2 id="background">Background jobs</h2>
+<p>Anything slow runs as a durable <b>Oban</b> job — it survives server restarts and resumes instead of silently dying. Each job broadcasts its result to your page over live updates, so the UI catches up automatically.</p>
+<table>
+  <tr><th>Worker</th><th>Job</th></tr>
+  <tr><td>DownloadWorker</td><td>Fetch &amp; extract a rulebook PDF from a URL.</td></tr>
+  <tr><td>CleanupWorker</td><td>LLM-clean each rulebook page, resumably.</td></tr>
+  <tr><td>EmbedChunksWorker</td><td>Vectorize chunks for search.</td></tr>
+  <tr><td>AskWorker</td><td>Answer a question (pool check → retrieval → LLM).</td></tr>
+  <tr><td>CheatSheet / Suggestions / Categories</td><td>Generate cheat sheets and LLM metadata.</td></tr>
+  <tr><td>ExpansionSyncWorker</td><td>Pull a game's expansions.</td></tr>
+</table>
+
+<h2 id="admin">Admin tools</h2>
+<p class="muted">Admins only — under <code>/admin</code>.</p>
+<table>
+  <tr><th>Page</th><th>Purpose</th></tr>
+  <tr><td><code>/admin</code></td><td>Dashboard overview.</td></tr>
+  <tr><td><code>/games/:id/review</code></td><td>Approve/reject pending rulebooks; promote/reject pooled answers.</td></tr>
+  <tr><td><code>/admin/questions</code></td><td>Moderate questions across all games.</td></tr>
+  <tr><td><code>/admin/threads</code></td><td>Review conversation threads.</td></tr>
+  <tr><td><code>/admin/users</code></td><td>Manage users and roles.</td></tr>
+  <tr><td><code>/admin/invites</code></td><td>Issue and manage invite codes.</td></tr>
+  <tr><td><code>/admin/catalog</code> &amp; <code>/admin/requests</code></td><td>Curate the game catalog and handle support requests.</td></tr>
+  <tr><td><code>/admin/security</code></td><td>Security overview.</td></tr>
+  <tr><td><code>/admin/db</code>, <code>/oban</code></td><td>Database inspector and Oban job dashboard.</td></tr>
+</table>
+
+<h2 id="run">Running the app (developers)</h2>
+<pre><code>mix setup            # install deps, set up DB
+mix phx.server       # start the server
+# or, with a console:
+iex -S mix phx.server</code></pre>
+<p>Then open <a class="inline" href="http://localhost:4000">localhost:4000</a>. Server logs land in <code>tmp/phoenix.log</code> / <code>var/log/phoenix.log</code>.</p>
+<p class="muted">You'll need API keys for your chosen LLM and embedding providers configured in the environment, plus PostgreSQL with the <b>pgvector</b> extension for vector search.</p>
+
+<footer>
+  Rule Maven user guide · generated from the current codebase. Behavior may evolve — when in doubt, the running app and <code>/admin</code> dashboards are the source of truth.
+</footer>
+</main>
+</div>
+</body>
+</html>

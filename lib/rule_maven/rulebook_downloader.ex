@@ -10,6 +10,17 @@ defmodule RuleMaven.RulebookDownloader do
   @bgg_base "https://boardgamegeek.com"
   @pdf_link_re ~r{<a[^>]*href="([^"]*\.pdf)"[^>]*>(.*?)</a>}s
 
+  # Hard caps so a download can never hang the Oban job indefinitely.
+  @max_pdf_bytes 80 * 1024 * 1024
+  @fetch_connect_timeout 15_000
+  @fetch_receive_timeout 60_000
+  @pdftotext_timeout 90_000
+  @pdftoppm_timeout 180_000
+  @tesseract_timeout 90_000
+
+  # No-op progress sink used when a caller doesn't care about stage updates.
+  defp noop_progress(_stage), do: :ok
+
   @doc """
   Uses the LLM to find a PDF rulebook URL for a game.
   Returns `{:ok, url}` or `{:error, reason}`.
@@ -50,25 +61,27 @@ defmodule RuleMaven.RulebookDownloader do
   Tries multiple URLs if the LLM returns several.
   Returns `{:ok, source}` or `{:error, reason}`.
   """
-  def find_and_download(game, label \\ "") do
+  def find_and_download(game, label \\ "", on_progress \\ &noop_progress/1) do
+    on_progress.(:searching)
+
     case find_url_via_llm(game) do
       {:ok, url} ->
-        try_download(game, url, label)
+        try_download(game, url, label, on_progress)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp try_download(game, url, label) do
+  defp try_download(game, url, label, on_progress) do
     label = if label == "", do: extract_filename_label(url), else: label
     require Logger
 
     Logger.debug("Attempting download: #{url}")
 
-    case download(game, url, label) do
+    case download(game, url, label, on_progress) do
       {:ok, source} -> {:ok, source}
-      {:error, reason} -> {:error, "#{inspect(reason)} (URL: #{url})"}
+      {:error, reason} -> {:error, "#{reason} (URL: #{url})"}
     end
   end
 
@@ -105,12 +118,15 @@ defmodule RuleMaven.RulebookDownloader do
   and creates a rulebook source for the given game.
   Returns `{:ok, source}` or `{:error, reason}`.
   """
-  def download(game, url, label) do
+  def download(game, url, label, on_progress \\ &noop_progress/1) do
     label = if label == "", do: extract_filename_label(url), else: label
+    on_progress.(:fetching)
 
     with {:ok, pdf_binary} <- fetch_pdf(url),
+         :ok <- validate_pdf(pdf_binary),
          {:ok, pdf_path} <- save_pdf(pdf_binary, url),
-         {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path) do
+         {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path, on_progress) do
+      on_progress.(:finalizing)
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them — same treatment as the upload path.
       pages = String.split(raw_text, "\f")
@@ -235,12 +251,38 @@ defmodule RuleMaven.RulebookDownloader do
   end
 
   defp fetch_pdf(url) do
-    case Req.get(url, max_retries: 0, receive_timeout: 30_000) do
-      {:ok, %{status: 200, body: body}} when is_binary(body) ->
-        {:ok, body}
+    opts = [
+      max_retries: 1,
+      connect_options: [timeout: @fetch_connect_timeout],
+      receive_timeout: @fetch_receive_timeout,
+      redirect: true,
+      max_redirects: 5,
+      headers: add_browser_headers([])
+    ]
 
+    case Req.get(url, opts) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, IO.iodata_to_binary(body)}
+        body = if is_binary(body), do: body, else: IO.iodata_to_binary(body)
+
+        cond do
+          byte_size(body) == 0 ->
+            {:error, "Server returned an empty response"}
+
+          byte_size(body) > @max_pdf_bytes ->
+            {:error, "PDF is too large (> #{div(@max_pdf_bytes, 1024 * 1024)} MB)"}
+
+          true ->
+            {:ok, body}
+        end
+
+      {:ok, %{status: status}} when status in 300..399 ->
+        {:error, "Server kept redirecting (status #{status}) — link may be broken"}
+
+      {:ok, %{status: 404}} ->
+        {:error, "Rulebook not found at that URL (404)"}
+
+      {:ok, %{status: status}} when status in [401, 403] ->
+        {:error, "Access denied by the server (status #{status}) — may require login"}
 
       {:ok, %{status: status}} ->
         {:error, "Server returned status #{status}"}
@@ -248,15 +290,47 @@ defmodule RuleMaven.RulebookDownloader do
       {:error, %{reason: :timeout}} ->
         {:error, "Download timed out — URL may be unreachable or too slow"}
 
+      {:error, %{reason: reason}} ->
+        {:error, "Download failed: #{reason}"}
+
       {:error, reason} ->
         {:error, "Download failed: #{inspect(reason)}"}
     end
   end
 
+  # Guard against servers that answer 200 with an HTML error/login page (or any
+  # non-PDF body): bail before we save garbage and waste time OCR-thrashing it.
+  defp validate_pdf(binary) do
+    head = binary |> binary_part(0, min(byte_size(binary), 1024)) |> String.trim_leading()
+
+    cond do
+      String.starts_with?(head, "%PDF-") ->
+        :ok
+
+      String.starts_with?(head, "<") or
+          String.match?(String.downcase(head), ~r/<!doctype html|<html/) ->
+        {:error, "That URL returned a web page, not a PDF file"}
+
+      true ->
+        {:error, "Downloaded file is not a valid PDF"}
+    end
+  end
+
+  # Runs an external command with a hard timeout so a wedged binary (a corrupt
+  # PDF that hangs pdftotext, a stuck tesseract) can't pin the Oban job forever.
+  defp cmd(bin, args, timeout, opts \\ []) do
+    task = Task.async(fn -> System.cmd(bin, args, opts) end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> {:ok, result}
+      nil -> {:error, :timeout}
+    end
+  end
+
   # Extract, but if extraction fails for good, remove the PDF we just saved —
   # no Document row will reference it, so it would otherwise linger on disk.
-  defp extract_with_cleanup(pdf_path) do
-    case extract_text_with_source(pdf_path) do
+  defp extract_with_cleanup(pdf_path, on_progress) do
+    case extract_text_with_source(pdf_path, on_progress) do
       {:ok, _text, _from_ocr} = ok ->
         ok
 
@@ -266,29 +340,36 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp extract_text_with_source(pdf_path) do
+  defp extract_text_with_source(pdf_path, on_progress) do
     full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
+    on_progress.(:extracting)
 
-    case System.cmd("pdftotext", [full_path, "-"]) do
-      {text, 0} ->
+    case cmd("pdftotext", [full_path, "-"], @pdftotext_timeout) do
+      {:ok, {text, 0}} ->
         if String.trim(text) != "" do
           {:ok, text, false}
         else
-          case ocr_text(full_path) do
-            {:ok, text} -> {:ok, text, true}
-            {:error, reason} -> {:error, reason}
-          end
+          run_ocr(full_path, on_progress)
         end
 
-      _ ->
-        case ocr_text(full_path) do
-          {:ok, text} -> {:ok, text, true}
-          {:error, reason} -> {:error, reason}
-        end
+      {:ok, _nonzero} ->
+        run_ocr(full_path, on_progress)
+
+      {:error, :timeout} ->
+        {:error, "PDF text extraction timed out — the file may be corrupt or too complex"}
     end
   rescue
     e ->
       {:error, "PDF extraction error: #{Exception.message(e)}"}
+  end
+
+  defp run_ocr(full_path, on_progress) do
+    on_progress.(:ocr)
+
+    case ocr_text(full_path) do
+      {:ok, text} -> {:ok, text, true}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp save_pdf(pdf_binary, url) do
@@ -311,8 +392,8 @@ defmodule RuleMaven.RulebookDownloader do
       File.mkdir_p!(tmp_dir)
       prefix = Path.join(tmp_dir, "#{System.system_time(:millisecond)}_page")
 
-      case System.cmd("pdftoppm", ["-png", "-r", "300", pdf_path, prefix]) do
-        {_, 0} ->
+      case cmd("pdftoppm", ["-png", "-r", "300", pdf_path, prefix], @pdftoppm_timeout) do
+        {:ok, {_, 0}} ->
           images =
             tmp_dir
             |> File.ls!()
@@ -323,10 +404,12 @@ defmodule RuleMaven.RulebookDownloader do
           text =
             images
             |> Enum.map(fn img ->
-              case System.cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
+              case cmd("tesseract", [img, "stdout", "-l", "eng", "--psm", "6"],
+                     @tesseract_timeout,
                      stderr_to_stdout: true
                    ) do
-                {t, _} -> t
+                {:ok, {t, _}} -> t
+                {:error, :timeout} -> ""
               end
             end)
             |> Enum.join("\f")
@@ -340,8 +423,11 @@ defmodule RuleMaven.RulebookDownloader do
             {:ok, text}
           end
 
-        {_, _} ->
+        {:ok, {_, _}} ->
           {:error, "pdftoppm failed — cannot convert PDF to images for OCR"}
+
+        {:error, :timeout} ->
+          {:error, "OCR image conversion timed out — PDF is too large or complex"}
       end
     else
       {:error, "PDF has no text layer. Install tesseract for OCR: brew install tesseract"}

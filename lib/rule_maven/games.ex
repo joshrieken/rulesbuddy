@@ -584,13 +584,32 @@ defmodule RuleMaven.Games do
   number of rows demoted.
   """
   def invalidate_pool(game_id) do
-    {n, _} =
+    # Auto-pooled answers can be demoted silently — they'll re-pool on the next
+    # ask against the new text.
+    {demoted, _} =
       Repo.update_all(
         from(q in QuestionLog, where: q.game_id == ^game_id and q.pooled == true),
         set: [pooled: false]
       )
 
-    n
+    # Community answers are human-curated, so don't drop or regenerate them.
+    # Flag them for review instead: the pool lookup skips flagged rows, so they
+    # stop serving until a moderator re-approves (clear_needs_review/1).
+    {flagged, _} =
+      Repo.update_all(
+        from(q in QuestionLog,
+          where:
+            q.game_id == ^game_id and q.visibility == "community" and q.needs_review == false
+        ),
+        set: [needs_review: true]
+      )
+
+    demoted + flagged
+  end
+
+  @doc "Clears the stale-review flag on an answer, making it pool-eligible again."
+  def clear_needs_review(%QuestionLog{} = q) do
+    q |> QuestionLog.changeset(%{needs_review: false}) |> Repo.update()
   end
 
   @doc """
@@ -703,14 +722,37 @@ defmodule RuleMaven.Games do
 
   @doc """
   Enqueue (or no-op if one is already active) a durable cleanup of a document's
-  pages. Clears existing cleaned text first so it's a full re-clean.
-  """
-  def enqueue_cleanup(%Document{} = doc) do
-    clear_all_cleaned(doc)
+  pages at the given strength (`:light | :standard | :aggressive`).
 
-    %{document_id: doc.id, game_id: doc.game_id}
+  `mode`:
+    * `:raw` (default) — full clean from the original extraction; clears any
+      existing cleaned text first.
+    * `:again` — a second pass over the *current* cleaned text to scrub leftover
+      junk. Keeps the cleaned text (it's the input to the re-clean).
+  """
+  def enqueue_cleanup(%Document{} = doc, level \\ :light, mode \\ :raw) do
+    if mode == :raw, do: clear_all_cleaned(doc)
+    # Reset the durable progress counter so this run starts at 0/total.
+    set_cleaning_done(doc.id, 0)
+
+    %{document_id: doc.id, game_id: doc.game_id, level: to_string(level), mode: to_string(mode)}
     |> RuleMaven.Workers.CleanupWorker.new()
     |> Oban.insert()
+  end
+
+  @doc """
+  Sets the durable cleanup progress counter for a document (pages persisted so
+  far this run), or nil when idle. Written via `update_all` so it never touches
+  the `pages` embed. Returns the value it set.
+  """
+  def set_cleaning_done(doc_id, value) do
+    Repo.update_all(from(d in Document, where: d.id == ^doc_id), set: [cleaning_done: value])
+    value
+  end
+
+  @doc "Durable cleanup progress (pages persisted this run), or nil when idle."
+  def cleaning_done(doc_id) do
+    Repo.one(from d in Document, where: d.id == ^doc_id, select: d.cleaning_done)
   end
 
   # Backward compat aliases
@@ -958,6 +1000,9 @@ defmodule RuleMaven.Games do
             where: q.answer != "Thinking..." and q.refused == false and not like(q.answer, "⚠️%")
           )
 
+        "needs_review" ->
+          from(q in query, where: q.needs_review == true)
+
         _ ->
           query
       end
@@ -1069,6 +1114,8 @@ defmodule RuleMaven.Games do
           where: q.pooled == true or q.visibility == "community",
           where: not is_nil(q.question_embedding),
           where: q.refused == false,
+          # Skip answers flagged stale by a rulebook change until re-approved.
+          where: q.needs_review == false,
           where:
             fragment(
               "cosine_distance(?, ?::vector)",
@@ -1266,14 +1313,38 @@ defmodule RuleMaven.Games do
   stored in `Document.pages`.
   """
   def paginate(raw_pages) do
-    offset = detect_printed_offset(raw_pages)
+    printed_by_sheet = assign_printed(raw_pages)
 
     raw_pages
     |> Enum.with_index(1)
     |> Enum.map(fn {text, sheet} ->
-      printed = if offset && sheet - offset >= 1, do: sheet - offset
-      %{index: sheet - 1, sheet: sheet, printed: printed, text: text}
+      %{index: sheet - 1, sheet: sheet, printed: Map.get(printed_by_sheet, sheet), text: text}
     end)
+  end
+
+  @doc """
+  Recomputes printed page numbers for an already-stored document from each
+  page's original extracted text (where the footers live), preserving any
+  cleaned/hand-edited bodies. Use to re-apply improved detection to docs
+  ingested under older logic without re-downloading. Re-chunks via
+  `update_document/2` since `full_text` changes.
+  """
+  def repaginate_document(%Document{} = doc) do
+    ordered = Enum.sort_by(doc.pages, & &1.index)
+    raw = Enum.map(ordered, & &1.text)
+    recomputed = paginate(raw)
+
+    new_pages =
+      Enum.zip(ordered, recomputed)
+      |> Enum.map(fn {p, r} ->
+        %{index: p.index, sheet: p.sheet, printed: r.printed, text: p.text, cleaned: p.cleaned}
+      end)
+
+    update_document(doc, %{
+      pages: new_pages,
+      full_text: rebuild_full_text(new_pages),
+      printed_offset: detect_printed_offset(raw)
+    })
   end
 
   @doc """
@@ -1307,6 +1378,33 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Removes the printed page number from a page body when it appears as an
+  isolated header/footer line (bare "12", "Page 12", or a decorated "— 12 —").
+  The number is stored separately on the page (`printed`), so keeping it in the
+  body is duplicate clutter that also pollutes retrieval/quoting.
+
+  Only the first/last few non-empty lines are considered, and only lines that
+  resolve to exactly `printed` are dropped — a legitimate number inside a rule
+  ("place 12 cubes") is never touched. No-op when `printed` is nil.
+  """
+  def strip_printed_number(text, nil), do: text
+
+  def strip_printed_number(text, printed) when is_integer(printed) do
+    lines = String.split(text, "\n")
+
+    nonempty = for {l, i} <- Enum.with_index(lines), String.trim(l) != "", do: i
+    zone = MapSet.new(Enum.take(nonempty, 3) ++ Enum.take(nonempty, -3))
+
+    lines
+    |> Enum.with_index()
+    |> Enum.reject(fn {line, i} ->
+      MapSet.member?(zone, i) and line_page_number(String.trim(line)) == printed
+    end)
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.join("\n")
+  end
+
+  @doc """
   Effective page text used everywhere downstream: the cleaned/edited working
   copy if present, else the original. Accepts `Document.Page` structs or plain
   maps (a missing `:cleaned` key is treated as nil).
@@ -1328,38 +1426,97 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
-  Finds the global offset between physical sheet index and printed page number
-  by consensus: for each page with a detected footer/header number, the offset
-  is `sheet - printed`; the true offset is the mode across pages (title/TOC
-  pages with no number or noise get outvoted). Returns nil if no clear winner.
+  The dominant physical-sheet→printed-page offset for a document (the
+  `sheet - printed` of the largest consistent run), or nil when no run clears
+  the support threshold. Kept for the stored `documents.printed_offset`
+  diagnostic; page numbering itself uses the per-segment `assign_printed/1`.
   """
   def detect_printed_offset(pages) do
-    offsets =
-      pages
-      |> Enum.with_index(1)
-      |> Enum.flat_map(fn {text, sheet} ->
-        case page_number_candidate(text) do
-          nil -> []
-          c -> [sheet - c]
-        end
-      end)
-
-    case offsets do
-      [] ->
-        nil
-
-      _ ->
-        {offset, count} =
-          offsets |> Enum.frequencies() |> Enum.max_by(fn {_o, n} -> n end)
-
-        # Require real consensus before trusting detection over raw sheet numbers.
-        if count >= max(3, div(length(pages), 5)), do: offset, else: nil
+    case offset_runs(page_candidates(pages), length(pages)) do
+      [] -> nil
+      runs -> runs |> Enum.max_by(fn {_offset, _lo, _hi, n} -> n end) |> elem(0)
     end
+  end
+
+  # Maps each physical sheet to its printed page number, handling rulebooks
+  # whose printed numbering shifts partway (unnumbered inserts, fold-outs, front
+  # matter). Strategy: find consistent "runs" — sets of pages sharing one
+  # `sheet - printed` offset (a single offset means printed advances exactly
+  # with the sheet, i.e. a monotonic +1 sequence). The best-supported run claims
+  # its sheet span first (interpolating numbers for unlabelled pages inside it);
+  # weaker runs fill the sheets the strong one didn't cover.
+  #
+  # The outermost run also extrapolates past its observed pages to the document
+  # edges, so unlabelled front/back matter inherits the offset (e.g. a footer
+  # "3" detected on sheet 3 implies sheets 1-2 are pages 1-2). The `printed >= 1`
+  # guard keeps this honest: genuine unnumbered front matter (where page 1 only
+  # starts several sheets in, i.e. a positive offset) extrapolates to page 0 or
+  # below and is left nil. Interior gaps between two *different* offsets are NOT
+  # filled — those are the unnumbered inserts that caused the shift.
+  defp assign_printed(raw_pages) do
+    n = length(raw_pages)
+
+    case offset_runs(page_candidates(raw_pages), n) do
+      [] ->
+        %{}
+
+      runs ->
+        min_lo = runs |> Enum.map(fn {_o, lo, _hi, _n} -> lo end) |> Enum.min()
+        max_hi = runs |> Enum.map(fn {_o, _lo, hi, _n} -> hi end) |> Enum.max()
+
+        runs
+        # Stretch only the leading run back to sheet 1 and the trailing run out
+        # to the last sheet; interior runs keep their observed span.
+        |> Enum.map(fn {offset, lo, hi, support} ->
+          lo = if lo == min_lo, do: 1, else: lo
+          hi = if hi == max_hi, do: n, else: hi
+          {offset, lo, hi, support}
+        end)
+        # Strongest run first so it wins any sheet-span overlap.
+        |> Enum.sort_by(fn {_offset, _lo, _hi, support} -> -support end)
+        |> Enum.reduce(%{}, fn {offset, lo, hi, _support}, acc ->
+          Enum.reduce(lo..hi, acc, fn sheet, acc ->
+            printed = sheet - offset
+
+            if printed >= 1 and not Map.has_key?(acc, sheet),
+              do: Map.put(acc, sheet, printed),
+              else: acc
+          end)
+        end)
+    end
+  end
+
+  # `[{sheet, printed_candidate}]` for every sheet that yielded a number.
+  defp page_candidates(pages) do
+    pages
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {text, sheet} ->
+      case page_number_candidate(text) do
+        nil -> []
+        num -> [{sheet, num}]
+      end
+    end)
+  end
+
+  # Groups candidates by `sheet - printed` offset and keeps the groups with
+  # enough corroboration to trust over raw sheet numbers. Each surviving group
+  # is `{offset, min_sheet, max_sheet, support}` — a run spanning those sheets.
+  # A lone candidate (support 1) is treated as noise.
+  defp offset_runs(candidates, page_count) do
+    min_support = max(2, div(page_count, 10))
+
+    candidates
+    |> Enum.group_by(fn {sheet, num} -> sheet - num end, fn {sheet, _num} -> sheet end)
+    |> Enum.map(fn {offset, sheets} ->
+      {offset, Enum.min(sheets), Enum.max(sheets), length(sheets)}
+    end)
+    |> Enum.filter(fn {_offset, _lo, _hi, n} -> n >= min_support end)
   end
 
   # Best-guess printed page number for one page: scan the first and last few
   # non-empty lines (where headers/footers live) for a bare/decorated integer,
-  # preferring the footer. Returns the integer or nil.
+  # preferring the footer. OCR digit look-alikes (1↔l/I, 0↔O) are repaired on
+  # mostly-numeric lines first. Returns the integer or nil.
   defp page_number_candidate(text) do
     lines =
       text
@@ -1368,23 +1525,55 @@ defmodule RuleMaven.Games do
       |> Enum.reject(&(&1 == ""))
 
     # Footer lines first (most reliable), then header lines.
-    candidates = Enum.reverse(Enum.take(lines, -3)) ++ Enum.take(lines, 3)
+    candidates = Enum.reverse(Enum.take(lines, -5)) ++ Enum.take(lines, 5)
 
-    Enum.find_value(candidates, fn line ->
-      cond do
-        Regex.match?(~r/^\d{1,3}$/, line) ->
-          String.to_integer(line)
+    Enum.find_value(candidates, &line_page_number/1)
+  end
 
-        m = Regex.run(~r/^(?:page|p\.?)\s*(\d{1,3})$/i, line) ->
-          m |> Enum.at(1) |> String.to_integer()
+  defp line_page_number(line) do
+    norm = ocr_normalize(line)
 
-        m = Regex.run(~r/^[—\-–|•\s]*(\d{1,3})[—\-–|•\s]*$/, line) ->
-          m |> Enum.at(1) |> String.to_integer()
+    cond do
+      # bare number ("12"), tolerating the original being a short numeric token
+      n = match_int(norm, ~r/^(\d{1,3})$/) -> n
+      # "Page 12", "p. 12", "pg 12"
+      n = match_int(norm, ~r/^(?:page|pg|p\.?)\s*(\d{1,3})\b/i) -> n
+      # decorated footer: "— 12 —", "| 12 |", "• 12"
+      n = match_int(norm, ~r/^[—\-–|•·*~_\s]*(\d{1,3})[—\-–|•·*~_\s]*$/) -> n
+      # "12 / 130", "12 of 130"
+      n = match_int(norm, ~r/^(\d{1,3})\s*(?:\/|of)\s*\d{1,3}$/i) -> n
+      true -> nil
+    end
+  end
 
-        true ->
-          nil
-      end
-    end)
+  defp match_int(str, re) do
+    case Regex.run(re, str) do
+      [_, d] -> String.to_integer(d)
+      _ -> nil
+    end
+  end
+
+  # Repair the common OCR confusions that turn page-number digits into letters,
+  # but only on short, mostly-numeric lines so real footer words aren't mangled.
+  # Limited to the high-confidence swaps (l/I/|→1, O/o/Q→0); ambiguous ones like
+  # S→5/B→8 are skipped because they corrupt real words (e.g. "SOS").
+  defp ocr_normalize(line) do
+    if numeric_ish?(line) do
+      line
+      |> String.replace(~r/[OoQ]/, "0")
+      |> String.replace(~r/[lI|!]/, "1")
+    else
+      line
+    end
+  end
+
+  defp numeric_ish?(line) do
+    chars = line |> String.replace(~r/\s/, "") |> String.graphemes()
+
+    case chars do
+      [] -> false
+      _ -> Enum.count(chars, &(&1 =~ ~r/[0-9OoQlI|!]/)) * 2 >= length(chars)
+    end
   end
 
   def chunk_document(%Document{} = doc) do

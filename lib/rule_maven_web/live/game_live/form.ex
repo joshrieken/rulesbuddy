@@ -18,6 +18,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         download_url: "",
         download_label: "",
         downloading: false,
+        download_stage: nil,
         download_error: nil,
         download_ok: false,
         confirm_delete_source_id: nil,
@@ -56,6 +57,9 @@ defmodule RuleMavenWeb.GameLive.Form do
         parent_selected_id: nil,
         parent_selected_name: nil,
         cleaning: %{},
+        # Cleanup strength applied by "Wipe & clean" / "Clean again". Persisted
+        # per-browser (localStorage → connect params) so it survives reloads.
+        clean_level: restore_clean_level(socket),
         # Source ids freshly added by upload/download — drives the "clean now?"
         # prompt on the Manage tab.
         clean_prompt_sids: [],
@@ -65,7 +69,9 @@ defmodule RuleMavenWeb.GameLive.Form do
         # Current page index per source entry (id => idx) for the inline + modal
         # paginated views, plus whether the page picker selects by Sheet or Page.
         source_page: %{},
-        reader_label_mode: "sheet",
+        # Persisted per-browser (localStorage → connect params) so the user's
+        # Sheet/Page choice survives reloads. Defaults to "sheet" before connect.
+        reader_label_mode: restore_reader_label(socket),
         # Which text layer each source shows (id => "original"|"edited"|"cleaned").
         # Unset sources fall back to the most-refined layer present.
         editor_tab: %{}
@@ -369,12 +375,36 @@ defmodule RuleMavenWeb.GameLive.Form do
   # LLM cleanup of one rulebook source's extracted text. Runs async, cleans
   # page-by-page (preserving the \f page separators), then drops the result
   # back into the textarea for the user to review before saving.
+  def handle_event("set_clean_level", %{"level" => level}, socket)
+      when level in ~w(light standard aggressive) do
+    {:noreply,
+     socket
+     |> assign(clean_level: level)
+     |> push_event("save_clean_level", %{level: level})}
+  end
+
   def handle_event("cleanup_source", %{"id" => id}, socket) do
     id = String.to_integer(id)
     entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
 
     socket =
-      if entry && entry.source_id, do: start_cleanup(socket, entry.source_id), else: socket
+      if entry && entry.source_id,
+        do: start_cleanup(socket, entry.source_id, :raw),
+        else: socket
+
+    {:noreply, socket}
+  end
+
+  # "Clean again": a second cleanup pass over the already-cleaned text to scrub
+  # remaining junk (does not reset to the raw extraction).
+  def handle_event("reclean_source", %{"id" => id}, socket) do
+    id = String.to_integer(id)
+    entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
+
+    socket =
+      if entry && entry.source_id,
+        do: start_cleanup(socket, entry.source_id, :again),
+        else: socket
 
     {:noreply, socket}
   end
@@ -382,7 +412,11 @@ defmodule RuleMavenWeb.GameLive.Form do
   # "Clean now?" prompt shown after an upload/download: clean the freshly added
   # sources, or dismiss.
   def handle_event("clean_prompt_yes", _params, socket) do
-    socket = Enum.reduce(socket.assigns.clean_prompt_sids, socket, &start_cleanup(&2, &1))
+    socket =
+      Enum.reduce(socket.assigns.clean_prompt_sids, socket, fn sid, s ->
+        start_cleanup(s, sid, :raw)
+      end)
+
     {:noreply, assign(socket, clean_prompt_sids: [])}
   end
 
@@ -404,7 +438,10 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   def handle_event("set_reader_label_mode", %{"mode" => mode}, socket)
       when mode in ~w(sheet page) do
-    {:noreply, assign(socket, reader_label_mode: mode)}
+    {:noreply,
+     socket
+     |> assign(reader_label_mode: mode)
+     |> push_event("save_reader_label", %{mode: mode})}
   end
 
   # Set the current page index for one source entry (inline + modal share this).
@@ -740,10 +777,16 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("download", %{"url" => url, "label" => label}, socket) do
     url = String.trim(url)
     label = String.trim(label)
-    socket = assign(socket, downloading: true, download_error: nil, download_ok: nil)
+    socket =
+      assign(socket,
+        downloading: true,
+        download_stage: "Starting…",
+        download_error: nil,
+        download_ok: nil
+      )
 
     if url == "" do
-      {:noreply, assign(socket, downloading: false, download_error: "Enter a PDF URL")}
+      {:noreply, assign(socket, downloading: false, download_stage: nil, download_error: "Enter a PDF URL")}
     else
       RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "url", url, label)
       {:noreply, socket}
@@ -752,9 +795,28 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   @impl true
   def handle_event("find_download", _params, socket) do
-    socket = assign(socket, downloading: true, download_error: nil, download_ok: nil)
+    socket =
+      assign(socket,
+        downloading: true,
+        download_stage: "Starting…",
+        download_error: nil,
+        download_ok: nil
+      )
+
     RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "find")
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel_download", _params, socket) do
+    RuleMaven.Workers.DownloadWorker.cancel(socket.assigns.game.id)
+
+    {:noreply,
+     assign(socket,
+       downloading: false,
+       download_stage: nil,
+       download_error: nil
+     )}
   end
 
   @impl true
@@ -809,7 +871,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("search_download", %{"url" => url, "label" => label}, socket) do
     url = String.trim(url)
     label = String.trim(label)
-    socket = assign(socket, downloading: true, download_error: nil)
+    socket = assign(socket, downloading: true, download_stage: "Starting…", download_error: nil)
     RuleMaven.Workers.DownloadWorker.enqueue(socket.assigns.game.id, "url", url, label)
     {:noreply, socket}
   end
@@ -965,6 +1027,7 @@ defmodule RuleMavenWeb.GameLive.Form do
        socket
        |> assign(
          downloading: false,
+         download_stage: nil,
          download_error: nil,
          download_ok: pdf_path,
          source_entries: sources,
@@ -985,7 +1048,16 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_info({:download_error, game_id, reason}, socket) do
     if socket.assigns.game && socket.assigns.game.id == game_id do
-      {:noreply, assign(socket, downloading: false, download_error: reason)}
+      {:noreply, assign(socket, downloading: false, download_stage: nil, download_error: reason)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:download_progress, game_id, stage}, socket) do
+    if socket.assigns.game && socket.assigns.game.id == game_id and socket.assigns.downloading do
+      {:noreply, assign(socket, download_stage: stage)}
     else
       {:noreply, socket}
     end
@@ -1014,23 +1086,19 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:page_cleaned, sid, idx, text}, socket) do
+  def handle_info({:page_cleaned, sid, idx, text, done, total}, socket) do
     # The cleanup worker persisted one page and broadcast it — swap that page
-    # live and bump progress from the count of pages now carrying cleaned text.
+    # live and take the authoritative {done, total} the worker computed from its
+    # durable counter (not a local recount, which the old code got wrong).
     entries =
       Enum.map(socket.assigns.source_entries, fn e ->
         if e.source_id == sid, do: put_page_cleaned(e, idx, text), else: e
       end)
 
     cleaning =
-      case Map.get(socket.assigns.cleaning, sid) do
-        {_done, total} ->
-          done = cleaned_count(entries, sid)
-          Map.put(socket.assigns.cleaning, sid, {done, total})
-
-        _ ->
-          socket.assigns.cleaning
-      end
+      if Map.has_key?(socket.assigns.cleaning, sid),
+        do: Map.put(socket.assigns.cleaning, sid, {done, total}),
+        else: socket.assigns.cleaning
 
     {:noreply, assign(socket, source_entries: entries, cleaning: cleaning)}
   end
@@ -1242,15 +1310,19 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
-  # Enqueue a durable, restart-survivable cleanup for one source (full re-clean:
-  # enqueue_cleanup/1 nulls the existing cleaned layer first), and mirror the
-  # reset in the open form so progress tracks from 0/total. No-op for an empty
-  # or already-cleaning source.
-  defp start_cleanup(socket, sid) do
+  # Enqueue a durable, restart-survivable cleanup for one source at the selected
+  # strength, and mirror the reset in the open form so progress tracks from
+  # 0/total. `mode` is :raw (clean from the original extraction) or :again
+  # (re-clean the current cleaned text). Locally we blank the displayed cleaned
+  # layer either way so progress counts up live — the :again input is read from
+  # the DB by the worker before this blanking matters. No-op for an empty or
+  # already-cleaning source.
+  defp start_cleanup(socket, sid, mode) do
     entry = Enum.find(socket.assigns.source_entries, &(&1.source_id == sid))
+    level = String.to_existing_atom(socket.assigns.clean_level)
 
     if entry && String.trim(entry.text) != "" and not Map.has_key?(socket.assigns.cleaning, sid) do
-      {:ok, _job} = Games.enqueue_cleanup(Games.get_document!(sid))
+      {:ok, _job} = Games.enqueue_cleanup(Games.get_document!(sid), level, mode)
 
       entries =
         Enum.map(socket.assigns.source_entries, fn e ->
@@ -1291,13 +1363,6 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   defp reload_entry(entry), do: entry
 
-  defp cleaned_count(entries, sid) do
-    case Enum.find(entries, &(&1.source_id == sid)) do
-      %{pages: pages} -> Enum.count(pages, &is_binary(&1[:cleaned]))
-      _ -> 0
-    end
-  end
-
   # Build the LiveView source-entry map (with first-class pages) from a Document.
   defp source_entry(s, i) do
     %{
@@ -1328,14 +1393,14 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   # Build the {source_id => {done, total}} map for sources whose cleanup is still
   # queued/running, derived from durable state: Oban job presence (survives a
-  # server restart) plus the count of pages already carrying cleaned text.
+  # server restart) plus the document's durable progress counter — so a refresh
+  # mid-clean shows the same number the worker last persisted.
   defp seed_cleaning(entries) do
     for %{source_id: sid, pages: pages} <- entries,
         not is_nil(sid),
         Games.cleanup_running?(sid),
         into: %{} do
-      done = Enum.count(pages, &is_binary(&1[:cleaned]))
-      {sid, {done, length(pages)}}
+      {sid, {Games.cleaning_done(sid) || 0, length(pages)}}
     end
   end
 
@@ -1689,7 +1754,16 @@ defmodule RuleMavenWeb.GameLive.Form do
               in the name ("pagesel_<id>") and read from _target on change. --%>
         <select name={"pagesel_#{@id}"} phx-change="set_source_page" style={@select_style}>
           <%= if @mode == "page" do %>
-            <option :for={{p, i} <- @printed} value={i} selected={i == @cur}>{p.printed}</option>
+            <%!-- List every page so unnumbered front/back matter stays reachable.
+                  Numbered pages show their printed number; unnumbered ones show
+                  their sheet (otherwise they'd disappear from the dropdown and an
+                  unnumbered sheet would falsely render as the first printed page). --%>
+            <%!-- The <label> already prefixes "Page", so numbered options are bare
+                  numbers (matching the Sheet dropdown). Unnumbered pages still need
+                  their "Sheet N" qualifier since they have no page number. --%>
+            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>
+              {if p.printed, do: "#{p.printed}", else: "Sheet #{p.sheet} (unnumbered)"}
+            </option>
           <% else %>
             <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>{p.sheet}</option>
           <% end %>
@@ -1707,6 +1781,51 @@ defmodule RuleMavenWeb.GameLive.Form do
       <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">{@cur + 1} / {@count}</span>
     </div>
     """
+  end
+
+  # Warns when printed page-number detection failed for a source: every page
+  # fell back to its physical sheet number, so citations read "Sheet N" instead
+  # of the rulebook's real "Page N". Renders nothing when at least one printed
+  # page was detected (or the source is empty).
+  attr :pages, :list, required: true
+
+  defp page_detection_badge(assigns) do
+    assigns = assign(assigns, fell_back?: assigns.pages != [] and Enum.all?(assigns.pages, &is_nil(&1.printed)))
+
+    ~H"""
+    <div
+      :if={@fell_back?}
+      title="No printed page numbers were detected in this rulebook (common for scanned/OCR PDFs). Answers will cite physical sheet numbers instead of the book's printed page numbers."
+      style="display:inline-flex;align-items:center;gap:0.3rem;margin-bottom:0.4rem;font-size:0.68rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b);white-space:nowrap"
+    >
+      ⚠ Couldn't detect page numbers — using sheet numbers
+    </div>
+    """
+  end
+
+  # Per-browser Sheet/Page preference, delivered via the LiveSocket connect
+  # params (localStorage). nil before the socket connects → default "sheet".
+  defp restore_reader_label(socket) do
+    if connected?(socket) do
+      case get_connect_params(socket) do
+        %{"reader_label" => m} when m in ~w(sheet page) -> m
+        _ -> "sheet"
+      end
+    else
+      "sheet"
+    end
+  end
+
+  # Per-browser cleanup-strength preference (localStorage → connect params).
+  defp restore_clean_level(socket) do
+    if connected?(socket) do
+      case get_connect_params(socket) do
+        %{"clean_level" => l} when l in ~w(light standard aggressive) -> l
+        _ -> "standard"
+      end
+    else
+      "standard"
+    end
   end
 
   # ── Page-layer (Original/Cleaned) helpers ──
@@ -2039,6 +2158,20 @@ defmodule RuleMavenWeb.GameLive.Form do
               style="background:var(--accent);color:white;border:none;padding:0.4rem 0.875rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer"
             >{if @downloading, do: "Downloading...", else: "Download & Extract"}</button>
           </form>
+          <%= if @downloading do %>
+            <div style="display:flex;align-items:center;gap:0.6rem;margin-top:0.6rem;font-size:0.8rem;color:var(--text-secondary)">
+              <span style="display:inline-block;width:0.9rem;height:0.9rem;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rm-spin 0.7s linear infinite"></span>
+              <span>{@download_stage || "Downloading…"}</span>
+              <button
+                type="button"
+                phx-click="cancel_download"
+                style="margin-left:auto;font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+              >Cancel</button>
+            </div>
+            <style>
+              @keyframes rm-spin { to { transform: rotate(360deg); } }
+            </style>
+          <% end %>
           <%= if @download_ok do %>
             <p class="text-sm mt-2" style="color:var(--green)">
               Downloaded!
@@ -2287,6 +2420,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% editable = layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil %>
                   <.layer_tabs id={entry.id} current={layer} />
                   <.page_nav id={entry.id} pages={entry.pages} cur={cur} label_mode={@reader_label_mode} />
+                  <.page_detection_badge pages={entry.pages} />
                   <%!-- Edits feed socket state via edit_page (layer encoded in the
                         name), so this stays in sync with the expanded reader. --%>
                   <textarea
@@ -2302,19 +2436,46 @@ defmodule RuleMavenWeb.GameLive.Form do
                   ><%= layer_text(cur_page, layer) %></textarea>
 
                   <div class="mt-2 flex gap-3 items-center flex-wrap">
+                    <%!-- Cleanup strength: stronger levels fix more OCR damage but
+                          take more liberties with wording. --%>
+                    <% cleaning? = @cleaning[entry.source_id] != nil %>
+                    <% has_cleaned = Enum.any?(entry.pages, &is_binary(&1[:cleaned])) %>
+                    <div
+                      title="How hard to scrub OCR/extraction artifacts. Light = layout only; Standard = + OCR bullets/columns; Aggressive = reflow & drop non-rule clutter."
+                      style="display:inline-flex;align-items:stretch;height:1.6rem;border:1px solid var(--border);border-radius:0.3rem;overflow:hidden"
+                    >
+                      <button
+                        :for={lvl <- ~w(light standard aggressive)}
+                        type="button"
+                        phx-click="set_clean_level"
+                        phx-value-level={lvl}
+                        disabled={cleaning?}
+                        style={"display:inline-flex;align-items:center;padding:0 0.5rem;font-size:0.66rem;text-transform:capitalize;border:none;cursor:pointer;background:#{if @clean_level == lvl, do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if @clean_level == lvl, do: "white", else: "var(--text-secondary)"}"}
+                      >{lvl}</button>
+                    </div>
                     <button
                       type="button"
                       phx-click="cleanup_source"
                       phx-value-id={entry.id}
-                      disabled={@cleaning[entry.source_id] != nil || String.trim(entry.text) == ""}
+                      title="Discard any existing cleaned text and clean again from the original extraction."
+                      disabled={cleaning? || String.trim(entry.text) == ""}
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >
                       <%= case @cleaning[entry.source_id] do %>
-                        <% nil -> %>✨ Clean up text
+                        <% nil -> %>✨ Wipe &amp; clean
                         <% {0, 0} -> %>Cleaning…
                         <% {d, t} -> %>Cleaning {d}/{t}…
                       <% end %>
                     </button>
+                    <button
+                      :if={has_cleaned}
+                      type="button"
+                      phx-click="reclean_source"
+                      phx-value-id={entry.id}
+                      title="Run another cleanup pass over the already-cleaned text to catch leftover junk."
+                      disabled={cleaning? || String.trim(entry.text) == ""}
+                      style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                    >↻ Clean again</button>
                     <button
                       type="button"
                       phx-click="expand_source"
@@ -2382,6 +2543,9 @@ defmodule RuleMavenWeb.GameLive.Form do
 
                       <div :if={@reader_mode == "paginated" and page_count > 0} style="margin-left:auto">
                         <.page_nav id={reader.id} pages={pages} cur={cur} label_mode={@reader_label_mode} />
+                      </div>
+                      <div style={if(@reader_mode == "paginated" and page_count > 0, do: "", else: "margin-left:auto")}>
+                        <.page_detection_badge pages={pages} />
                       </div>
 
                       <button

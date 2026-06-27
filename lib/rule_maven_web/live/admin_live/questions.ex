@@ -129,6 +129,19 @@ defmodule RuleMavenWeb.AdminLive.Questions do
     end
   end
 
+  def handle_event("clear_flag", %{"id" => id}, socket) do
+    id = String.to_integer(id)
+
+    case Enum.find(socket.assigns.questions, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      q ->
+        Games.clear_needs_review(q)
+        {:noreply, reload(socket)}
+    end
+  end
+
   defp status_of(q) do
     cond do
       q.answer == "Thinking..." -> :pending
@@ -217,6 +230,9 @@ defmodule RuleMavenWeb.AdminLive.Questions do
             <option value="pending" selected={@filter_status == "pending"}>Pending</option>
             <option value="refused" selected={@filter_status == "refused"}>Refused</option>
             <option value="error" selected={@filter_status == "error"}>Error</option>
+            <option value="needs_review" selected={@filter_status == "needs_review"}>
+              Needs review (stale)
+            </option>
           </select>
         </form>
       </div>
@@ -280,12 +296,25 @@ defmodule RuleMavenWeb.AdminLive.Questions do
                 {if q.visibility == "community" or q.pinned, do: "✓ trusted", else: "◌ provisional"} &middot; {:erlang.float_to_binary(
                   q.trust_score || 0.0, decimals: 1)}
               </span>
+              <span
+                :if={q.needs_review}
+                style="font-size:0.65rem;font-weight:600;padding:0.1rem 0.4rem;border-radius:0.25rem;background:rgba(212,160,23,0.15);border:1px solid #d4a017;color:#b8860b"
+                title="A rulebook change may have made this answer stale. It won't serve from the cache until re-approved."
+              >⚠ stale — review</span>
               <a
                 href={"/admin/threads#thread-#{q.parent_question_id || q.id}"}
                 style="font-size:0.65rem;color:var(--text-muted);text-decoration:none"
                 title="View this question's thread in Review Threads"
               >thread →</a>
               <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
+                <button
+                  :if={q.needs_review}
+                  type="button"
+                  phx-click="clear_flag"
+                  phx-value-id={q.id}
+                  title="Re-approve this answer: clears the stale flag so it can serve from the cache again."
+                  style="background:#d4a017;border:none;color:#fff;font-size:0.7rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:0.25rem;cursor:pointer"
+                >Re-approve</button>
                 <select
                   phx-change="set_visibility"
                   phx-value-id={q.id}

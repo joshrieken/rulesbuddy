@@ -15,6 +15,96 @@ defmodule RuleMaven.GamesPagesTest do
     end
   end
 
+  describe "printed page-number detection" do
+    defp printed(raw), do: Games.paginate(raw) |> Enum.map(& &1.printed)
+
+    test "true unnumbered front matter (positive offset) stays nil" do
+      # Printed page 1 only starts on sheet 5 (offset 4): the 4 lead sheets are
+      # genuinely before page 1, so extrapolating back hits page <= 0 and is
+      # left unnumbered.
+      raw =
+        List.duplicate("cover", 4) ++
+          for n <- 1..6, do: "body text\n#{n}"
+
+      assert printed(raw) == [nil, nil, nil, nil, 1, 2, 3, 4, 5, 6]
+    end
+
+    test "offset-0 numbering backfills earlier unlabelled pages (Clank case)" do
+      # Cover + components splash carry no footer; the first detected number is
+      # "3" on sheet 3 (offset 0). Sheets 1-2 are therefore pages 1-2, and an
+      # unlabelled trailing sheet continues to page 7.
+      raw = ["cover", "splash", "c\n3", "d\n4", "e\n5", "f\n6", "back (no number)"]
+      assert printed(raw) == [1, 2, 3, 4, 5, 6, 7]
+    end
+
+    test "interpolates printed numbers for unlabelled pages inside a run" do
+      # Only some pages show a footer number; the rest are filled by offset.
+      raw = ["a\n1", "b (no number)", "c\n3", "d (no number)", "e\n5"]
+      assert printed(raw) == [1, 2, 3, 4, 5]
+    end
+
+    test "handles a numbering shift mid-book (two segments)" do
+      # Sheets 1-4 -> printed 1-4 (offset 0). A 2-sheet unnumbered insert. Then
+      # printed continues 5-8 on sheets 7-10 (offset 2).
+      raw =
+        (for n <- 1..4, do: "body\n#{n}") ++
+          ["insert art", "insert art"] ++
+          (for n <- 5..8, do: "body\n#{n}")
+
+      assert printed(raw) == [1, 2, 3, 4, nil, nil, 5, 6, 7, 8]
+    end
+
+    test "repairs OCR digit look-alikes in footer numbers" do
+      # "l0" -> 10, "O" reading as zero, "1l" -> 11, etc.
+      raw = ["x\nl0", "y\n1l", "z\nl2"]
+      assert printed(raw) == [10, 11, 12]
+    end
+
+    test "a single stray number is not enough to anchor (noise rejected)" do
+      raw = ["intro", "rules\n5", "more", "even more"]
+      assert printed(raw) == [nil, nil, nil, nil]
+    end
+
+    test "detect_printed_offset reports the dominant run offset" do
+      raw = List.duplicate("cover", 2) ++ for n <- 1..6, do: "body\n#{n}"
+      # sheet 3 -> printed 1, so offset is 2.
+      assert Games.detect_printed_offset(raw) == 2
+    end
+
+    test "no detectable numbers -> nil offset, all sheets fall back" do
+      raw = ["alpha", "beta", "gamma"]
+      assert Games.detect_printed_offset(raw) == nil
+      assert printed(raw) == [nil, nil, nil]
+    end
+  end
+
+  describe "strip_printed_number/2" do
+    test "drops a bare page-number footer line" do
+      assert Games.strip_printed_number("Some rule text here.\n3", 3) == "Some rule text here."
+    end
+
+    test "drops a 'Page N' header line" do
+      assert Games.strip_printed_number("Page 12\nThe rule body.", 12) == "The rule body."
+    end
+
+    test "drops a decorated footer number" do
+      assert Games.strip_printed_number("Body.\n— 7 —", 7) == "Body."
+    end
+
+    test "keeps a number that is part of a rule, not a header/footer" do
+      text = "Setup\nPlace 3 cubes on the board.\nThen continue."
+      assert Games.strip_printed_number(text, 3) == text
+    end
+
+    test "only strips the matching number, not other footer numbers" do
+      assert Games.strip_printed_number("Rule about 5 things.\n9", 3) == "Rule about 5 things.\n9"
+    end
+
+    test "no-op when the page has no printed number" do
+      assert Games.strip_printed_number("Body.\n4", nil) == "Body.\n4"
+    end
+  end
+
   describe "effective_page_text/1 layer precedence" do
     test "cleaned beats original" do
       assert Games.effective_page_text(%{text: "orig", cleaned: "clean"}) == "clean"

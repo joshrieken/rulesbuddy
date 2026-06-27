@@ -121,15 +121,23 @@ defmodule RuleMaven.LLM do
     end
   end
 
-  @cleanup_system """
-  You are a text-cleanup tool for board-game rulebook OCR/PDF extraction.
-  Return the SAME text with extraction artifacts fixed.
-
-  PRESERVE VERBATIM (never reword, summarize, translate, shorten, or drop):
+  @cleanup_preserve """
+  PRESERVE (never summarize, translate, shorten, drop, or invent rules):
   - Every complete sentence and every rules instruction.
   - Numbered/bulleted steps, section numbers, and printed page numbers.
   - Headings and defined-term labels that introduce real rules text.
+  """
 
+  @cleanup_output """
+  Output ONLY the cleaned text, with no commentary and no code fences.
+  """
+
+  # Light: conservative — fix layout artifacts only, keep wording verbatim.
+  @cleanup_light """
+  You are a text-cleanup tool for board-game rulebook OCR/PDF extraction.
+  Return the SAME text with extraction artifacts fixed. Do NOT reword.
+
+  #{@cleanup_preserve}
   FIX:
   - Rejoin words split by a hyphen at a line break (e.g. "num-\\nber" -> "number").
   - Merge mid-sentence line wraps back into paragraphs.
@@ -142,8 +150,69 @@ defmodule RuleMaven.LLM do
   - Scattered component-count fragments that are not part of a sentence.
   When unsure whether a line is a real rule or noise, KEEP it.
 
-  Output ONLY the cleaned text, with no commentary and no code fences.
+  #{@cleanup_output}
   """
+
+  # Standard: light + repair common OCR character errors and de-interleave the
+  # two-column layouts that scramble many rulebooks.
+  @cleanup_standard """
+  You are a text-cleanup tool for board-game rulebook OCR/PDF extraction.
+  Return the text with extraction artifacts fixed. Keep the wording faithful —
+  fix obvious OCR errors but do not rewrite or paraphrase rules.
+
+  #{@cleanup_preserve}
+  FIX (everything in Light, plus):
+  - Repair garbled bullet markers: a lone "e", "e¢", "*", "©", "®", "·" or
+    similar at the start of a list item is an OCR'd bullet — replace with "- ".
+  - When text was extracted from two columns and interleaved (sentences that
+    jump between unrelated topics line-by-line), separate it back into the two
+    coherent passages in reading order.
+  - Fix plainly broken OCR characters inside real words (e.g. "rn"->"m",
+    "0"->"o", "1"->"l", "5"->"S") ONLY when the intended word is unambiguous.
+  - Drop diagram callouts, figure labels, and stray single characters that
+    aren't part of a sentence.
+
+  When unsure whether a line is a real rule or noise, KEEP it.
+
+  #{@cleanup_output}
+  """
+
+  # Aggressive: standard + reflow hard and drop all non-rule fragments. Highest
+  # cleanup, slightly higher risk of touching wording — meant for messy scans.
+  @cleanup_aggressive """
+  You are a text-cleanup tool for board-game rulebook OCR/PDF extraction of a
+  badly scanned page. Produce clean, readable rules prose. Fix OCR aggressively,
+  but NEVER invent rules, numbers, or instructions that aren't in the input.
+
+  #{@cleanup_preserve}
+  FIX (everything in Standard, plus):
+  - Reflow the whole page into clean paragraphs and proper bullet/number lists,
+    repairing sentences fragmented across lines or columns.
+  - Correct obvious OCR misspellings within words to the clearly intended word.
+  - Normalize all list markers to "- " and renumber only where the original
+    numbering is plainly OCR-corrupted (keep the original sequence).
+
+  REMOVE all non-rule clutter: page headers/footers, component-count fragments,
+  diagram/figure labels, icon captions, and any leftover gibberish that is not a
+  sentence or a real rules label. Preserve all actual rules text and its meaning.
+
+  #{@cleanup_output}
+  """
+
+  defp cleanup_system(:standard), do: @cleanup_standard
+  defp cleanup_system(:aggressive), do: @cleanup_aggressive
+  defp cleanup_system(_light), do: @cleanup_light
+
+  # The printed page number is stored separately, so it must not stay in the
+  # body. Deterministic stripping handles isolated footer lines; this catches
+  # the cases OCR glued onto surrounding text.
+  defp page_number_hint(n) when is_integer(n) do
+    "\n\nThis page's printed page number is #{n}. Remove it where it appears as " <>
+      "a standalone header or footer (it is stored separately). NEVER remove a " <>
+      "number that is part of a sentence, rule, count, or step."
+  end
+
+  defp page_number_hint(_), do: ""
 
   @doc """
   Cleans a single page of extracted rulebook text via the LLM, fixing
@@ -154,12 +223,12 @@ defmodule RuleMaven.LLM do
   result or drops more than half the characters (a likely truncation/refusal),
   the original page is kept instead.
   """
-  def cleanup_page(page_text) do
+  def cleanup_page(page_text, level \\ :light, page_number \\ nil) do
     if String.trim(page_text) == "" do
       {:ok, page_text}
     else
       case chat(page_text, "cleanup_rulebook",
-             system: @cleanup_system,
+             system: cleanup_system(level) <> page_number_hint(page_number),
              max_tokens: 4096,
              model: model(:cleanup)
            ) do

@@ -284,9 +284,25 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
   params: () => ({
     _csrf_token: csrfToken,
     // Remembered game-list view (playable/mine/all) so it survives reloads.
-    list_view: localStorage.getItem("rm:gamelist:view") || ""
+    list_view: localStorage.getItem("rm:gamelist:view") || "",
+    // Remembered rulebook reader page-label mode (sheet|page) so the user's
+    // choice survives reloads. Restored in GameLive.Form mount.
+    reader_label: localStorage.getItem("rm:reader:label") || "",
+    // Remembered cleanup strength (light|standard|aggressive). Restored in mount.
+    clean_level: localStorage.getItem("rm:clean:level") || ""
   }),
   hooks: Hooks
+});
+
+// Persist the reader Sheet/Page choice when the form pushes "save_reader_label".
+// Unconsumed server push_events are dispatched as window "phx:<event>" events.
+window.addEventListener("phx:save_reader_label", (e) => {
+  localStorage.setItem("rm:reader:label", e.detail.mode);
+});
+
+// Persist the cleanup strength choice.
+window.addEventListener("phx:save_clean_level", (e) => {
+  localStorage.setItem("rm:clean:level", e.detail.level);
 });
 
 // Track first successful WebSocket connection on the LiveView root element.

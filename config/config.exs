@@ -38,6 +38,9 @@ config :rule_maven, Oban,
   repo: RuleMaven.Repo,
   plugins: [
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    # Rescues jobs left in `executing` by a node that crashed/restarted mid-run
+    # (otherwise they sit forever and strand the UI waiting on them).
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(10)},
     {Oban.Plugins.Cron,
      crontab: [
        {"0 4 * * *", RuleMaven.Workers.DirectPromotionWorker}

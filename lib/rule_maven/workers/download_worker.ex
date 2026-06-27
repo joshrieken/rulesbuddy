@@ -23,6 +23,20 @@ defmodule RuleMaven.Workers.DownloadWorker do
 
   def topic(game_id), do: "download:#{game_id}"
 
+  # Upper bound on a single attempt regardless of where it wedges (network or a
+  # subprocess). The downloader has its own finer-grained timeouts; this is the
+  # backstop that guarantees the job — and the UI spinner — can't run forever.
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(6)
+
+  # Human-readable label for each download stage, broadcast to the form.
+  defp stage_label(:searching), do: "Searching for rulebook…"
+  defp stage_label(:fetching), do: "Downloading PDF…"
+  defp stage_label(:extracting), do: "Extracting text…"
+  defp stage_label(:ocr), do: "Scanned PDF — running OCR (this can take a while)…"
+  defp stage_label(:finalizing), do: "Saving rulebook…"
+  defp stage_label(_), do: "Downloading…"
+
   @doc "True when a download job for this game is queued or running."
   def running?(game_id) do
     RuleMaven.Repo.exists?(
@@ -31,6 +45,25 @@ defmodule RuleMaven.Workers.DownloadWorker do
           j.worker == ^@worker and j.state in ^@active_states and
             fragment("?->>'game_id' = ?", j.args, ^to_string(game_id))
     )
+  end
+
+  @doc """
+  Cancels any queued/running download job for this game so a wedged or unwanted
+  download can be cleared and re-tried. No-op in test (Oban unsupervised).
+  """
+  def cancel(game_id) do
+    if Application.get_env(:rule_maven, Oban)[:testing] != :manual do
+      query =
+        from j in Oban.Job,
+          where:
+            j.worker == ^@worker and j.state in ^@active_states and
+              fragment("?->>'game_id' = ?", j.args, ^to_string(game_id))
+
+      Oban.cancel_all_jobs(query)
+    end
+
+    Settings.delete("download_error_#{game_id}")
+    :ok
   end
 
   @doc "Enqueue a download (no-op in test where Oban isn't supervised)."
@@ -51,11 +84,19 @@ defmodule RuleMaven.Workers.DownloadWorker do
     game = Games.get_game!(game_id)
     label = Map.get(args, "label", "")
 
+    on_progress = fn stage ->
+      Phoenix.PubSub.broadcast(
+        RuleMaven.PubSub,
+        topic(game_id),
+        {:download_progress, game_id, stage_label(stage)}
+      )
+    end
+
     result =
       try do
         case Map.get(args, "mode") do
-          "url" -> RulebookDownloader.download(game, Map.get(args, "url"), label)
-          "find" -> RulebookDownloader.find_and_download(game, label)
+          "url" -> RulebookDownloader.download(game, Map.get(args, "url"), label, on_progress)
+          "find" -> RulebookDownloader.find_and_download(game, label, on_progress)
         end
       rescue
         e ->

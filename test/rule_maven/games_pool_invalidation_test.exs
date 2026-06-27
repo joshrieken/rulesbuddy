@@ -41,16 +41,44 @@ defmodule RuleMaven.GamesPoolInvalidationTest do
   end
 
   describe "invalidate_pool/1" do
-    test "demotes auto-pooled rows, leaves community rows" do
+    test "demotes auto-pooled rows and flags community rows for review" do
       game = game()
       auto = pooled_q(game, %{pooled: true})
       community = pooled_q(game, %{pooled: true, visibility: "community"})
 
-      assert Games.invalidate_pool(game.id) == 2
+      # 2 demoted (both pooled) + 1 community flagged.
+      assert Games.invalidate_pool(game.id) == 3
 
       refute Repo.get!(QuestionLog, auto.id).pooled
-      # community visibility is left able to serve from the pool query
-      assert Repo.get!(QuestionLog, community.id).visibility == "community"
+
+      # Community answer is preserved but flagged so it stops serving until a
+      # moderator re-approves it.
+      community = Repo.get!(QuestionLog, community.id)
+      assert community.visibility == "community"
+      assert community.needs_review
+
+      # clear_needs_review re-approves it.
+      {:ok, _} = Games.clear_needs_review(community)
+      refute Repo.get!(QuestionLog, community.id).needs_review
+    end
+
+    test "the pool lookup skips a flagged community answer" do
+      game = game()
+      embedding = List.duplicate(0.1, 768)
+
+      {:ok, q} =
+        Games.log_question(%{game_id: game.id, question: "how to win", answer: "score points"})
+
+      Repo.update_all(from(x in QuestionLog, where: x.id == ^q.id),
+        set: [visibility: "community", question_embedding: Pgvector.new(embedding)]
+      )
+
+      # Eligible before flagging...
+      assert {_q, _tier} = Games.find_similar_question_in_pool(game.id, embedding)
+
+      # ...skipped once flagged for review.
+      Games.invalidate_pool(game.id)
+      assert Games.find_similar_question_in_pool(game.id, embedding) == nil
     end
 
     test "create/update/delete document invalidate the pool" do

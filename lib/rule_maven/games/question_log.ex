@@ -26,6 +26,9 @@ defmodule RuleMaven.Games.QuestionLog do
     field :trust_score, :float, default: 0.0
     field :pooled, :boolean, default: false
     field :pool_source_id, :integer
+    # Set when a rulebook content change may have invalidated a community answer.
+    # The pool lookup skips flagged rows so they stop serving until re-approved.
+    field :needs_review, :boolean, default: false
     belongs_to :game, RuleMaven.Games.Game
     belongs_to :user, RuleMaven.Users.User
     belongs_to :document, RuleMaven.Games.Document
@@ -64,6 +67,7 @@ defmodule RuleMaven.Games.QuestionLog do
       :trust_score,
       :pooled,
       :pool_source_id,
+      :needs_review,
       :favorited
     ])
     |> validate_required([:question, :answer, :game_id])

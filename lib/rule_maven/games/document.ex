@@ -46,6 +46,10 @@ defmodule RuleMaven.Games.Document do
     field :extracted_at, :utc_datetime
     field :status, :string, default: "pending_review"
     field :file_hash, :string
+    # Durable cleanup progress: pages persisted so far in the active run (nil
+    # when idle). Updated incrementally by CleanupWorker so the UI counter is
+    # reliable and survives refreshes.
+    field :cleaning_done, :integer
     embeds_many :pages, Page, on_replace: :delete
     has_many :cheatsheet_versions, RuleMaven.CheatSheet.CheatSheetVersion
     belongs_to :game, RuleMaven.Games.Game
