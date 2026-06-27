@@ -645,6 +645,10 @@ defmodule RuleMaven.LLM do
   # Decode the model's JSON answer object. Degrades gracefully if the model
   # ignored the JSON instruction: the raw content becomes the answer.
   defp decode_answer(content) do
+    # A reasoning model that hits max_tokens mid-thought can return null content;
+    # normalize so nothing downstream (Jason.decode, String.trim) crashes on nil.
+    content = content || ""
+
     case json_object(content) do
       {:ok, map} ->
         %{
@@ -950,13 +954,15 @@ defmodule RuleMaven.LLM do
     Return each fact on its own line starting with "- ".
 
     RULEBOOK (sampled across the whole book):
-    #{sample_across(rulebook_text, 8000, 1000)}
+    #{sample_across(rulebook_text, 8000, 2000)}
     """
 
     case chat(prompt, "did_you_know",
            system:
              "You surface interesting, accurate board game rule facts. Never invent rules; only use the provided text.",
-           max_tokens: 900
+           # Headroom for reasoning models: too low and the cap is hit mid-thought,
+           # returning empty content with no bullets.
+           max_tokens: 2000
          ) do
       {:ok, text} ->
         facts =
@@ -978,6 +984,10 @@ defmodule RuleMaven.LLM do
   # spanning the whole document, so generation sees the start, middle, AND end
   # (where edge-case/advanced rules — the best "Did you know?" material — live)
   # instead of just the intro. Returns the whole text when it fits in budget.
+  #
+  # Keep `window` reasonably large (≥~2000): many small fragments cut mid-sentence
+  # confuse reasoning models into spending their whole token budget "thinking" and
+  # returning empty content. Fewer, coherent windows generate reliably.
   defp sample_across(text, budget, window) do
     len = String.length(text)
 
