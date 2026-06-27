@@ -17,7 +17,10 @@ defmodule RuleMavenWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images uploads favicon.ico robots.txt sw.js manifest.json)
+  # Note: `uploads` is intentionally NOT served statically — rulebook PDFs may be
+  # copyrighted, so they're never exposed over HTTP. The extracted-text HTML is
+  # served admin-only via RulebookController.
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sw.js manifest.json)
 
   def router do
     quote do

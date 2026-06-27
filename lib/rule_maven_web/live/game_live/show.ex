@@ -10,6 +10,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
+       is_admin: RuleMaven.Users.game_master?(socket.assigns.current_user),
        game: nil,
        question: "",
        conversation: [],
@@ -1105,24 +1106,15 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <div style="font-size:0.78rem;font-weight:600;color:var(--text);margin-bottom:0.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                         {src.label}
                       </div>
-                      <div style="display:flex;gap:0.5rem">
-                        <%= if src.pdf_path do %>
-                          <.link
-                            href={"/#{src.pdf_path}"}
-                            target="_blank"
-                            style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
-                          >⬇ PDF</.link>
-                        <% end %>
-                        <%= if src.html_path do %>
-                          <.link
-                            href={"/#{src.html_path}"}
-                            target="_blank"
-                            style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
-                          >🔗 HTML</.link>
-                        <% end %>
-                        <%= if !src.pdf_path && !src.html_path do %>
-                          <span style="font-size:0.7rem;color:var(--text-muted)">No download</span>
-                        <% end %>
+                      <%!-- Rulebooks may be copyrighted, so regular users see
+                            only the source name — no PDF, no full text. Admins
+                            (game masters) get the extracted-text HTML view. --%>
+                      <div :if={@is_admin and src.html_path} style="display:flex;gap:0.5rem">
+                        <.link
+                          href={~p"/rulebooks/#{src.id}/html"}
+                          target="_blank"
+                          style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
+                        >🔗 HTML</.link>
                       </div>
                     </div>
                   <% end %>

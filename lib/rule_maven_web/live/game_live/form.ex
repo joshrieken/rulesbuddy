@@ -2275,19 +2275,15 @@ defmodule RuleMavenWeb.GameLive.Form do
                       disabled={String.trim(entry.text) == ""}
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >⤢ Expand reader</button>
-                    <%= if entry[:pdf_path] do %>
+                    <%!-- No raw-PDF link: rulebooks may be copyrighted, so we
+                          don't offer the original file for download. The HTML is
+                          our extracted text (admin view only). --%>
+                    <%= if entry[:source_id] && entry[:html_path] do %>
                       <.link
-                        href={"/#{entry.pdf_path}"}
+                        href={~p"/rulebooks/#{entry.source_id}/html"}
                         target="_blank"
-                        class="text-blue-600 hover:underline text-xs"
-                      >View PDF</.link>
-                      <%= if entry[:html_path] do %>
-                        <.link
-                          href={"/#{entry.html_path}"}
-                          target="_blank"
-                          class="text-green-600 hover:underline text-xs"
-                        >View as HTML</.link>
-                      <% end %>
+                        class="text-green-600 hover:underline text-xs"
+                      >View as HTML</.link>
                     <% end %>
                   </div>
                 </div>

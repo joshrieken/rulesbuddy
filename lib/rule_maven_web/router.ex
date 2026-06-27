@@ -26,6 +26,9 @@ defmodule RuleMavenWeb.Router do
     get "/auto-login", AuthController, :auto_login
     get "/games/:id/cheatsheet", CheatSheetController, :show
     get "/games/:id/cheatsheet/:version_id", CheatSheetController, :show_version
+    # Extracted-text HTML view, admin-gated (rulebooks may be copyrighted; the
+    # original PDF is never served over HTTP).
+    get "/rulebooks/:id/html", RulebookController, :html
 
     live_session :public,
       on_mount: [{RuleMavenWeb.UserLiveAuth, :public}],

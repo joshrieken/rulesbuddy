@@ -463,6 +463,14 @@ defmodule RuleMaven.Games do
 
   def get_document!(id), do: Repo.get!(Document, id)
 
+  @doc "Fetches a document by id, returning nil when missing or the id is invalid."
+  def get_document(id) do
+    case Integer.parse(to_string(id)) do
+      {int_id, ""} -> Repo.get(Document, int_id)
+      _ -> nil
+    end
+  end
+
   @doc """
   Admin manual approval: publish a `pending_review` document, record who/when,
   and (re)enqueue embedding generation. The embed enqueue heals docs whose
