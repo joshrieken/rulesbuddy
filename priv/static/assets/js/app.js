@@ -343,6 +343,35 @@ Hooks.VoiceDictation = {
   }
 };
 
+// Persists setup-checklist checked items per-browser (per game) in localStorage.
+// On connect, restores the saved set to the server; thereafter the server pushes
+// "save_checklist" on every toggle/clear so storage stays in sync.
+Hooks.ChecklistStore = {
+  key() {
+    return "rm:checklist:" + this.el.dataset.gameId;
+  },
+  mounted() {
+    let saved = [];
+    try {
+      saved = JSON.parse(localStorage.getItem(this.key()) || "[]");
+    } catch (_e) {
+      saved = [];
+    }
+    if (Array.isArray(saved) && saved.length > 0) {
+      this.pushEvent("checklist_restore", { keys: saved });
+    }
+    this.handleEvent("save_checklist", ({ game_id, keys }) => {
+      // Ignore pushes for a different game's checklist.
+      if (String(game_id) !== String(this.el.dataset.gameId)) return;
+      if (keys && keys.length > 0) {
+        localStorage.setItem(this.key(), JSON.stringify(keys));
+      } else {
+        localStorage.removeItem(this.key());
+      }
+    });
+  }
+};
+
 Hooks.InfiniteScroll = {
   mounted() {
     this.observer = new IntersectionObserver(([entry]) => {

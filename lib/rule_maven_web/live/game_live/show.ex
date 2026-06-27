@@ -368,12 +368,21 @@ defmodule RuleMavenWeb.GameLive.Show do
         do: MapSet.delete(done, key),
         else: MapSet.put(done, key)
 
-    {:noreply, assign(socket, checklist_done: done)}
+    {:noreply, socket |> assign(checklist_done: done) |> push_checklist_save(done)}
   end
 
   def handle_event("reset_checklist", _params, socket) do
-    {:noreply, assign(socket, checklist_done: MapSet.new())}
+    done = MapSet.new()
+    {:noreply, socket |> assign(checklist_done: done) |> push_checklist_save(done)}
   end
+
+  # Restore checked items from the browser's localStorage (pushed by the
+  # ChecklistStore hook on connect). Persists per-browser, not per-account.
+  def handle_event("checklist_restore", %{"keys" => keys}, socket) when is_list(keys) do
+    {:noreply, assign(socket, checklist_done: MapSet.new(keys))}
+  end
+
+  def handle_event("checklist_restore", _params, socket), do: {:noreply, socket}
 
   # Switch one answer to a persona voice. Neutral and already-cached voices swap
   # instantly (no cost); an uncached voice enqueues a durable restyle job and
@@ -1562,7 +1571,12 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <% total =
                     length(@setup_checklist["components"]) + length(@setup_checklist["setup"]) %>
                   <% done = MapSet.size(@checklist_done) %>
-                  <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.1rem">
+                  <div
+                    id="setup-checklist"
+                    phx-hook="ChecklistStore"
+                    data-game-id={@game.id}
+                    style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.1rem"
+                  >
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
                           <span style="font-size:0.78rem;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;color:var(--text)">
                             🧩 Setup checklist
@@ -1629,7 +1643,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                           type="button"
                           phx-click="reset_checklist"
                           style="margin-top:0.6rem;background:none;border:1px solid var(--border);border-radius:0.3rem;font-size:0.65rem;cursor:pointer;padding:0.15rem 0.5rem;color:var(--text-muted);font-weight:600"
-                        >↺ Reset</button>
+                        >🗑️ Clear</button>
                   </div>
                 </div>
               <% end %>
@@ -2407,6 +2421,15 @@ defmodule RuleMavenWeb.GameLive.Show do
   # Generation is not automatic — it runs at finalize. Returns {status, checklist}.
   defp load_setup(game, _sources) do
     {RuleMaven.Setup.status(game.id), RuleMaven.Setup.stored_checklist(game.id)}
+  end
+
+  # Push the current checked-item set to the browser so the ChecklistStore hook
+  # can persist it in localStorage (keyed per game).
+  defp push_checklist_save(socket, done) do
+    push_event(socket, "save_checklist", %{
+      game_id: socket.assigns.game.id,
+      keys: MapSet.to_list(done)
+    })
   end
 
   # Wrap a random generated fact in the shape the card template expects, or nil
