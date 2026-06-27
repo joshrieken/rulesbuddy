@@ -957,7 +957,10 @@ a:not([class]):hover {
   position: sticky;
   top: 0;
   z-index: 100;
-  overflow: hidden;
+  /* Not hidden: the light-sweep ::after is inset:0 (its animated background
+     stays inside its own box), so clipping isn't needed here — and overflow
+     hidden would cut off the user dropdown menu that drops below the bar. */
+  overflow: visible;
 }
 
 /* Animated light sweep across the header */
