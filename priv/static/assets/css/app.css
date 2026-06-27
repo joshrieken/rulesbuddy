@@ -819,6 +819,19 @@ body {
 }
 
 /* Game cards in list */
+/* Search + view/category filters + actions stay pinned just below the sticky
+   header while the game list scrolls underneath. `top` is set in JS to the
+   live header height (StickyControls hook). The solid page-bg masks cards
+   sliding under the bottom edge. */
+.list-controls {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
 .game-card {
   position: relative;
   background: var(--bg-surface);

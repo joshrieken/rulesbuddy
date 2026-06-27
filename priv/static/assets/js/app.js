@@ -133,6 +133,28 @@ Hooks.Refocus = {
   }
 };
 
+// Parks the game-list controls (search/filters/actions) directly beneath the
+// sticky header by setting `top` to the live header height. Re-measures on
+// resize since the header height can change across breakpoints.
+Hooks.StickyControls = {
+  mounted() {
+    this.sync();
+    this._onResize = () => this.sync();
+    window.addEventListener("resize", this._onResize);
+  },
+  updated() {
+    this.sync();
+  },
+  destroyed() {
+    window.removeEventListener("resize", this._onResize);
+  },
+  sync() {
+    const header = document.querySelector(".header");
+    const h = header ? header.offsetHeight : 0;
+    this.el.style.top = h + "px";
+  }
+};
+
 Hooks.GameListScroll = {
   mounted() {
     this.handleEvent("scroll_to_game", ({idx}) => {

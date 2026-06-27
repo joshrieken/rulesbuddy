@@ -652,6 +652,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   def render(assigns) do
     ~H"""
     <div class="game-list">
+      <div class="list-controls" id="list-controls" phx-hook="StickyControls">
       <form phx-change="search" phx-submit="search" class="mb-4">
         <div style="position:relative;display:flex;align-items:center">
           <input
@@ -717,6 +718,7 @@ defmodule RuleMavenWeb.GameLive.Index do
           navigate={~p"/games/new"}
         >+ Add Game</.button>
         <.button variant="secondary" navigate={~p"/games/import"}>Sync Your BGG Collection</.button>
+      </div>
       </div>
 
       <% filtered = filtered_games(@games, @search, @category_filter) %>
