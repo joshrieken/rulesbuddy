@@ -13,7 +13,10 @@ defmodule RuleMaven.Workers.DownloadWorker do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   import Ecto.Query
   alias RuleMaven.{Games, Settings, RulebookDownloader}
@@ -103,12 +106,25 @@ defmodule RuleMaven.Workers.DownloadWorker do
     game = Games.get_game!(game_id)
     label = Map.get(args, "label", "")
 
-    on_progress = fn stage ->
-      Phoenix.PubSub.broadcast(
-        RuleMaven.PubSub,
-        topic(game_id),
-        {:download_progress, game_id, stage_label(stage)}
-      )
+    # Fresh log per run — an Oban restart re-runs perform from the top, so the
+    # log starts clean and reflects the actual (re)attempt.
+    Games.clear_ingest_log(game_id)
+    log_line(game_id, "Starting…", "info")
+
+    on_progress = fn
+      # Detailed per-page / per-step line for the progress log.
+      {:log, text, kind} ->
+        log_line(game_id, text, to_string(kind))
+
+      # Coarse stage → drives the banner, and also a log line.
+      stage ->
+        Phoenix.PubSub.broadcast(
+          RuleMaven.PubSub,
+          topic(game_id),
+          {:download_progress, game_id, stage_label(stage)}
+        )
+
+        log_line(game_id, stage_label(stage), "info")
     end
 
     result =
@@ -127,6 +143,8 @@ defmodule RuleMaven.Workers.DownloadWorker do
 
     case result do
       {:ok, source} ->
+        log_line(game_id, "Done — saved “#{source.label}”.", "done")
+
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
           topic(game_id),
@@ -136,19 +154,51 @@ defmodule RuleMaven.Workers.DownloadWorker do
         :ok
 
       {:error, reason} ->
+        log_line(game_id, "Failed — #{reason}", "error")
         Settings.put("download_error_#{game_id}", reason)
-        Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:download_error, game_id, reason})
+
+        Phoenix.PubSub.broadcast(
+          RuleMaven.PubSub,
+          topic(game_id),
+          {:download_error, game_id, reason}
+        )
+
         :ok
     end
+  end
+
+  # Persist one log line and ping the form to reload the log from the DB (the
+  # reload keeps refresh/restart and the live view consistent from one source).
+  defp log_line(game_id, text, kind) do
+    Games.log_ingest(game_id, text, kind)
+    Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:ingest_log, game_id})
   end
 
   # Extract a batch of uploaded PDFs in one job. Succeeds if at least one file
   # ingested; reports a combined error only when every file failed (so a single
   # bad PDF doesn't sink the rest of the batch).
   defp ingest_uploads(game, files, on_progress) do
+    total = length(files)
+
     results =
-      Enum.map(files, fn f ->
-        RulebookDownloader.ingest_local(game, f["pdf_path"], f["label"] || "", on_progress)
+      files
+      |> Enum.with_index(1)
+      |> Enum.map(fn {f, i} ->
+        label = f["label"] || ""
+        name = if label != "", do: label, else: Path.basename(f["pdf_path"] || "file")
+        # Per-file header so a multi-file batch reads as distinct files, not one
+        # run, and the result is attributed to the right file.
+        on_progress.({:log, "File #{i}/#{total}: #{name}", :info})
+
+        case RulebookDownloader.ingest_local(game, f["pdf_path"], label, on_progress) do
+          {:ok, src} = ok ->
+            on_progress.({:log, "Saved “#{src.label}”", :info})
+            ok
+
+          {:error, reason} = err ->
+            on_progress.({:log, "Could not read #{name} — #{reason}", :error})
+            err
+        end
       end)
 
     case Enum.split_with(results, &match?({:ok, _}, &1)) do

@@ -455,12 +455,14 @@ defmodule RuleMaven.RulebookDownloader do
   # no model — the cheapest path to max accuracy. No per-page provenance (nil meta).
   defp native_extract(full_path, on_progress) do
     on_progress.(:extracting)
+    log(on_progress, "Reading #{native_kind(full_path)} — text is exact, no OCR needed…")
 
     case Native.extract(full_path) do
       {:ok, text} ->
         if String.trim(text) == "" do
           {:error, "Document had no readable text"}
         else
+          log(on_progress, "Extracted #{length(String.split(text, "\f"))} page(s)", :info)
           {:ok, text, false, nil}
         end
 
@@ -469,11 +471,21 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
+  defp native_kind(path) do
+    case Path.extname(path) |> String.downcase() do
+      e when e in ~w(.docx .odt) -> "Word document"
+      e when e in ~w(.html .htm) -> "web page"
+      e when e in ~w(.xlsx .csv) -> "spreadsheet"
+      _ -> "text document"
+    end
+  end
+
   # A single uploaded image is one page with no text layer — run the same
   # per-page decision (local OCR vs vision, escalate on disagreement) the PDF
   # engine uses, with an empty layer.
   defp image_extract(full_path, on_progress) do
     on_progress.(:ocr)
+    log(on_progress, "Reading image — OCR + vision cross-check…")
     r = decide_page(full_path, "")
 
     if String.trim(r.text) == "" do
@@ -556,6 +568,13 @@ defmodule RuleMaven.RulebookDownloader do
 
         {:ok, images} ->
           on_progress.(:ocr)
+          total = length(images)
+
+          log(
+            on_progress,
+            "Reading #{total} page(s) — trusting clean text, cross-checking the rest…"
+          )
+
           # Positional layer↔image pairing is only safe when the text-layer page
           # count matches the rendered sheet count. On any mismatch we discard the
           # layer entirely (every page cross-checks via OCR/vision) rather than
@@ -572,7 +591,11 @@ defmodule RuleMaven.RulebookDownloader do
             images
             |> Enum.with_index()
             |> Task.async_stream(
-              fn {img, i} -> decide_page(img, Enum.at(layer_pages, i) || "", drift_rate) end,
+              fn {img, i} ->
+                r = decide_page(img, Enum.at(layer_pages, i) || "", drift_rate)
+                log(on_progress, page_line(i + 1, total, r), page_kind(r))
+                r
+              end,
               max_concurrency: @vision_concurrency,
               ordered: true,
               timeout: :infinity
@@ -591,6 +614,14 @@ defmodule RuleMaven.RulebookDownloader do
           else
             # from_ocr: true unless every page came straight off the text layer.
             from_ocr = Enum.any?(results, &(&1.lane != "text_layer"))
+            flagged = Enum.count(results, &(&1.source in ["critic_residual", "error"]))
+
+            log(
+              on_progress,
+              "Read #{total} page(s) — #{total - flagged} clean, #{flagged} flagged for review",
+              :info
+            )
+
             {:ok, text, from_ocr, results}
           end
 
@@ -798,6 +829,26 @@ defmodule RuleMaven.RulebookDownloader do
       {:error, _} -> ""
     end
   end
+
+  # Emit one detailed progress-log line through the same callback the worker
+  # already passes. The worker handles `{:log, text, kind}`; the no-op sink
+  # (direct callers) ignores it.
+  defp log(on_progress, text, kind \\ :info), do: on_progress.({:log, text, kind})
+
+  defp page_line(i, n, %{source: "text_layer"}), do: "Page #{i}/#{n} — clean text layer ✓"
+  defp page_line(i, n, %{source: "crosscheck"}), do: "Page #{i}/#{n} — two reads agree ✓"
+
+  defp page_line(i, n, %{source: "critic"}),
+    do: "Page #{i}/#{n} — readers disagreed → escalated & verified ✓"
+
+  defp page_line(i, n, %{source: "critic_residual"}),
+    do: "Page #{i}/#{n} — escalated, still uncertain — flagged for review ⚠"
+
+  defp page_line(i, n, %{source: "error"}), do: "Page #{i}/#{n} — extraction error ✗"
+  defp page_line(i, n, _), do: "Page #{i}/#{n} — read"
+
+  defp page_kind(%{source: s}) when s in ["critic_residual", "error"], do: :warn
+  defp page_kind(_), do: :page
 
   # Renders each PDF sheet to a grayscale PNG at @render_dpi under tmp/ocr,
   # returning {:ok, sorted_image_paths}. Caller deletes the images. Shared by the

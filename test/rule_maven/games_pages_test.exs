@@ -199,6 +199,23 @@ defmodule RuleMaven.GamesPagesTest do
     end
   end
 
+  describe "ingest log" do
+    test "append, read in order, and clear" do
+      {:ok, game} = Games.create_game(%{name: "Log Test"})
+
+      Games.log_ingest(game.id, "Starting…")
+      Games.log_ingest(game.id, "Page 1/2 — clean text layer ✓", "page")
+      Games.log_ingest(game.id, "Done", "done")
+
+      lines = Games.ingest_log(game.id)
+      assert Enum.map(lines, & &1.text) == ["Starting…", "Page 1/2 — clean text layer ✓", "Done"]
+      assert Enum.map(lines, & &1.kind) == ["info", "page", "done"]
+
+      Games.clear_ingest_log(game.id)
+      assert Games.ingest_log(game.id) == []
+    end
+  end
+
   describe "page_needs_review?/1 and review_page_count/1" do
     test "flags low confidence, ignores nil/high" do
       refute Games.page_needs_review?(%{confidence: nil})
