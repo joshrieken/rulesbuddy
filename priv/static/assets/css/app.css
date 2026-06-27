@@ -913,7 +913,8 @@ a:not([class]):hover {
   background-blend-mode: screen;
   border-bottom: 2px solid var(--header-border);
   padding: 0 1.5rem;
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 100;
   overflow: hidden;
 }
