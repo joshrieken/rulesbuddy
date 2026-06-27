@@ -82,6 +82,9 @@ defmodule RuleMaven.Games.Document do
     field :extracted_at, :utc_datetime
     field :status, :string, default: "pending_review"
     field :file_hash, :string
+    # Marks this source as the game's core rulebook. When set, its label is
+    # derived as "{Game Name} Core Rules" rather than inferred from the PDF.
+    field :is_core, :boolean, default: false
     # Durable cleanup progress: pages persisted so far in the active run (nil
     # when idle). Updated incrementally by CleanupWorker so the UI counter is
     # reliable and survives refreshes.
@@ -113,6 +116,7 @@ defmodule RuleMaven.Games.Document do
       :extracted_at,
       :status,
       :file_hash,
+      :is_core,
       :reviewed_by_id,
       :reviewed_at
     ])
