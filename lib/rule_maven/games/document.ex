@@ -12,6 +12,11 @@ defmodule RuleMaven.Games.Document do
     extraction, `cleaned` the editable working copy (auto-populated by Clean Up,
     then hand-editable; nil until cleaned/edited). The effective text used
     everywhere downstream is `cleaned || text`.
+
+    Extraction provenance (nil on pre-existing pages): `confidence` is the
+    quality-gate score 0.0–1.0, `lane` the ladder rung that produced the text
+    ("text_layer" | "ocr" | "vision" | "ensemble"), `source` the winning reader.
+    Low-confidence pages are surfaced for review and can be re-extracted a tier up.
     """
     use Ecto.Schema
     import Ecto.Changeset
@@ -23,12 +28,17 @@ defmodule RuleMaven.Games.Document do
       field :printed, :integer
       field :text, :string
       field :cleaned, :string
+      field :confidence, :float
+      field :lane, :string
+      field :source, :string
     end
 
     def changeset(page, attrs) do
       # empty_values: [] so a blank page body ("") is stored as "" rather than
       # Ecto's default of treating "" as missing and leaving the field nil.
-      cast(page, attrs, [:index, :sheet, :printed, :text, :cleaned], empty_values: [])
+      cast(page, attrs, [:index, :sheet, :printed, :text, :cleaned, :confidence, :lane, :source],
+        empty_values: []
+      )
     end
   end
 

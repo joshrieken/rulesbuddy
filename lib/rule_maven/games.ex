@@ -433,9 +433,13 @@ defmodule RuleMaven.Games do
 
     cond do
       # Too short = extraction junk or a near-empty page.
-      String.length(stripped) < 500 -> false
+      String.length(stripped) < 500 ->
+        false
+
       # A real rulebook has many words; a few labels/numbers don't qualify.
-      total < 100 -> false
+      total < 100 ->
+        false
+
       true ->
         # "Prose" words: >= 3 chars, contain a vowel, and are *mostly* letters
         # (rejects "1.2.3", "[12]", component counts, and OCR symbol soup that
@@ -559,7 +563,9 @@ defmodule RuleMaven.Games do
 
       html_path ->
         if html_path != doc.html_path do
-          Repo.update_all(from(d in Document, where: d.id == ^doc.id), set: [html_path: html_path])
+          Repo.update_all(from(d in Document, where: d.id == ^doc.id),
+            set: [html_path: html_path]
+          )
         end
 
         :ok
@@ -646,8 +652,7 @@ defmodule RuleMaven.Games do
     {flagged, _} =
       Repo.update_all(
         from(q in QuestionLog,
-          where:
-            q.game_id == ^game_id and q.visibility == "community" and q.needs_review == false
+          where: q.game_id == ^game_id and q.visibility == "community" and q.needs_review == false
         ),
         set: [needs_review: true]
       )
@@ -750,7 +755,16 @@ defmodule RuleMaven.Games do
   end
 
   defp page_attrs(p) do
-    %{index: p.index, sheet: p.sheet, printed: p.printed, text: p.text || "", cleaned: p.cleaned}
+    %{
+      index: p.index,
+      sheet: p.sheet,
+      printed: p.printed,
+      text: p.text || "",
+      cleaned: p.cleaned,
+      confidence: Map.get(p, :confidence),
+      lane: Map.get(p, :lane),
+      source: Map.get(p, :source)
+    }
   end
 
   @doc """
@@ -1384,9 +1398,7 @@ defmodule RuleMaven.Games do
 
     new_pages =
       Enum.zip(ordered, recomputed)
-      |> Enum.map(fn {p, r} ->
-        %{index: p.index, sheet: p.sheet, printed: r.printed, text: p.text, cleaned: p.cleaned}
-      end)
+      |> Enum.map(fn {p, r} -> %{page_attrs(p) | printed: r.printed} end)
 
     update_document(doc, %{
       pages: new_pages,

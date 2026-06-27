@@ -6,6 +6,7 @@ defmodule RuleMaven.RulebookDownloader do
   """
 
   alias RuleMaven.Games
+  alias RuleMaven.Extract.Gate
 
   @bgg_base "https://boardgamegeek.com"
   @pdf_link_re ~r{<a[^>]*href="([^"]*\.pdf)"[^>]*>(.*?)</a>}s
@@ -152,12 +153,12 @@ defmodule RuleMaven.RulebookDownloader do
 
   # Shared post-save tail of both download and upload ingestion.
   defp ingest_saved_pdf(game, pdf_path, url, label, on_progress) do
-    with {:ok, raw_text, from_ocr} <- extract_with_cleanup(pdf_path, on_progress) do
+    with {:ok, raw_text, from_ocr, page_meta} <- extract_with_cleanup(pdf_path, on_progress) do
       on_progress.(:finalizing)
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them.
       pages = String.split(raw_text, "\f")
-      page_structs = Games.paginate(pages)
+      page_structs = Games.paginate(pages) |> attach_page_meta(page_meta)
       text = Games.rebuild_full_text(page_structs)
       html_path = text_to_html(text, pdf_path)
       full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
@@ -178,6 +179,22 @@ defmodule RuleMaven.RulebookDownloader do
         extracted_at: DateTime.utc_now() |> DateTime.truncate(:second)
       })
     end
+  end
+
+  # Merges per-page extraction provenance (confidence/lane/source from the gate)
+  # onto the paginated page structs. `meta` is physical-order, aligned 1:1 with
+  # the "\f"-split pages. nil (legacy/OCR path) leaves pages unchanged. Any pages
+  # beyond the meta list (shouldn't happen) keep their bare struct.
+  defp attach_page_meta(pages, nil), do: pages
+
+  defp attach_page_meta(pages, meta) do
+    merged =
+      Enum.zip(pages, meta)
+      |> Enum.map(fn {p, m} ->
+        Map.merge(p, %{confidence: m.confidence, lane: m.lane, source: m.source})
+      end)
+
+    merged ++ Enum.drop(pages, length(merged))
   end
 
   defp file_size(path) do
@@ -384,7 +401,7 @@ defmodule RuleMaven.RulebookDownloader do
   # no Document row will reference it, so it would otherwise linger on disk.
   defp extract_with_cleanup(pdf_path, on_progress) do
     case extract_text_with_source(pdf_path, on_progress) do
-      {:ok, _text, _from_ocr} = ok ->
+      {:ok, _text, _from_ocr, _meta} = ok ->
         ok
 
       {:error, _reason} = err ->
@@ -398,17 +415,13 @@ defmodule RuleMaven.RulebookDownloader do
 
     case extract_mode() do
       "vision" ->
-        case vision_first_extract(full_path, on_progress) do
-          {:ok, _text, _from_ocr} = ok ->
+        case crosscheck_extract(full_path, on_progress) do
+          {:ok, _text, _from_ocr, _meta} = ok ->
             ok
 
           {:error, reason} ->
             require Logger
-
-            Logger.info(
-              "Vision-first extraction unavailable (#{inspect(reason)}); using OCR path"
-            )
-
+            Logger.info("Cross-check extraction unavailable (#{inspect(reason)}); using OCR path")
             legacy_extract(full_path, on_progress)
         end
 
@@ -420,10 +433,9 @@ defmodule RuleMaven.RulebookDownloader do
       {:error, "PDF extraction error: #{Exception.message(e)}"}
   end
 
-  # Extraction mode: "vision" renders every page and transcribes it with the
-  # vision model — highest accuracy on graphic-heavy, multi-column, hard-to-read
-  # rulebooks. "ocr" uses pdftotext with OCR + vision fallback only on junk pages
-  # (cheaper). Defaults to vision.
+  # Extraction mode: "vision" runs the accuracy-first cross-check engine (trust a
+  # clean text layer, else read two cheap ways and escalate disagreement). "ocr"
+  # uses the original pdftotext + OCR + vision-fallback-on-junk path. Default vision.
   defp extract_mode do
     case RuleMaven.Settings.get("rulebook_extract_mode") do
       m when m in ["vision", "ocr"] -> m
@@ -431,16 +443,16 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  # Original path: trust a good text layer, else OCR. Used as the fallback when
-  # vision-first can't run (no renderer / vision unavailable) and as the "ocr"
-  # mode itself.
+  # Original path: trust a non-empty text layer, else OCR. Fallback when the
+  # cross-check engine can't run (no renderer), and the "ocr" mode itself. Returns
+  # a 4-tuple with nil page_meta (no per-page provenance from this path).
   defp legacy_extract(full_path, on_progress) do
     on_progress.(:extracting)
 
     case cmd("pdftotext", [full_path, "-"], @pdftotext_timeout) do
       {:ok, {text, 0}} ->
         if String.trim(text) != "" do
-          {:ok, text, false}
+          {:ok, text, false, nil}
         else
           run_ocr(full_path, on_progress)
         end
@@ -453,42 +465,56 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  # Vision-first: render each sheet to an image and transcribe it to Markdown via
-  # the vision model, preserving sheet order (so downstream pagination/printed-page
-  # detection works unchanged). Each page is read by the default vision model; a
-  # page that comes back empty/garbled is re-read by the escalation model. Joins
-  # pages with "\f" exactly like the OCR path, so the marker/paginate pipeline is
-  # untouched. Returns {:ok, text, true} (true = not from a native text layer).
-  defp vision_first_extract(full_path, on_progress) do
+  # Accuracy-first cross-check engine. Per page: a clean text layer is trusted
+  # as-is (no model call). Otherwise the page is read two cheap, independent ways
+  # — text layer (or local OCR) and cheap vision — and scored by the gate. Strong
+  # agreement is the accuracy ceiling, so we stop; disagreement escalates (Phase 3
+  # wires Opus + an adversarial critic here — currently keeps the richer cheap
+  # read and flags low confidence). Pages stay in physical order and join with
+  # "\f", so the marker/paginate pipeline is untouched. Returns
+  # {:ok, text, from_ocr, page_meta}.
+  defp crosscheck_extract(full_path, on_progress) do
     if System.find_executable("pdftoppm") do
       on_progress.(:extracting)
 
       case render_pages(full_path) do
         {:ok, []} ->
-          {:error, "PDF produced no pages to transcribe"}
+          {:error, "PDF produced no pages to extract"}
 
         {:ok, images} ->
           on_progress.(:ocr)
+          # Positional layer↔image pairing is only safe when the text-layer page
+          # count matches the rendered sheet count. On any mismatch we discard the
+          # layer entirely (every page cross-checks via OCR/vision) rather than
+          # risk attaching a page's text to the wrong sheet — silent corruption is
+          # the one thing accuracy-first must never do. A few extra vision calls
+          # on a rare mismatch is the right trade.
+          layer_pages = aligned_layers(pdftext_pages(full_path), length(images))
 
-          text =
+          results =
             images
-            |> Task.async_stream(&vision_page/1,
+            |> Enum.with_index()
+            |> Task.async_stream(
+              fn {img, i} -> decide_page(img, Enum.at(layer_pages, i) || "") end,
               max_concurrency: @vision_concurrency,
               ordered: true,
               timeout: :infinity
             )
             |> Enum.map(fn
-              {:ok, t} -> t
-              _ -> ""
+              {:ok, r} -> r
+              _ -> %{text: "", confidence: 0.0, lane: "vision", source: "error"}
             end)
-            |> Enum.join("\f")
 
           Enum.each(images, &File.rm/1)
 
+          text = results |> Enum.map(& &1.text) |> Enum.join("\f")
+
           if String.trim(text) == "" do
-            {:error, "Vision extraction produced no readable text"}
+            {:error, "Extraction produced no readable text"}
           else
-            {:ok, text, true}
+            # from_ocr: true unless every page came straight off the text layer.
+            from_ocr = Enum.any?(results, &(&1.lane != "text_layer"))
+            {:ok, text, from_ocr, results}
           end
 
         {:error, reason} ->
@@ -499,32 +525,83 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  # Transcribe one page image with the default vision model; if it comes back
-  # empty or garbled (the escalation trigger), re-read with the stronger/higher-res
-  # escalation model and keep whichever output is richer. "" on total failure.
-  defp vision_page(image_path) do
-    case RuleMaven.LLM.transcribe_page_image(image_path) do
-      {:ok, text} ->
-        if ocr_junk?(text), do: escalate_page(image_path, text), else: text
+  # Returns the layer pages only if they align 1:1 with the rendered sheets
+  # (after dropping trailing empty chunks pdftotext appends). On any count
+  # mismatch returns [] so every page cross-checks instead of risking a
+  # mis-paired sheet. `n` is the rendered image count.
+  defp aligned_layers(layer_pages, n) do
+    trimmed =
+      layer_pages
+      |> Enum.reverse()
+      |> Enum.drop_while(&(String.trim(&1) == ""))
+      |> Enum.reverse()
 
-      {:error, _reason} ->
-        escalate_page(image_path, "")
+    if length(trimmed) == n, do: trimmed, else: []
+  end
+
+  # Whole-document text layer split into physical pages. "-layout" preserves
+  # columns/reading order for the clean-layer case. Empty list on failure — every
+  # page then falls through to OCR/vision.
+  defp pdftext_pages(full_path) do
+    case cmd("pdftotext", ["-layout", full_path, "-"], @pdftotext_timeout) do
+      {:ok, {text, 0}} -> String.split(text, "\f")
+      _ -> []
     end
   end
 
-  # Re-read a page with the escalation vision model; keep the longer of the new
-  # and fallback texts (never replace usable text with nothing).
-  defp escalate_page(image_path, fallback) do
-    opts = [model: RuleMaven.LLM.vision_model(:escalate), max_tokens: 8192]
+  # The per-page decision. Clean text layer → trust it, no model call. Otherwise
+  # cross-check the text layer (or local OCR when there's no layer) against a
+  # cheap vision read; agreement keeps the richer text at the gate's confidence,
+  # disagreement is the escalation point (Phase 3).
+  defp decide_page(image, layer) do
+    layer = String.trim(layer)
 
-    case RuleMaven.LLM.transcribe_page_image(image_path, opts) do
-      {:ok, text} ->
-        if String.length(String.trim(text)) >= String.length(String.trim(fallback)),
-          do: text,
-          else: fallback
+    if Gate.clean_text_layer?(layer) do
+      %{text: layer, confidence: 0.9, lane: "text_layer", source: "text_layer"}
+    else
+      reader_a = if layer != "", do: layer, else: ocr_one(image)
+      reader_b = vision_one(image)
+      g = Gate.assess(reader_a, reader_b)
+      text = richer(reader_a, reader_b)
+      base_lane = if layer != "", do: "text_layer", else: "ocr"
 
-      {:error, _reason} ->
-        fallback
+      if g.agree? do
+        %{text: text, confidence: g.confidence, lane: base_lane, source: "crosscheck"}
+      else
+        # Phase 3: escalate to a stronger/high-res model + adversarial critic here.
+        # For now keep the richer cheap read and flag it for review.
+        %{text: text, confidence: g.confidence, lane: "vision", source: "unverified"}
+      end
+    end
+  end
+
+  # Pick the read with more real-word content (wordishness × token count, then
+  # raw length as tiebreak). Never returns the emptier garbled read over a richer one.
+  defp richer(a, b) do
+    score = fn t -> {Gate.wordish_ratio(t) * length(Gate.tokens(t)), String.length(t)} end
+    if score.(a) >= score.(b), do: a, else: b
+  end
+
+  # One-page local OCR (reader A when the page has no text layer). "" when
+  # tesseract is absent or times out — the page then rides on the vision read.
+  defp ocr_one(image) do
+    if System.find_executable("tesseract") do
+      case cmd("tesseract", [image, "stdout", "-l", "eng", "--psm", "6"], @tesseract_timeout,
+             stderr_to_stdout: true
+           ) do
+        {:ok, {t, _}} -> t
+        _ -> ""
+      end
+    else
+      ""
+    end
+  end
+
+  # One-page cheap vision read (reader B). "" on failure.
+  defp vision_one(image) do
+    case RuleMaven.LLM.transcribe_page_image(image) do
+      {:ok, t} -> t
+      {:error, _} -> ""
     end
   end
 
@@ -563,7 +640,7 @@ defmodule RuleMaven.RulebookDownloader do
     on_progress.(:ocr)
 
     case ocr_text(full_path) do
-      {:ok, text} -> {:ok, text, true}
+      {:ok, text} -> {:ok, text, true, nil}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -599,7 +676,9 @@ defmodule RuleMaven.RulebookDownloader do
                 case cmd(
                        "tesseract",
                        [img, "stdout", "-l", "eng", "--psm", "6"],
-                       @tesseract_timeout, stderr_to_stdout: true) do
+                       @tesseract_timeout,
+                       stderr_to_stdout: true
+                     ) do
                   {:ok, {t, _}} -> t
                   {:error, :timeout} -> ""
                 end
@@ -670,25 +749,12 @@ defmodule RuleMaven.RulebookDownloader do
   is worth the LLM call)? True when the page is empty (image-only page tesseract
   couldn't read) or when fewer than half its tokens are real words — the
   signature of graphic/decorative pages OCR scrambles into symbol soup.
+
+  Delegates to `Extract.Gate.wordish_ratio/1` so the legacy OCR path and the
+  cross-check engine classify garble identically (no drift between the two).
   """
   def ocr_junk?(text) do
-    tokens = String.split(text || "", ~r/\s+/, trim: true)
-
-    case length(tokens) do
-      0 ->
-        true
-
-      total ->
-        wordish = Enum.count(tokens, &wordish_token?/1)
-        wordish / total < 0.5
-    end
-  end
-
-  # A "real word": starts with a letter, 3+ letters long, and contains a vowel.
-  # Rejects single chars, symbol fragments ("e¢", "®"), and OCR consonant soup
-  # ("YopM&y", "BOARO" passes — fine, it's recoverable; "frg" / "ttt" don't).
-  defp wordish_token?(tok) do
-    Regex.match?(~r/^[A-Za-z][A-Za-z'’-]{2,}$/u, tok) and Regex.match?(~r/[aeiouAEIOUyY]/, tok)
+    String.trim(text || "") == "" or Gate.wordish_ratio(text) < 0.5
   end
 
   defp extract_filename(url) do

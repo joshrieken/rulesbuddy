@@ -38,5 +38,12 @@ defmodule RuleMaven.RulebookDownloaderTest do
     test "a single legitimate word heading is not junk" do
       refute RD.ocr_junk?("Setup")
     end
+
+    test "punctuated prose is not junk (delegates to Gate, which strips edge punctuation)" do
+      # Pre-delegation this misclassified: trailing commas/periods failed the
+      # word regex, dropping the wordish ratio below 0.5 on clean prose.
+      text = "Choose your activities: adventure, cooking, friendship, and games."
+      refute RD.ocr_junk?(text)
+    end
   end
 end
