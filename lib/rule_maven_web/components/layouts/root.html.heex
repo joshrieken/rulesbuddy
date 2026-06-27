@@ -64,6 +64,7 @@
               <.link href={~p"/admin/security"} class="nav-link">Security</.link>
               <.link href={~p"/admin/threads"} class="nav-link">Threads</.link>
               <.link href={~p"/admin/users"} class="nav-link">Users</.link>
+              <.link href={~p"/admin/themes"} class="nav-link nav-link-dim">Themes</.link>
               <.link href={~p"/admin/invites"} class="nav-link">Invites</.link>
               <.link href={~p"/admin/db"} class="nav-link nav-link-dim">DB</.link>
               <.link href={~p"/oban"} class="nav-link nav-link-dim" target="_blank">Oban</.link>
@@ -140,6 +141,7 @@
             <.link href={~p"/admin/threads"} class="drawer-link">Review Threads</.link>
             <.link href={~p"/admin/users"} class="drawer-link">Manage Users</.link>
             <.link href={~p"/admin/invites"} class="drawer-link">Invite Codes</.link>
+            <.link href={~p"/admin/themes"} class="drawer-link">Theme Usage</.link>
             <div class="drawer-section">Tools</div>
             <.link href={~p"/oban"} class="drawer-link" target="_blank">Oban Dashboard ↗</.link>
             <.link href={~p"/settings"} class="drawer-link">Settings</.link>
@@ -185,8 +187,21 @@
           select.value = theme;
         }
 
+        function track(value) {
+          var meta = document.querySelector('meta[name="csrf-token"]');
+          fetch('/theme-events', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': meta ? meta.getAttribute('content') : ''
+            },
+            body: JSON.stringify({ theme: value })
+          }).catch(function() {});
+        }
+
         select.addEventListener('change', function() {
           apply(this.value);
+          track(this.value);
         });
       })();
     </script>

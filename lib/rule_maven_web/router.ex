@@ -29,6 +29,8 @@ defmodule RuleMavenWeb.Router do
     # Extracted-text HTML view, admin-gated (rulebooks may be copyrighted; the
     # original PDF is never served over HTTP).
     get "/rulebooks/:id/html", RulebookController, :html
+    # Theme picker pings this on change so we can track theme usage.
+    post "/theme-events", MetricsController, :theme
 
     live_session :public,
       on_mount: [{RuleMavenWeb.UserLiveAuth, :public}],
@@ -61,6 +63,7 @@ defmodule RuleMavenWeb.Router do
       live "/admin/users", AdminLive.Users, :index
       live "/admin/invites", AdminLive.Invites, :index
       live "/admin/catalog", AdminLive.Catalog, :index
+      live "/admin/themes", AdminLive.Themes, :index
       live "/admin/requests", AdminLive.Requests, :index
     end
   end
