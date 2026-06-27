@@ -104,6 +104,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     socket =
       assign(socket,
         game: game,
+        page_title: game.name,
         conversation: conversation,
         threads: threads,
         active_thread_id: active_thread_id,

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="Rule Maven" phx-no-format>{assigns[:page_title] || "Rule Maven"}</.live_title>
+    <.live_title default="Rule Maven" suffix=" · Rule Maven" phx-no-format>{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <link rel="manifest" href={~p"/manifest.json"} />
     <link rel="apple-touch-icon" href={~p"/images/icon-192.svg"} />
