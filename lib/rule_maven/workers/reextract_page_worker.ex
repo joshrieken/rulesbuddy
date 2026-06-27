@@ -17,11 +17,29 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
       states: [:available, :scheduled, :executing, :retryable, :suspended]
     ]
 
+  import Ecto.Query
   require Logger
   alias RuleMaven.{Games, RulebookDownloader}
 
+  @worker "RuleMaven.Workers.ReextractPageWorker"
+  @active_states ~w(available scheduled executing retryable suspended)
+
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(5)
+
+  @doc """
+  True when a re-extraction job for this document is queued or running. Lets the
+  form rebuild the per-source "busy" indicator from durable Oban state after a
+  refresh/remount, instead of relying on in-memory flags.
+  """
+  def running?(document_id) do
+    RuleMaven.Repo.exists?(
+      from j in Oban.Job,
+        where:
+          j.worker == ^@worker and j.state in ^@active_states and
+            fragment("?->>'document_id' = ?", j.args, ^to_string(document_id))
+    )
+  end
 
   @doc "Enqueue a re-extraction (no-op in test where Oban isn't supervised)."
   def enqueue(document_id, page_index) do

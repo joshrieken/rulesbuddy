@@ -193,7 +193,11 @@ defmodule RuleMavenWeb.GameLive.Form do
               socket
             end
 
-          socket = assign(socket, cleaning: seed_cleaning(entries))
+          socket =
+            assign(socket,
+              cleaning: seed_cleaning(entries),
+              reextracting: seed_reextracting(entries)
+            )
 
           # Follow an in-flight download (durable Oban job) across a remount.
           socket =
@@ -1550,6 +1554,18 @@ defmodule RuleMavenWeb.GameLive.Form do
         into: %{} do
       {sid, {Games.cleaning_done(sid) || 0, length(pages)}}
     end
+  end
+
+  # Rebuild the {source_id => true} busy map for sources with an in-flight
+  # single-page re-extraction, from durable Oban job state — so a refresh
+  # mid-re-extract still shows the "Re-extracting…" indicator (and the
+  # {:reextract_done} broadcast still lands, since mount re-subscribes).
+  defp seed_reextracting(entries) do
+    for %{source_id: sid} <- entries,
+        not is_nil(sid),
+        RuleMaven.Workers.ReextractPageWorker.running?(sid),
+        into: %{},
+        do: {sid, true}
   end
 
   defp resolve_bgg_cookies do
