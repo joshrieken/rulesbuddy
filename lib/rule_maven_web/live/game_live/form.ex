@@ -54,6 +54,8 @@ defmodule RuleMavenWeb.GameLive.Form do
         suggestions: [],
         dyk_facts: [],
         regenerating_dyk: false,
+        setup_checklist: nil,
+        regenerating_setup: false,
         # Per-source HTML-regen result for inline feedback: source_id => :ok | :error.
         regen_html_status: %{},
         regenerating_suggestions: false,
@@ -194,6 +196,8 @@ defmodule RuleMavenWeb.GameLive.Form do
                 RuleMaven.Workers.DidYouKnowWorker.topic(game.id)
               )
 
+              Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Setup.topic(game.id))
+
               Phoenix.PubSub.subscribe(
                 RuleMaven.PubSub,
                 RuleMaven.Workers.DownloadWorker.topic(game.id)
@@ -255,7 +259,9 @@ defmodule RuleMavenWeb.GameLive.Form do
             assign(socket,
               suggestions: suggestions,
               dyk_facts: dyk_facts,
-              regenerating_dyk: RuleMaven.Workers.DidYouKnowWorker.running?(game.id)
+              regenerating_dyk: RuleMaven.Workers.DidYouKnowWorker.running?(game.id),
+              setup_checklist: RuleMaven.Setup.stored_checklist(game.id),
+              regenerating_setup: RuleMaven.Setup.status(game.id) == "generating"
             )
 
           draft_categories =
@@ -444,6 +450,20 @@ defmodule RuleMavenWeb.GameLive.Form do
     RuleMaven.Settings.delete("did_you_know_#{game.id}")
     RuleMaven.Workers.DidYouKnowWorker.enqueue(game.id)
     {:noreply, assign(socket, dyk_facts: [], regenerating_dyk: true)}
+  end
+
+  def handle_event("regenerate_setup", _params, socket) do
+    game = socket.assigns.game
+    # generate_async seeds the "generating" status and enqueues the durable job;
+    # the result arrives over Setup.topic as {:setup_done, game_id}.
+    RuleMaven.Setup.generate_async(game)
+    {:noreply, assign(socket, setup_checklist: nil, regenerating_setup: true)}
+  end
+
+  def handle_event("clear_setup", _params, socket) do
+    game = socket.assigns.game
+    if game, do: RuleMaven.Setup.clear(game.id)
+    {:noreply, assign(socket, setup_checklist: nil, regenerating_setup: false)}
   end
 
   def handle_event("regenerate_html", %{"id" => id_str}, socket) do
@@ -1297,6 +1317,19 @@ defmodule RuleMavenWeb.GameLive.Form do
   @impl true
   def handle_info({:did_you_know_ready, facts}, socket) do
     {:noreply, assign(socket, dyk_facts: facts, regenerating_dyk: false)}
+  end
+
+  @impl true
+  def handle_info({:setup_done, game_id}, socket) do
+    if socket.assigns.game && socket.assigns.game.id == game_id do
+      {:noreply,
+       assign(socket,
+         setup_checklist: RuleMaven.Setup.stored_checklist(game_id),
+         regenerating_setup: false
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -3075,6 +3108,76 @@ defmodule RuleMavenWeb.GameLive.Form do
               <% else %>
                 <p style="font-size:0.62rem;color:var(--text-muted)">
                   Generate short, friendly rule facts shown on this game's page.
+                </p>
+              <% end %>
+            </div>
+
+            <%!-- Setup checklist (shown on the game's empty state) --%>
+            <% setup_count =
+              if @setup_checklist,
+                do:
+                  length(@setup_checklist["components"] || []) +
+                    length(@setup_checklist["setup"] || []),
+                else: 0 %>
+            <div style="margin-top:1.25rem">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+                <span style="font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                  🧩 Setup checklist
+                  <%= if setup_count > 0 do %>
+                    ({setup_count})
+                  <% end %>
+                </span>
+                <button
+                  type="button"
+                  phx-click="regenerate_setup"
+                  disabled={@regenerating_setup}
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                >
+                  {cond do
+                    @regenerating_setup -> "Generating…"
+                    setup_count > 0 -> "Regenerate"
+                    true -> "Generate"
+                  end}
+                </button>
+                <button
+                  :if={setup_count > 0}
+                  type="button"
+                  phx-click="clear_setup"
+                  data-confirm="Clear the generated setup checklist for this game?"
+                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                >
+                  Clear
+                </button>
+              </div>
+              <%= if setup_count > 0 do %>
+                <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                  <%= if (@setup_checklist["components"] || []) != [] do %>
+                    <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle)">
+                      Gather
+                    </div>
+                    <%= for item <- @setup_checklist["components"] do %>
+                      <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
+                        {item}
+                      </div>
+                    <% end %>
+                  <% end %>
+                  <%= if (@setup_checklist["setup"] || []) != [] do %>
+                    <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);border-top:1px solid var(--border-subtle)">
+                      Steps
+                    </div>
+                    <%= for step <- @setup_checklist["setup"] do %>
+                      <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
+                        <span style="font-weight:600">{step["title"]}</span>
+                        <%= if step["detail"] not in [nil, "", "nil"] do %>
+                          <span style="display:block;color:var(--text-muted)">{step["detail"]}</span>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              <% else %>
+                <p style="font-size:0.62rem;color:var(--text-muted)">
+                  Generate a setup checklist (components to gather + ordered steps) shown on this game's page.
                 </p>
               <% end %>
             </div>
