@@ -53,6 +53,23 @@ defmodule RuleMaven.Users do
 
   def delete_user(nil), do: {:error, :not_found}
 
+  # --- moderation ------------------------------------------------------------
+
+  @doc "True while the account is suspended (login + sessions denied)."
+  def suspended?(user), do: User.suspended?(user)
+
+  @doc "Suspends the account: blocks login and denies existing sessions."
+  def suspend_user(%User{} = user),
+    do: user |> User.suspension_changeset(true) |> Repo.update()
+
+  @doc "Lifts suspension."
+  def unsuspend_user(%User{} = user),
+    do: user |> User.suspension_changeset(false) |> Repo.update()
+
+  @doc "Zeroes a user's reputation. Trust recompute on their rows can re-derive it."
+  def reset_reputation(%User{} = user),
+    do: user |> Ecto.Changeset.change(reputation: 0) |> Repo.update()
+
   # --- email confirmation ----------------------------------------------------
 
   @doc "True once this user has confirmed their email address."
@@ -105,10 +122,15 @@ defmodule RuleMaven.Users do
         {:error, "Invalid username or password"}
 
       user ->
-        if Bcrypt.verify_pass(password, user.password_hash) do
-          {:ok, user}
-        else
-          {:error, "Invalid username or password"}
+        cond do
+          not Bcrypt.verify_pass(password, user.password_hash) ->
+            {:error, "Invalid username or password"}
+
+          User.suspended?(user) ->
+            {:error, "This account has been suspended."}
+
+          true ->
+            {:ok, user}
         end
     end
   end

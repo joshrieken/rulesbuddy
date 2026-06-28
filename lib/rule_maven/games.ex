@@ -1058,6 +1058,46 @@ defmodule RuleMaven.Games do
     end
   end
 
+  @doc """
+  Moderation kill-switch: makes every non-private answer authored by `user_id`
+  private and removes it from the pool (unlike `do_unverify`, this drops pooling
+  even for grounded citations — a bad actor's answers should stop serving). Trust
+  is recomputed per row, the author's reputation re-derived once, and persona
+  restyle caches cleared for each affected game. Returns the number demoted.
+  """
+  def demote_user_answers(user_id) when is_integer(user_id) do
+    rows =
+      Repo.all(
+        from q in QuestionLog,
+          where:
+            q.user_id == ^user_id and
+              (q.visibility != "private" or q.pooled == true or q.verified == true)
+      )
+
+    Enum.each(rows, fn q ->
+      {:ok, updated} =
+        q
+        |> QuestionLog.changeset(%{
+          visibility: "private",
+          pooled: false,
+          verified: false,
+          needs_review: false
+        })
+        |> Repo.update()
+
+      RuleMaven.Games.Trust.recompute_trust(updated)
+    end)
+
+    RuleMaven.Games.Trust.recompute_reputation(user_id)
+
+    rows
+    |> Enum.map(& &1.game_id)
+    |> Enum.uniq()
+    |> Enum.each(&RuleMaven.Voices.clear_for_game/1)
+
+    length(rows)
+  end
+
   defp do_unverify(%QuestionLog{} = q) do
     attrs = %{
       verified: false,
@@ -1369,7 +1409,8 @@ defmodule RuleMaven.Games do
       # Earning trust by votes also requires a quorum of distinct, eligible
       # voters — so a single (or sybil) vote can't flip the label to trusted.
       (q.trust_score || 0.0) >= floor and
-          RuleMaven.Games.Trust.eligible_voter_count(q) >= RuleMaven.Games.Trust.promotion_quorum() ->
+          RuleMaven.Games.Trust.eligible_voter_count(q) >=
+            RuleMaven.Games.Trust.promotion_quorum() ->
         :trusted
 
       true ->

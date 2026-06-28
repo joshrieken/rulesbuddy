@@ -10,6 +10,7 @@ defmodule RuleMaven.Users.User do
     field :password_hash, :string
     field :reputation, :integer, default: 0
     field :email_confirmed_at, :utc_datetime
+    field :suspended_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
   end
@@ -72,6 +73,18 @@ defmodule RuleMaven.Users.User do
   def email_confirmed?(%__MODULE__{email_confirmed_at: nil}), do: false
   def email_confirmed?(%__MODULE__{email_confirmed_at: _}), do: true
   def email_confirmed?(_), do: false
+
+  @doc "True while the account is suspended (login + sessions denied)."
+  def suspended?(%__MODULE__{suspended_at: nil}), do: false
+  def suspended?(%__MODULE__{suspended_at: _}), do: true
+  def suspended?(_), do: false
+
+  @doc "Toggles suspension. `true` stamps now, `false` clears it."
+  def suspension_changeset(user, true) do
+    change(user, suspended_at: DateTime.utc_now() |> DateTime.truncate(:second))
+  end
+
+  def suspension_changeset(user, false), do: change(user, suspended_at: nil)
 
   # Back-compat alias: a game master is anyone with the :admin capability.
   def game_master?(user), do: can?(user, :admin)

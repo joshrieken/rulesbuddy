@@ -79,6 +79,32 @@ defmodule RuleMaven.UsersTest do
       assert Repo.get(User, player.id) == nil
     end
 
+    test "suspended account cannot authenticate, lift restores login", %{player: player} do
+      assert {:ok, _} = Users.authenticate(player.username, "testpass1234")
+
+      {:ok, suspended} = Users.suspend_user(player)
+      assert Users.suspended?(suspended)
+      assert {:error, msg} = Users.authenticate(player.username, "testpass1234")
+      assert msg =~ "suspended"
+
+      {:ok, restored} = Users.unsuspend_user(suspended)
+      refute Users.suspended?(restored)
+      assert {:ok, _} = Users.authenticate(player.username, "testpass1234")
+    end
+
+    test "wrong password still beats suspension check", %{player: player} do
+      {:ok, _} = Users.suspend_user(player)
+      assert {:error, msg} = Users.authenticate(player.username, "wrongpass")
+      assert msg =~ "Invalid"
+    end
+
+    test "reset_reputation/1 zeroes reputation", %{player: player} do
+      {:ok, bumped} = Users.update_user(player, %{})
+      Repo.update_all(from(u in User, where: u.id == ^bumped.id), set: [reputation: 42])
+      {:ok, reset} = Users.reset_reputation(Repo.reload(bumped))
+      assert reset.reputation == 0
+    end
+
     test "delete_user/1 returns error for nil", %{} do
       assert {:error, :not_found} = Users.delete_user(nil)
     end

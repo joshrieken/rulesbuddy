@@ -26,8 +26,12 @@ defmodule RuleMavenWeb.AdminLive.Index do
           style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
         >
           <div style="font-size:1.5rem;margin-bottom:0.4rem">🛡️</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">Security</div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">Blocked questions and injection pattern management.</div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
+            Security
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            Blocked questions and injection pattern management.
+          </div>
         </.link>
 
         <.link
@@ -46,8 +50,25 @@ defmodule RuleMavenWeb.AdminLive.Index do
             {@review_backlog} to review
           </span>
           <div style="font-size:1.5rem;margin-bottom:0.4rem">💬</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">Questions</div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">Browse, filter, and delete user questions.</div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
+            Questions
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            Browse, filter, and delete user questions.
+          </div>
+        </.link>
+
+        <.link
+          navigate={~p"/admin/moderation"}
+          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
+        >
+          <div style="font-size:1.5rem;margin-bottom:0.4rem">🚩</div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
+            Moderation
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            Per-user abuse signals, vote rings, suspend/pull-answers.
+          </div>
         </.link>
 
         <.link

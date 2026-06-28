@@ -4,24 +4,21 @@ defmodule RuleMavenWeb.UserLiveAuth do
   import Plug.Conn, only: [get_session: 2]
 
   def on_mount(:default, _params, session, socket) do
-    case session[:user_id] || session["user_id"] do
+    case active_user(session) do
       nil ->
         {:halt, redirect(socket, to: "/login")}
 
-      user_id ->
-        user = RuleMaven.Users.get_user(user_id)
+      user ->
         {:cont, assign(socket, :current_user, user)}
     end
   end
 
   def on_mount(:admin, _params, session, socket) do
-    case session[:user_id] || session["user_id"] do
+    case active_user(session) do
       nil ->
         {:halt, redirect(socket, to: "/login")}
 
-      user_id ->
-        user = RuleMaven.Users.get_user(user_id)
-
+      user ->
         if RuleMaven.Users.can?(user, :admin) do
           {:cont, assign(socket, :current_user, user)}
         else
@@ -31,13 +28,21 @@ defmodule RuleMavenWeb.UserLiveAuth do
   end
 
   def on_mount(:public, _params, session, socket) do
-    user =
-      case session[:user_id] || session["user_id"] do
-        nil -> nil
-        user_id -> RuleMaven.Users.get_user(user_id)
-      end
+    {:cont, assign(socket, :current_user, active_user(session))}
+  end
 
-    {:cont, assign(socket, :current_user, user)}
+  # Resolves the session's user, treating a suspended account as logged out.
+  defp active_user(session) do
+    case session[:user_id] || session["user_id"] do
+      nil ->
+        nil
+
+      user_id ->
+        case RuleMaven.Users.get_user(user_id) do
+          nil -> nil
+          user -> if RuleMaven.Users.suspended?(user), do: nil, else: user
+        end
+    end
   end
 
   def get_session(conn) do
