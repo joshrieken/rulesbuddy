@@ -1321,16 +1321,19 @@ defmodule RuleMavenWeb.GameLive.Show do
               >View on BGG</.link>
             <% end %>
             <%!-- Rulebook sources dropdown --%>
-            <div :if={@sources != []} style="flex-shrink:0;position:relative">
-              <details class="sources-dropdown">
-                <summary
-                  class="pill-link"
-                  style="cursor:pointer;list-style:none;gap:0.2rem;user-select:none"
-                >
-                  <span>📖</span>
-                  <span>Rulebooks</span>
-                  <span style="font-size:0.6rem;opacity:0.6">▾</span>
-                </summary>
+            <details
+              :if={@sources != []}
+              class="sources-dropdown"
+              style="flex-shrink:0;position:relative;display:inline-flex;align-items:center"
+            >
+              <summary
+                class="pill-link"
+                style="cursor:pointer;list-style:none;gap:0.2rem;user-select:none"
+              >
+                <span>📖</span>
+                <span>Rulebooks</span>
+                <span style="font-size:0.6rem;opacity:0.6">▾</span>
+              </summary>
                 <div style="position:absolute;right:0;top:calc(100% + 0.35rem);z-index:200;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:200px;max-width:min(320px,calc(100vw - 2rem));overflow:hidden">
                   <%= for {src, i} <- Enum.with_index(@sources) do %>
                     <div style={"padding:0.5rem 0.75rem;#{if i > 0, do: "border-top:1px solid var(--border-subtle)"}"}>
@@ -1357,8 +1360,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     </div>
                   <% end %>
                 </div>
-              </details>
-            </div>
+            </details>
           </div>
           <div class="flex items-center gap-1" style="flex-wrap:wrap">
             <button
