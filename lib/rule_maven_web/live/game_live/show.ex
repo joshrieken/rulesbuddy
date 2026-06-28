@@ -682,12 +682,6 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   @impl true
-  def handle_event("toggle_visibility", _params, socket) do
-    next = if socket.assigns.visibility == "community", do: "private", else: "community"
-    {:noreply, assign(socket, visibility: next)}
-  end
-
-  @impl true
   def handle_event("toggle_question_visibility", %{"id" => id_str}, socket) do
     {id, _} = Integer.parse(id_str)
     game = socket.assigns.game
@@ -2374,18 +2368,6 @@ defmodule RuleMavenWeb.GameLive.Show do
             </div>
           <% end %>
           <form phx-submit="ask" class="flex gap-2" phx-hook="KeyboardSubmit" id="ask-form">
-            <button
-              type="button"
-              phx-click="toggle_visibility"
-              title={
-                if @visibility == "private",
-                  do: "Private — click to make public",
-                  else: "Public — click to make private"
-              }
-              style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:2rem;padding:0.4rem 0.6rem;cursor:pointer;font-size:0.85rem;color:var(--text-muted)"
-            >
-              {if @visibility == "private", do: "🔒", else: "🌐"}
-            </button>
             <button
               type="button"
               id="voice-ask-btn"
