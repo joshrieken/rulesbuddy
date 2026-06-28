@@ -227,6 +227,26 @@ defmodule RuleMaven.Prompts do
   {{rulebook}}
   """
 
+  # Vars: game_name, rulebook, facts
+  @did_you_know_verify """
+  You are a strict fact-checker for "Did you know?" facts about the board game "{{game_name}}". Check each numbered candidate fact below against the rulebook text.
+
+  A fact PASSES only if it is FULLY and ACCURATELY supported by the rulebook — not merely close. REJECT a fact if it:
+  - states something the text does not support, or contradicts it;
+  - is misleading because it omits a clause that changes its meaning. Example: saying a component is "removed" when the rules actually remove it from one place and then use it for something else — the fact must reflect what ultimately happens.
+  - compresses multiple setup steps so the outcome is distorted;
+  - makes an absolute or negative claim ("only", "never", "cannot", "always") the text does not explicitly justify;
+  - cannot be confirmed from the text below (when unsure, REJECT — accuracy over volume).
+
+  Output ONLY the numbers of the facts that PASS, comma-separated, e.g. `1,4,5`. If none pass, output `none`. No other text.
+
+  RULEBOOK:
+  {{rulebook}}
+
+  CANDIDATE FACTS:
+  {{facts}}
+  """
+
   # Vars: game_name. Paired with the cover image as a vision message.
   @theme_palette """
   You are a color designer. Look at the cover art for the board game "{{game_name}}" and design a UI color theme that evokes the game's mood and art.
@@ -334,6 +354,14 @@ defmodule RuleMaven.Prompts do
       description: "Generates the short rule facts shown on a game's page.",
       vars: ~w(game_name rulebook),
       default: @did_you_know
+    },
+    %{
+      key: "did_you_know_verify",
+      group: "Content generation",
+      label: "Did you know? fact-check",
+      description: "Drops generated facts that aren't fully/accurately supported by the rulebook.",
+      vars: ~w(game_name rulebook facts),
+      default: @did_you_know_verify
     },
     %{
       key: "categories",

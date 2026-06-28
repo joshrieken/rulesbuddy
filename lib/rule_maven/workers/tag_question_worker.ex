@@ -9,8 +9,12 @@ defmodule RuleMaven.Workers.TagQuestionWorker do
   end
 
   def enqueue(question_log_id, game_id) do
-    %{"question_log_id" => question_log_id, "game_id" => game_id}
-    |> new()
-    |> Oban.insert()
+    if Application.get_env(:rule_maven, Oban)[:testing] == :manual do
+      :ok
+    else
+      %{"question_log_id" => question_log_id, "game_id" => game_id}
+      |> new()
+      |> Oban.insert()
+    end
   end
 end

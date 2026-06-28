@@ -2339,6 +2339,10 @@ defmodule RuleMaven.Games do
       |> Repo.insert!()
     end)
 
+    # Categories changed (and deleting the old rows dropped their question tags),
+    # so re-tag every question against the new taxonomy.
+    retag_all_questions(game)
+
     :ok
   end
 

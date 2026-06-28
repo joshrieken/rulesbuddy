@@ -2220,9 +2220,11 @@ defmodule RuleMavenWeb.GameLive.Show do
                   </details>
                 </div>
 
-                <!-- Category pills for any answered question (yours or community) -->
+                <!-- Category pills: categories live in the (community) FAQ, so only
+                     show them on community questions — except admins, who can see
+                     them on any answer to audit tagging before it goes community. -->
                 <% msg_cats =
-                  if msg.role == :assistant && msg[:id],
+                  if (is_community_msg || @is_admin) && msg.role == :assistant && msg[:id],
                     do: Map.get(@question_categories, msg[:id], []),
                     else: [] %>
                 <div

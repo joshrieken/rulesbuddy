@@ -860,10 +860,72 @@ defmodule RuleMaven.LLM do
           |> Enum.reject(&(String.length(&1) < 20))
           |> Enum.uniq()
 
-        {:ok, facts}
+        {:ok, verify_did_you_know(game_name, rulebook_text, facts)}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # Second-pass fact-check: drop any generated fact that isn't fully/accurately
+  # supported by the rulebook (catches misleading-by-omission paraphrases, e.g.
+  # "X is removed" when X is removed then reused). Fail-open — a verify error or
+  # unparseable reply keeps the original facts rather than nuking the whole list.
+  defp verify_did_you_know(_game_name, _text, []), do: []
+
+  defp verify_did_you_know(game_name, rulebook_text, facts) do
+    numbered =
+      facts
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {f, i} -> "#{i}. #{f}" end)
+
+    prompt =
+      RuleMaven.Prompts.render("did_you_know_verify", %{
+        game_name: game_name,
+        # Wider sample than generation so the checker is likelier to see the
+        # clause a fact may have omitted.
+        rulebook: sample_across(rulebook_text, 24000, 3000),
+        facts: numbered
+      })
+
+    case chat(prompt, "did_you_know_verify",
+           system:
+             "You are a strict board-game rulebook fact-checker. Pass only fully, accurately supported facts; reject anything misleading or unconfirmed.",
+           max_tokens: 600
+         ) do
+      {:ok, text} ->
+        case parse_keep_indices(text, length(facts)) do
+          :all ->
+            facts
+
+          keep ->
+            facts
+            |> Enum.with_index(1)
+            |> Enum.filter(fn {_, i} -> MapSet.member?(keep, i) end)
+            |> Enum.map(&elem(&1, 0))
+        end
+
+      {:error, _} ->
+        facts
+    end
+  end
+
+  # Parse the verifier's "1,4,5" / "none" reply into a MapSet of kept indices.
+  # Returns :all on an unparseable non-"none" reply (fail-open, never drop all on
+  # a glitch); an empty set only when the model explicitly says "none".
+  defp parse_keep_indices(text, _count) do
+    trimmed = String.trim(text || "")
+
+    cond do
+      Regex.match?(~r/^\s*none\b/i, trimmed) ->
+        MapSet.new()
+
+      true ->
+        nums =
+          Regex.scan(~r/\d+/, trimmed)
+          |> Enum.map(fn [n] -> String.to_integer(n) end)
+
+        if nums == [], do: :all, else: MapSet.new(nums)
     end
   end
 
