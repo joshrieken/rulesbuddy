@@ -9,16 +9,37 @@ defmodule RuleMavenWeb.SessionController do
     end
   end
 
-  def create(conn, %{"session" => %{"username" => username, "password" => password}}) do
-    case RuleMaven.Users.authenticate(username, password) do
-      {:ok, user} ->
-        conn
-        |> put_session(:user_id, user.id)
-        |> put_flash(:info, "Welcome back!")
-        |> redirect(to: ~p"/")
+  alias RuleMaven.Auth.LoginThrottle
 
-      {:error, reason} ->
-        render(conn, :new, username: username, error: reason)
+  def create(conn, %{"session" => %{"username" => username, "password" => password}}) do
+    key = LoginThrottle.key(conn.remote_ip, username)
+
+    case LoginThrottle.check(key) do
+      {:error, seconds} ->
+        render(conn, :new,
+          username: username,
+          error: "Too many attempts. Try again in #{minutes(seconds)}."
+        )
+
+      :ok ->
+        case RuleMaven.Users.authenticate(username, password) do
+          {:ok, user} ->
+            LoginThrottle.clear(key)
+
+            conn
+            |> put_session(:user_id, user.id)
+            |> put_flash(:info, "Welcome back!")
+            |> redirect(to: ~p"/")
+
+          {:error, reason} ->
+            LoginThrottle.record_failure(key)
+            render(conn, :new, username: username, error: reason)
+        end
     end
+  end
+
+  defp minutes(seconds) do
+    mins = max(1, div(seconds + 59, 60))
+    "#{mins} minute#{if mins == 1, do: "", else: "s"}"
   end
 end

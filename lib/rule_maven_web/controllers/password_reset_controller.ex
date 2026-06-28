@@ -2,6 +2,7 @@ defmodule RuleMavenWeb.PasswordResetController do
   use RuleMavenWeb, :controller
 
   alias RuleMaven.Users
+  alias RuleMaven.Auth.LoginThrottle
 
   @doc "Form to request a reset link."
   def new(conn, _params) do
@@ -10,10 +11,18 @@ defmodule RuleMavenWeb.PasswordResetController do
 
   @doc "Sends the reset link. Always reports success (no account enumeration)."
   def create(conn, %{"reset" => %{"email" => email}}) do
-    Users.deliver_password_reset_instructions(
-      email,
-      &url(~p"/reset-password/#{&1}")
-    )
+    # Throttle per IP so the endpoint can't be used to email-bomb an inbox. The
+    # response is identical whether we send or skip — no enumeration, no signal.
+    key = LoginThrottle.key(conn.remote_ip, "pwreset")
+
+    case LoginThrottle.check(key) do
+      :ok ->
+        LoginThrottle.record_failure(key)
+        Users.deliver_password_reset_instructions(email, &url(~p"/reset-password/#{&1}"))
+
+      {:error, _} ->
+        :throttled
+    end
 
     render(conn, :new, email: "", sent: true)
   end

@@ -12,6 +12,7 @@ defmodule RuleMaven.Application do
       # HTTP pool for Swoosh API mail adapters (prod). Harmless under the
       # Local/Test adapters used in dev/test.
       {Finch, name: RuleMaven.Finch},
+      RuleMaven.Auth.LoginThrottle,
       RuleMavenWeb.Endpoint
     ]
 
