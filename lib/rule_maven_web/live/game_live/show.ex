@@ -866,16 +866,6 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
   end
 
-  @impl true
-  def handle_event("thumbs_up", %{"id" => id_str}, socket) do
-    handle_feedback(id_str, "up", socket)
-  end
-
-  @impl true
-  def handle_event("thumbs_down", %{"id" => id_str}, socket) do
-    handle_feedback(id_str, "down", socket)
-  end
-
   defp resubmit_question(id, socket, opts) do
     skip_pool = Keyword.get(opts, :skip_pool, false)
     cooldowns = socket.assigns.retry_cooldowns
@@ -990,27 +980,6 @@ defmodule RuleMavenWeb.GameLive.Show do
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, reason)}
       end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  defp handle_feedback(id_str, value, socket) do
-    {id, _} = Integer.parse(id_str)
-    game = socket.assigns.game
-
-    q = find_question_log(game, id)
-
-    if q do
-      new_feedback = if q.feedback == value, do: nil, else: value
-      Games.log_question_update(q, %{feedback: new_feedback})
-
-      updated =
-        Enum.map(socket.assigns.conversation, fn msg ->
-          if msg.id == id, do: Map.put(msg, :feedback, new_feedback), else: msg
-        end)
-
-      {:noreply, assign(socket, conversation: updated)}
     else
       {:noreply, socket}
     end
@@ -2082,7 +2051,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                              Map.get(@community_user_votes, msg[:pool_source_id]) != "up")
 
                       !msg[:pool_hit] ->
-                        @is_admin or msg[:feedback] != "up"
+                        @is_admin or Map.get(@community_user_votes, msg[:id]) != "up"
 
                       true ->
                         false
@@ -2148,32 +2117,41 @@ defmodule RuleMavenWeb.GameLive.Show do
                         title="Total not-helpful votes"
                       >{Map.get(counts, :down, 0)}</span>
                     <% else %>
-                      <!-- LLM feedback (own questions only) -->
-                      <% own_counts = Map.get(@community_vote_counts, msg[:id], %{up: 0, down: 0}) %>
+                      <!-- Own (non-pool) answer: votes go to the same QuestionVote
+                           store as community/pool answers, so the asker's thumb and
+                           every other player's vote sum into one per-user tally
+                           (was a separate scalar `feedback` column that never
+                           combined with other users' votes). -->
+                      <% cv = Map.get(@community_user_votes, msg[:id]) %>
+                      <% counts = Map.get(@community_vote_counts, msg[:id], %{up: 0, down: 0}) %>
                       <button
                         :if={!msg[:pool_hit]}
                         type="button"
-                        phx-click="thumbs_up"
-                        phx-value-id={msg.id}
-                        style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if msg[:feedback] == "up", do: "1", else: "0.4"}"}
-                        title={if msg[:feedback] == "up", do: "Remove vote", else: "Helpful"}
+                        phx-click="community_vote"
+                        phx-value-id={msg[:id]}
+                        phx-value-vote="up"
+                        style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if cv == "up", do: "1", else: "0.4"}"}
+                        title={if cv == "up", do: "Remove vote", else: "Helpful"}
                       >👍</button>
+                      <span
+                        :if={!msg[:pool_hit]}
+                        style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
+                        title="Total helpful votes"
+                      >{Map.get(counts, :up, 0)}</span>
                       <button
                         :if={!msg[:pool_hit]}
                         type="button"
-                        phx-click="thumbs_down"
-                        phx-value-id={msg.id}
-                        style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if msg[:feedback] == "down", do: "1", else: "0.4"}"}
-                        title={if msg[:feedback] == "down", do: "Remove vote", else: "Not helpful"}
+                        phx-click="community_vote"
+                        phx-value-id={msg[:id]}
+                        phx-value-vote="down"
+                        style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if cv == "down", do: "1", else: "0.4"}"}
+                        title={if cv == "down", do: "Remove vote", else: "Not helpful"}
                       >👎</button>
                       <span
-                        :if={
-                          !msg[:pool_hit] &&
-                            Map.get(own_counts, :up, 0) + Map.get(own_counts, :down, 0) > 0
-                        }
-                        style="font-size:0.65rem;color:var(--text-muted)"
-                        title="Votes from other players who were served this answer"
-                      >· {Map.get(own_counts, :up, 0)} 👍 {Map.get(own_counts, :down, 0)} 👎</span>
+                        :if={!msg[:pool_hit]}
+                        style="font-size:0.65rem;color:var(--text-muted);margin-left:-0.25rem"
+                        title="Total not-helpful votes"
+                      >{Map.get(counts, :down, 0)}</span>
                     <% end %>
                   <% end %>
 
