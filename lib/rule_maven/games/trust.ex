@@ -30,8 +30,10 @@ defmodule RuleMaven.Games.Trust do
   # from auto-promoting an answer.
   @default_promotion_quorum 2
   # Accounts younger than this (hours) don't count toward a promotion quorum.
-  # Raises the cost of sybil voting. 0 disables the age gate (set in prod).
-  @default_vote_min_age_hours 0
+  # Raises the cost of sybil voting. Active by default in prod (compiled in);
+  # 0 in dev/test so fixtures don't have to backdate accounts. Overridable via
+  # the `vote_min_account_age_hours` setting.
+  @default_vote_min_age_hours if Mix.env() == :prod, do: 24, else: 0
 
   @citation_bonus 1.0
   @verified_floor 100.0
