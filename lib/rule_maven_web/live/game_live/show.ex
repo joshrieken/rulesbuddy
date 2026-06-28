@@ -1361,9 +1361,9 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%= if @community_count > 0 do %>
               <.link
                 navigate={~p"/games/#{@game.id}/faq"}
-                style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
+                style="display:inline-flex;align-items:center;gap:0.25rem;background:var(--accent);color:#fff;border:1px solid var(--accent);text-decoration:none;font-size:0.72rem;font-weight:700;padding:0.25rem 0.6rem;border-radius:0.35rem;flex-shrink:0;box-shadow:0 1px 4px color-mix(in srgb,var(--accent) 40%,transparent)"
               >
-                FAQ ({@community_count})
+                <span aria-hidden="true">💬</span> FAQ ({@community_count})
               </.link>
             <% end %>
             <%!-- Cheat Sheet --%>
