@@ -2221,6 +2221,15 @@ textarea {
 .card-menu__pop--right {
   right: 0;
 }
+/* Open upward. Used by the answer action-row menus (voice, overflow) so they
+   never drop into and get hidden behind the chat input composer below. */
+.card-menu__pop--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 0.3rem;
+  z-index: 60;
+}
 /* generic small row button inside a card menu */
 .card-menu__item {
   display: inline-flex;
@@ -2240,6 +2249,52 @@ textarea {
 }
 .card-menu__item:hover {
   background: var(--bg-subtle);
+}
+
+/* ===== Up-vote thank-you toast ===== */
+.vote-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 5.5rem;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  animation:
+    vote-toast-in 0.42s cubic-bezier(0.18, 1.3, 0.4, 1) both,
+    vote-toast-out 0.5s ease 2.1s forwards;
+}
+.vote-toast__emoji {
+  display: inline-block;
+  font-size: 1.1rem;
+  animation: vote-emoji-wiggle 0.6s ease-in-out 2;
+}
+@keyframes vote-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(18px) scale(0.8); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+@keyframes vote-toast-out {
+  to { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.96); }
+}
+@keyframes vote-emoji-wiggle {
+  0%, 100% { transform: rotate(0) scale(1); }
+  25%      { transform: rotate(-18deg) scale(1.25); }
+  75%      { transform: rotate(18deg) scale(1.25); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vote-toast { animation: vote-toast-in 0.01s both, vote-toast-out 0.4s ease 2.1s forwards; }
+  .vote-toast__emoji { animation: none; }
 }
 
 /* ===== Compact confidence pill ===== */

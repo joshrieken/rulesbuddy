@@ -1,5 +1,33 @@
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 
+// Fun thank-you toast when a user up-votes an answer. The server pushes a
+// "vote_thanks" event, which LiveView re-dispatches on window as phx:vote_thanks.
+const VOTE_THANKS = [
+  ["🎉", "You're a legend! Thanks!"],
+  ["🙌", "Knowledge leveled up!"],
+  ["🚀", "Answer boosted!"],
+  ["🦸", "You made this better!"],
+  ["✨", "High five! Much appreciated."],
+  ["🎲", "Thanks, you rule!"],
+  ["🌟", "Gold star for you!"],
+];
+function showVoteThanks() {
+  document.querySelectorAll(".vote-toast").forEach((t) => t.remove());
+  const [emoji, msg] = VOTE_THANKS[Math.floor(Math.random() * VOTE_THANKS.length)];
+  const toast = document.createElement("div");
+  toast.className = "vote-toast";
+  const e = document.createElement("span");
+  e.className = "vote-toast__emoji";
+  e.textContent = emoji;
+  const t = document.createElement("span");
+  t.textContent = msg;
+  toast.appendChild(e);
+  toast.appendChild(t);
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2700);
+}
+window.addEventListener("phx:vote_thanks", showVoteThanks);
+
 let Hooks = {};
 // Persists the selected game-list view to localStorage when the server
 // pushes "save_view". Restored on connect via the LiveSocket params above.

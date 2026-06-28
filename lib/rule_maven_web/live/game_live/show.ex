@@ -483,6 +483,9 @@ defmodule RuleMavenWeb.GameLive.Show do
     {id, _} = Integer.parse(id_str)
     uid = socket.assigns.current_user.id
 
+    # A fresh up-vote (not removing an existing one) earns a fun thank-you toast.
+    new_upvote? = value == "up" && Map.get(socket.assigns.community_user_votes, id) != "up"
+
     case Games.set_community_vote(id, uid, value, socket.assigns.is_admin) do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, vote_error_message(reason))}
@@ -495,8 +498,10 @@ defmodule RuleMavenWeb.GameLive.Show do
 
         {cv_counts, cv_user} = Games.community_vote_maps(vote_ids, uid)
 
-        {:noreply,
-         assign(socket, community_vote_counts: cv_counts, community_user_votes: cv_user)}
+        socket =
+          assign(socket, community_vote_counts: cv_counts, community_user_votes: cv_user)
+
+        {:noreply, if(new_upvote?, do: push_event(socket, "vote_thanks", %{}), else: socket)}
     end
   end
 
@@ -2061,7 +2066,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <span>{cur.label}</span>
                       <span style="opacity:0.6">▾</span>
                     </summary>
-                    <div class="card-menu__pop">
+                    <div class="card-menu__pop card-menu__pop--up">
                       <button
                         :for={v <- RuleMaven.Voices.all()}
                         type="button"
@@ -2219,7 +2224,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     >
                       ⋯
                     </summary>
-                    <div class="card-menu__pop card-menu__pop--right">
+                    <div class="card-menu__pop card-menu__pop--right card-menu__pop--up">
                       <button
                         type="button"
                         id={"copy-btn-#{idx}"}
