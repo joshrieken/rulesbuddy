@@ -120,9 +120,19 @@ defmodule RuleMavenWeb.GameLive.Faq do
       </div>
 
       <h1 style="font-size:1.25rem;font-weight:700;margin-bottom:0.25rem">{@game.name} — FAQ</h1>
-      <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:1.25rem">
-        Community-curated rules answers
+      <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:1rem">
+        The questions players ask most — answered straight from the rulebook.
       </p>
+
+      <div
+        :if={@community_questions != []}
+        style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0.75rem;margin-bottom:1.25rem;background:var(--bg-surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0.4rem"
+      >
+        <span style="font-size:1.1rem;line-height:1">📖</span>
+        <p style="font-size:0.72rem;color:var(--text-secondary);line-height:1.45;margin:0">
+          Every answer here is <strong>grounded in the official rules</strong> and vetted by the community — promoted only after it holds up against the rulebook. No guesswork, no house rules.
+        </p>
+      </div>
 
       <%!-- Category filter pills --%>
       <%= if @categories != [] do %>
@@ -251,7 +261,32 @@ defmodule RuleMavenWeb.GameLive.Faq do
               <span style="color:var(--text-muted)">…</span>
             <% end %>
           </div>
-          <span :if={@q.canonical_question} style="font-size:0.6rem;color:var(--accent);margin-top:0.2rem;display:block">★ curated</span>
+          <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-top:0.4rem">
+            <span
+              :if={@q.verified}
+              style="font-size:0.6rem;font-weight:600;color:var(--green);background:color-mix(in srgb, var(--green) 14%, var(--bg-surface));padding:0.1rem 0.4rem;border-radius:1rem"
+            >
+              ✅ Admin-verified
+            </span>
+            <span
+              :if={@q.canonical_question}
+              style="font-size:0.6rem;font-weight:600;color:var(--accent);background:color-mix(in srgb, var(--accent) 14%, var(--bg-surface));padding:0.1rem 0.4rem;border-radius:1rem"
+            >
+              ★ Curated
+            </span>
+            <span
+              :if={@q.cited_page}
+              style="font-size:0.6rem;font-weight:600;color:var(--text-secondary);background:var(--bg-subtle);padding:0.1rem 0.4rem;border-radius:1rem"
+            >
+              📖 Rulebook p.{@q.cited_page}
+            </span>
+            <span
+              :if={!@q.cited_page && @q.citation_valid}
+              style="font-size:0.6rem;font-weight:600;color:var(--text-secondary);background:var(--bg-subtle);padding:0.1rem 0.4rem;border-radius:1rem"
+            >
+              📖 Cited from rulebook
+            </span>
+          </div>
         </div>
         <%= if @is_admin do %>
           <button
