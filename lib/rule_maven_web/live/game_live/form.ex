@@ -60,7 +60,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         # Which Generated-tab sections are expanded. Server-controlled so a
         # re-render (e.g. clicking Generate) doesn't re-assert a hardcoded `open`
         # and reopen sections the user collapsed. All open by default.
-        open_sections: MapSet.new(["suggestions", "dyk", "setup", "categories"]),
+        open_sections: MapSet.new(["suggestions", "dyk", "setup", "categories", "theme"]),
         # Per-source HTML-regen result for inline feedback: source_id => :ok | :error.
         regen_html_status: %{},
         regenerating_suggestions: false,
@@ -472,6 +472,16 @@ defmodule RuleMavenWeb.GameLive.Form do
     # worker broadcasts {:theme_palette, ...} when done (subscribed in mount).
     RuleMaven.Workers.ThemePaletteWorker.enqueue(socket.assigns.game)
     {:noreply, assign(socket, regenerating_theme: true)}
+  end
+
+  @impl true
+  def handle_event("clear_theme", _params, socket) do
+    {:ok, game} = Games.update_game(socket.assigns.game, %{theme_palette: nil})
+
+    {:noreply,
+     socket
+     |> assign(game: game)
+     |> put_flash(:info, "Game theme cleared.")}
   end
 
   @impl true
@@ -1607,6 +1617,37 @@ defmodule RuleMavenWeb.GameLive.Form do
      |> put_flash(:error, "Theme generation failed: #{inspect(reason)}")}
   end
 
+  # A swatch + mini mock-up for one generated palette variant, so an admin can see
+  # what the Game Light / Dark theme looks like without leaving the form.
+  defp theme_preview(vars, label) when is_map(vars) do
+    assigns = %{v: vars, label: label}
+
+    ~H"""
+    <div style={"display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.5rem;border-radius:0.35rem;border:1px solid var(--border);background:#{@v["--bg"]}"}>
+      <span style={"font-size:0.6rem;font-weight:700;width:2.5rem;flex-shrink:0;color:#{@v["--text"]}"}>
+        {@label}
+      </span>
+      <div style={"flex:1;min-width:0;padding:0.4rem 0.5rem;border-radius:0.3rem;background:#{@v["--bg-surface"]};border:1px solid #{@v["--border"]}"}>
+        <div style={"font-size:0.7rem;font-weight:700;color:#{@v["--text-heading"]}"}>Aa heading</div>
+        <div style={"font-size:0.62rem;color:#{@v["--text-secondary"]}"}>body text sample</div>
+        <span style={"display:inline-block;margin-top:0.25rem;font-size:0.58rem;padding:0.1rem 0.4rem;border-radius:0.25rem;color:#fff;background:#{@v["--accent"]}"}>
+          Accent
+        </span>
+      </div>
+      <div style="display:flex;gap:0.2rem;flex-shrink:0">
+        <span
+          :for={key <- ["--accent", "--bg", "--bg-surface", "--text"]}
+          title={key}
+          style={"width:1rem;height:1rem;border-radius:0.2rem;border:1px solid var(--border);background:#{@v[key]}"}
+        >
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp theme_preview(_, _), do: Phoenix.HTML.raw("")
+
   @impl true
   def handle_async(:search_bgg, {:ok, {cookies, result}}, socket) do
     require Logger
@@ -2323,17 +2364,6 @@ defmodule RuleMavenWeb.GameLive.Form do
             style={"color:var(--accent);background:none;border:none;font-size:0.75rem;font-weight:600;margin-left:0.5rem;cursor:#{if @generating, do: "default", else: "pointer"};opacity:#{if @generating, do: "0.6", else: "1"}"}
           >
             {if @generating, do: "⟳ Refreshing…", else: "Refresh info"}
-          </button>
-        <% end %>
-        <%= if @game && @game.image_url do %>
-          <button
-            type="button"
-            phx-click="regenerate_theme"
-            disabled={@regenerating_theme}
-            title="Regenerate the Game-Specific theme from the cover art"
-            style={"color:var(--accent);background:none;border:none;font-size:0.75rem;font-weight:600;margin-left:0.5rem;cursor:#{if @regenerating_theme, do: "default", else: "pointer"};opacity:#{if @regenerating_theme, do: "0.6", else: "1"}"}
-          >
-            {if @regenerating_theme, do: "🎨 Generating…", else: "🎨 Regen theme"}
           </button>
         <% end %>
       </h1>
@@ -3449,6 +3479,65 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% end %>
                 </div>
               <% end %>
+              <% end %>
+            </div>
+
+            <%!-- Game theme (derived from the BGG cover art) --%>
+            <% has_theme = is_map(@game) and is_map(@game.theme_palette) %>
+            <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
+              <button type="button" phx-click="toggle_section" phx-value-section="theme" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "theme"), do: "▾", else: "▸"}</span>
+                <span>
+                  🎨 Game theme
+                  <%= if has_theme do %>
+                    (ready)
+                  <% end %>
+                </span>
+              </button>
+              <%= if MapSet.member?(@open_sections, "theme") do %>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
+                  <button
+                    type="button"
+                    phx-click="regenerate_theme"
+                    disabled={@regenerating_theme or is_nil(@game) or is_nil(@game.image_url)}
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    {cond do
+                      @regenerating_theme -> "Generating…"
+                      has_theme -> "Regenerate"
+                      true -> "Generate"
+                    end}
+                  </button>
+                  <button
+                    :if={has_theme}
+                    type="button"
+                    phx-click="clear_theme"
+                    data-confirm="Remove the generated theme for this game? The Game Light/Dark options will disappear until regenerated."
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <%= cond do %>
+                  <% is_nil(@game) or is_nil(@game.image_url) -> %>
+                    <p style="font-size:0.62rem;color:var(--text-muted)">
+                      Needs a cover image first — pull it from BGG with “Refresh info”.
+                    </p>
+                  <% @regenerating_theme -> %>
+                    <p style="font-size:0.62rem;color:var(--text-muted)">
+                      ⏳ Reading the cover art and designing a light + dark palette…
+                    </p>
+                  <% has_theme -> %>
+                    <p style="font-size:0.62rem;color:var(--text-muted);margin:0 0 0.5rem">
+                      Pick “✨ Game Light” / “✨ Game Dark” in the theme menu on this game's page.
+                    </p>
+                    {theme_preview(@game.theme_palette["light"], "Light")}
+                    {theme_preview(@game.theme_palette["dark"], "Dark")}
+                  <% true -> %>
+                    <p style="font-size:0.62rem;color:var(--text-muted)">
+                      Generate a color theme from the cover art, selectable as “Game Light / Dark”.
+                    </p>
+                <% end %>
               <% end %>
             </div>
           </div>
