@@ -227,6 +227,25 @@ defmodule RuleMaven.Prompts do
   {{rulebook}}
   """
 
+  # Vars: game_name, rulebook, items
+  @setup_verify """
+  You are a strict fact-checker for a board-game SETUP checklist for "{{game_name}}". Check each numbered item (components to gather and setup steps) against the rulebook text.
+
+  An item PASSES only if it is FULLY and ACCURATELY supported by the rulebook. REJECT an item if it:
+  - lists a component, quantity, or step the text does not state, or contradicts it;
+  - is misleading because it omits a clause that changes what actually happens (e.g. "remove the X cards" when the rules remove them from one place and then use them — the step must reflect the real outcome);
+  - garbles or merges steps so the result is wrong or out of order;
+  - cannot be confirmed from the text below (when unsure, REJECT — a wrong setup step is worse than a missing one).
+
+  Output ONLY the numbers of the items that PASS, comma-separated, e.g. `1,2,5`. If none pass, output `none`. No other text.
+
+  RULEBOOK:
+  {{rulebook}}
+
+  CHECKLIST ITEMS:
+  {{items}}
+  """
+
   # Vars: game_name, rulebook, facts
   @did_you_know_verify """
   You are a strict fact-checker for "Did you know?" facts about the board game "{{game_name}}". Check each numbered candidate fact below against the rulebook text.
@@ -362,6 +381,14 @@ defmodule RuleMaven.Prompts do
       description: "Drops generated facts that aren't fully/accurately supported by the rulebook.",
       vars: ~w(game_name rulebook facts),
       default: @did_you_know_verify
+    },
+    %{
+      key: "setup_verify",
+      group: "Content generation",
+      label: "Setup checklist fact-check",
+      description: "Drops setup components/steps that aren't fully/accurately supported by the rulebook.",
+      vars: ~w(game_name rulebook items),
+      default: @setup_verify
     },
     %{
       key: "categories",

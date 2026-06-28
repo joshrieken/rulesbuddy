@@ -83,7 +83,7 @@ defmodule RuleMaven.Setup do
         {:ok, content} ->
           case parse_sections(content) do
             nil -> {:error, "Could not parse the setup checklist. Please retry."}
-            map -> {:ok, Jason.encode!(map)}
+            map -> {:ok, Jason.encode!(verify_checklist(game.name, text, map))}
           end
 
         {:error, reason} ->
@@ -146,6 +146,89 @@ defmodule RuleMaven.Setup do
     case Regex.split(~r/\s+[—–-]\s+|:\s+/, item, parts: 2) do
       [title, detail] -> %{"title" => String.trim(title), "detail" => String.trim(detail)}
       [title] -> %{"title" => String.trim(title), "detail" => ""}
+    end
+  end
+
+  # Second-pass fact-check: drop any component/step not fully & accurately
+  # supported by the rulebook (a wrong setup step is worse than a missing one).
+  # Fail-open — a verify error, an unparseable reply, OR a reply that would drop
+  # the ENTIRE checklist keeps the original (a real game always has some valid
+  # setup, so an all-empty result means the checker misfired, not a bad list).
+  defp verify_checklist(game_name, text, %{"components" => comps, "setup" => steps} = map) do
+    comp_texts = comps
+    step_texts = Enum.map(steps, &step_text/1)
+    items = comp_texts ++ step_texts
+
+    if items == [] do
+      map
+    else
+      numbered =
+        items
+        |> Enum.with_index(1)
+        |> Enum.map_join("\n", fn {it, i} -> "#{i}. #{it}" end)
+
+      prompt =
+        RuleMaven.Prompts.render("setup_verify", %{
+          game_name: game_name,
+          rulebook: String.slice(to_string(text), 0, 24_000),
+          items: numbered
+        })
+
+      case LLM.chat(prompt, "setup_verify_#{game_name}",
+             system:
+               "You are a strict board-game rulebook fact-checker. Pass only setup items that are fully and accurately supported; reject anything misleading, garbled, or unconfirmed.",
+             max_tokens: 600
+           ) do
+        {:ok, out} ->
+          case keep_indices(out) do
+            :all ->
+              map
+
+            keep ->
+              nc = length(comps)
+              kept_comps = filter_by_index(comps, 1, keep)
+              kept_steps = filter_by_index(steps, nc + 1, keep)
+
+              # Guard: never let the checker wipe the whole checklist.
+              if kept_comps == [] and kept_steps == [],
+                do: map,
+                else: %{map | "components" => kept_comps, "setup" => kept_steps}
+          end
+
+        {:error, _} ->
+          map
+      end
+    end
+  end
+
+  defp verify_checklist(_game_name, _text, map), do: map
+
+  defp step_text(%{"title" => t, "detail" => d}) do
+    [t, d] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" — ")
+  end
+
+  defp step_text(other), do: to_string(other)
+
+  # Keep list elements whose 1-based position (starting at `offset`) is in `keep`.
+  defp filter_by_index(list, offset, keep) do
+    list
+    |> Enum.with_index(offset)
+    |> Enum.filter(fn {_, i} -> MapSet.member?(keep, i) end)
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  # Parse the checker's "1,2,5" / "none" reply. :all on an unparseable non-"none"
+  # reply (fail-open); empty set only on an explicit "none".
+  defp keep_indices(text) do
+    trimmed = String.trim(text || "")
+
+    cond do
+      Regex.match?(~r/^\s*none\b/i, trimmed) ->
+        MapSet.new()
+
+      true ->
+        nums = Regex.scan(~r/\d+/, trimmed) |> Enum.map(fn [n] -> String.to_integer(n) end)
+        if nums == [], do: :all, else: MapSet.new(nums)
     end
   end
 
