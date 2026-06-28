@@ -980,7 +980,7 @@ defmodule RuleMaven.Games do
   Toggles an admin "verified" sign-off — a single publish/unpublish action.
 
   Verifying is the strongest trust signal, so it bypasses the usual citation
-  gate and nightly promotion: the row is immediately made community-visible and
+  gate and scheduled promotion: the row is immediately made community-visible and
   pool-eligible, its trust_score floored to the top tier, and the author's
   reputation rewarded — citation or not. Any other verified row with the same
   question text is cleared (one verified answer per question).

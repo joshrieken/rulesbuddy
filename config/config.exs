@@ -43,7 +43,7 @@ config :rule_maven, Oban,
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(10)},
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 4 * * *", RuleMaven.Workers.DirectPromotionWorker}
+       {"*/15 * * * *", RuleMaven.Workers.DirectPromotionWorker}
      ]}
   ],
   queues: [default: 5, cheatsheet: 2, clustering: 1, cleanup: 2, llm: 3, expansion: 2]

@@ -1,6 +1,6 @@
 defmodule RuleMaven.Workers.DirectPromotionWorker do
   @moduledoc """
-  Nightly job: promotes well-received questions to the community pool.
+  Runs every 15 minutes: promotes well-received questions to the community pool.
 
   Candidates are pooled (citation-backed), non-refused, not-yet-community rows
   that carry an embedding. They are clustered by embedding similarity (not exact
