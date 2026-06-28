@@ -118,11 +118,11 @@ defmodule RuleMaven.UsersTest do
       assert Users.admin?(gm)
     end
 
-    test "admin?/1 returns false for player role", %{player: player} do
+    test "admin?/1 returns false for user role", %{player: player} do
       refute Users.admin?(player)
     end
 
-    test "can?/2 grants :admin to admin, denies to player", %{gm: gm, player: player} do
+    test "can?/2 grants :admin to admin, denies to user", %{gm: gm, player: player} do
       assert Users.can?(gm, :admin)
       refute Users.can?(player, :admin)
     end
@@ -143,7 +143,7 @@ defmodule RuleMaven.UsersTest do
 
       assert user.username == "new_player"
       assert user.email == "new@test.com"
-      assert user.role == "player"
+      assert user.role == "user"
       assert String.length(password) >= 8
     end
 

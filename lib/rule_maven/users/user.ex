@@ -5,7 +5,7 @@ defmodule RuleMaven.Users.User do
   schema "users" do
     field :username, :string
     field :email, :string
-    field :role, :string, default: "player"
+    field :role, :string, default: "user"
     field :password, :string, virtual: true
     field :password_hash, :string
     field :reputation, :integer, default: 0
@@ -15,13 +15,13 @@ defmodule RuleMaven.Users.User do
     timestamps(type: :utc_datetime)
   end
 
-  @all_roles ["player", "admin"]
+  @all_roles ["user", "admin"]
 
   # Capabilities granted to each role. To add a role: add it to @all_roles and
   # give it an entry here. To grant/revoke a power: edit its capability list.
   # All authorization flows through can?/2 so nothing is tied to a role name.
   @role_capabilities %{
-    "player" => [],
+    "user" => [],
     "admin" => [:admin]
   }
 

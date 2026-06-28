@@ -22,25 +22,25 @@ else
   IO.puts("admin user already exists: #{username}")
 end
 
-# --- Player User ---
+# --- Regular User ---
 
-player_username = "player"
-player_email = "player@rulemaven.local"
-player_password = "player"
+user_username = "user"
+user_email = "user@rulemaven.local"
+user_password = "user"
 
-if is_nil(Repo.get_by(User, username: player_username)) do
+if is_nil(Repo.get_by(User, username: user_username)) do
   Repo.insert!(
     User.registration_changeset(%User{}, %{
-      username: player_username,
-      email: player_email,
-      password: player_password,
-      role: "player"
+      username: user_username,
+      email: user_email,
+      password: user_password,
+      role: "user"
     })
   )
 
-  IO.puts("Seeded player user: #{player_username} / #{player_password}")
+  IO.puts("Seeded regular user: #{user_username} / #{user_password}")
 else
-  IO.puts("player user already exists: #{player_username}")
+  IO.puts("regular user already exists: #{user_username}")
 end
 
 IO.puts(

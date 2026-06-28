@@ -14,7 +14,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
          users: all_users,
          new_username: "",
          new_email: "",
-         new_role: "player",
+         new_role: "user",
          temp_password: nil,
          created_username: nil
        )}
@@ -53,12 +53,12 @@ defmodule RuleMavenWeb.AdminLive.Users do
         {:noreply, put_flash(socket, :error, "User not found.")}
 
       user ->
-        {:ok, _} = Users.update_user_role(user, "player")
-        audit(socket, "role.demote", user, %{to: "player"})
+        {:ok, _} = Users.update_user_role(user, "user")
+        audit(socket, "role.demote", user, %{to: "user"})
         users = Users.list_users()
 
         {:noreply,
-         assign(socket, users: users) |> put_flash(:info, "#{user.username} demoted to player.")}
+         assign(socket, users: users) |> put_flash(:info, "#{user.username} demoted to user.")}
     end
   end
 
@@ -83,7 +83,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
            created_username: user.username,
            new_username: "",
            new_email: "",
-           new_role: "player"
+           new_role: "user"
          )
          |> put_flash(:info, "Created #{user.username}")}
 
@@ -189,7 +189,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
                 value={@new_role}
                 style="border:1px solid var(--border);border-radius:0.25rem;padding:0.3rem 0.4rem;font-size:0.78rem;background:var(--bg);color:var(--text);cursor:pointer"
               >
-                <option value="player">Player</option>
+                <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -207,7 +207,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
       <% end %>
 
       <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.75rem">
-        Promote players to admins, or demote them back. ({length(@users)} users)
+        Promote users to admins, or demote them back. ({length(@users)} users)
       </p>
 
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:0.5rem">
@@ -249,7 +249,7 @@ defmodule RuleMavenWeb.AdminLive.Users do
                 </td>
                 <td style="padding:0.35rem 0.75rem">
                   <div style="display:flex;gap:0.35rem">
-                    <%= if user.role == "player" do %>
+                    <%= if user.role == "user" do %>
                       <button
                         type="button"
                         phx-click="promote_user"

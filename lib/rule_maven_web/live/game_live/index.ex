@@ -107,7 +107,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   defp db_paged?(view), do: view in ~w(all needs_bgg)
 
   # Views available to a user. "All Games" (full catalog) is admin only;
-  # players are limited to playable games, their collection, and favorites.
+  # non-admin users are limited to playable games, their collection, and favorites.
   defp view_tabs(user) do
     base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
 

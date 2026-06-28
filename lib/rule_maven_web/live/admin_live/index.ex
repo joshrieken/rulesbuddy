@@ -107,7 +107,7 @@ defmodule RuleMavenWeb.AdminLive.Index do
           navigate={~p"/admin/users"}
           icon="👥"
           title="Manage Users"
-          desc="Promote players to admins. Manage roles."
+          desc="Promote users to admins. Manage roles."
         />
         <.card
           navigate={~p"/admin/invites"}
