@@ -122,8 +122,6 @@ defmodule RuleMaven.ThemePalette do
       # accent (e.g. yellow) header that looks garish and washes out the text.
       "--header-bg-start" => hex(mix(@header_dark, accent, 0.22)),
       "--header-bg-end" => hex(mix(@header_dark, accent, 0.10)),
-      # Text on the (dark) header gradient — effectively white.
-      "--header-text" => hex(readable_on(mix(@header_dark, accent, 0.22))),
       "--header-border" => @semantic[scheme_key(scheme)]["--yellow"],
       "--focus-ring" => rgba(accent, 0.18)
     }

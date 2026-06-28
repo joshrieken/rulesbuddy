@@ -35,9 +35,6 @@
      themes use white; generated per-game themes override with black/white chosen
      for contrast. Referenced as var(--accent-text, #fff) so this default wins. */
   --accent-text: #FFFFFF;
-  /* Text/icons on the header gradient. White for static themes; generated
-     per-game themes override with black/white for contrast. */
-  --header-text: #FFFFFF;
   --yellow: #B8960F;
   --red: #C83030;
   --red-bg: #FFF0F0;
@@ -1083,7 +1080,7 @@ a:not([class]):hover {
   font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 800;
-  color: var(--header-text, #FFFFFF);
+  color: #FFFFFF;
   letter-spacing: -0.02em;
 }
 
@@ -1093,7 +1090,7 @@ a:not([class]):hover {
   background-image: linear-gradient(
     100deg,
     var(--header-border) 0%,
-    var(--header-text, #ffffff) 50%,
+    #ffffff 50%,
     var(--accent-light) 100%
   );
   -webkit-background-clip: text;
@@ -1125,7 +1122,7 @@ a:not([class]):hover {
 
 .header-user {
   font-size: 0.75rem;
-  color: color-mix(in srgb, var(--header-text, #fff) 75%, transparent);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .header-role-badge {
@@ -1143,14 +1140,14 @@ a:not([class]):hover {
 }
 
 .header-role-badge-player {
-  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
-  color: color-mix(in srgb, var(--header-text, #fff) 70%, transparent);
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .header-auth-link {
   font-size: 0.75rem;
   font-weight: 600;
-  color: color-mix(in srgb, var(--header-text, #fff) 65%, transparent);
+  color: rgba(255, 255, 255, 0.65);
   transition: color 0.15s;
   text-decoration: none;
   padding: 0.25rem 0.5rem;
@@ -1158,8 +1155,8 @@ a:not([class]):hover {
 }
 
 .header-auth-link:hover {
-  color: var(--header-text, #FFFFFF);
-  background: color-mix(in srgb, var(--header-text, #fff) 10%, transparent);
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ===== User Dropdown ===== */
@@ -1260,7 +1257,10 @@ a:not([class]):hover {
   flex-shrink: 0;
 }
 
-.motion-toggle {
+/* `button.` prefix so these win over the generic `[type="button"]` reset (equal
+   specificity, defined later) — otherwise the toggle picks up --bg-surface and
+   turns into a white box on light themes. */
+button.motion-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1269,15 +1269,15 @@ a:not([class]):hover {
   padding: 0;
   font-size: 0.85rem;
   line-height: 1;
-  border: 1px solid color-mix(in srgb, var(--header-text, #fff) 20%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--header-text, #fff) 8%, transparent);
+  background: rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: background 0.15s;
-  color: var(--header-text, #fff);
+  color: #FFFFFF;
 }
-.motion-toggle:hover {
-  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
+button.motion-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 /* Show the sparkle when motion is on, the moon when off. */
 .motion-toggle .motion-toggle-off {
@@ -1295,10 +1295,10 @@ a:not([class]):hover {
   font-size: 0.7rem;
   line-height: 1;
   padding: 0.35rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--header-text, #fff) 20%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--header-text, #fff) 8%, transparent);
-  color: color-mix(in srgb, var(--header-text, #fff) 70%, transparent);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   font-weight: 600;
@@ -1306,8 +1306,8 @@ a:not([class]):hover {
 }
 
 .theme-select:hover {
-  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
-  color: var(--header-text, #FFFFFF);
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
 }
 
 .theme-select option {
