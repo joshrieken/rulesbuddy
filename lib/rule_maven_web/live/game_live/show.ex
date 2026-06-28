@@ -95,7 +95,8 @@ defmodule RuleMavenWeb.GameLive.Show do
     community_count = RuleMaven.Faq.community_count(game)
     cq_ids = Enum.map(community, & &1.id)
 
-    vote_ids = cq_ids ++ conversation_source_ids(conversation)
+    vote_ids =
+      cq_ids ++ conversation_source_ids(conversation) ++ conversation_answer_ids(conversation)
 
     {cv_counts, cv_user} =
       Games.community_vote_maps(vote_ids, socket.assigns.current_user.id)
@@ -305,12 +306,22 @@ defmodule RuleMavenWeb.GameLive.Show do
     |> mark_pending_thinking()
   end
 
-  # Source rows behind provisional pool hits in the current thread — so their
-  # vote counts/state load alongside the community list.
+  # Source rows behind pool hits in the current thread — so their vote
+  # counts/state load alongside the community list.
   defp conversation_source_ids(conversation) do
     conversation
     |> Enum.filter(& &1[:pool_source_id])
     |> Enum.map(& &1[:pool_source_id])
+    |> Enum.uniq()
+  end
+
+  # Own (non-pool) answer rows in the current thread. Other players who are
+  # later served this answer from the pool vote on this same row, so loading
+  # its counts lets the author see the community tally on their own answer.
+  defp conversation_answer_ids(conversation) do
+    conversation
+    |> Enum.filter(&(&1[:role] == :assistant && &1[:id] && !&1[:pool_hit]))
+    |> Enum.map(& &1[:id])
     |> Enum.uniq()
   end
 
@@ -425,7 +436,8 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     vote_ids =
       Enum.map(socket.assigns.community_questions, & &1.id) ++
-        conversation_source_ids(socket.assigns.conversation)
+        conversation_source_ids(socket.assigns.conversation) ++
+        conversation_answer_ids(socket.assigns.conversation)
 
     {cv_counts, cv_user} = Games.community_vote_maps(vote_ids, uid)
     {:noreply, assign(socket, community_vote_counts: cv_counts, community_user_votes: cv_user)}
@@ -1525,6 +1537,25 @@ defmodule RuleMavenWeb.GameLive.Show do
             </div>
           <% end %>
 
+          <!-- Persistent Did-you-know: once a conversation starts the full
+               empty-state card is gone, so keep a slim sticky version pinned
+               above the answers (a fast reply otherwise steals the fact). -->
+          <%= if @rule_card && @conversation != [] do %>
+            <div style="position:sticky;top:0;z-index:5;margin:-1rem -1rem 0;padding:0.55rem 1rem;background:var(--bg-subtle);border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:0.5rem;font-size:0.78rem;line-height:1.45;color:var(--text)">
+              <span style="font-weight:800;letter-spacing:0.03em;text-transform:uppercase;color:var(--accent);white-space:nowrap;flex-shrink:0">💡 Did you know?</span>
+              <span style="flex:1;min-width:0">
+                {clean_rule_text(@rule_card.content)}
+                <span :if={@rule_card.page_number} style="color:var(--text-muted);white-space:nowrap">· p.{@rule_card.page_number}</span>
+              </span>
+              <button
+                type="button"
+                phx-click="shuffle_rule"
+                title="Another rule"
+                style="background:none;border:1px solid var(--border);border-radius:999px;font-size:0.65rem;cursor:pointer;padding:0.12rem 0.45rem;color:var(--text-muted);font-weight:600;flex-shrink:0"
+              >🔀</button>
+            </div>
+          <% end %>
+
           <%= if @conversation == [] && @source_count > 0 do %>
             <!-- Empty state: lead with the primary action, suggestions visible immediately -->
             <div style="text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.6">
@@ -1999,8 +2030,9 @@ defmodule RuleMavenWeb.GameLive.Show do
                       title="Total not-helpful votes"
                     >{Map.get(counts, :down, 0)}</span>
                   <% else %>
-                    <%= if msg[:pool_hit] && msg[:pool_provisional] && msg[:pool_source_id] do %>
-                      <!-- Provisional pool hit: vote accrues to the source row -->
+                    <%= if msg[:pool_hit] && msg[:pool_source_id] do %>
+                      <!-- Pool hit (trusted or provisional): vote accrues to the
+                           source row, so every player sees the same tally. -->
                       <% sid = msg[:pool_source_id] %>
                       <% cv = Map.get(@community_user_votes, sid) %>
                       <% counts = Map.get(@community_vote_counts, sid, %{up: 0, down: 0}) %>
@@ -2029,7 +2061,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                         title="Total not-helpful votes"
                       >{Map.get(counts, :down, 0)}</span>
                       <button
-                        :if={@is_admin or cv != "up"}
+                        :if={msg[:pool_provisional] && (@is_admin or cv != "up")}
                         type="button"
                         phx-click="regenerate_answer"
                         phx-value-id={msg.id}
@@ -2039,6 +2071,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       >Regenerate</button>
                     <% else %>
                       <!-- LLM feedback (own questions only) -->
+                      <% own_counts = Map.get(@community_vote_counts, msg[:id], %{up: 0, down: 0}) %>
                       <button
                         :if={!msg[:pool_hit]}
                         type="button"
@@ -2055,6 +2088,14 @@ defmodule RuleMavenWeb.GameLive.Show do
                         style={"background:none;border:none;font-size:1rem;cursor:pointer;opacity:#{if msg[:feedback] == "down", do: "1", else: "0.4"}"}
                         title={if msg[:feedback] == "down", do: "Remove vote", else: "Not helpful"}
                       >👎</button>
+                      <span
+                        :if={
+                          !msg[:pool_hit] &&
+                            Map.get(own_counts, :up, 0) + Map.get(own_counts, :down, 0) > 0
+                        }
+                        style="font-size:0.65rem;color:var(--text-muted)"
+                        title="Votes from other players who were served this answer"
+                      >· {Map.get(own_counts, :up, 0)} 👍 {Map.get(own_counts, :down, 0)} 👎</span>
                       <button
                         :if={!msg[:pool_hit] && (@is_admin or msg[:feedback] != "up")}
                         type="button"
@@ -2413,12 +2454,11 @@ defmodule RuleMavenWeb.GameLive.Show do
   defp conf_max, do: @conf_max
   defp answer_confidence(msg) do
     cond do
-      msg[:pool_hit] && msg[:pool_provisional] ->
-        {"Unverified — single source", 2, "#d97706",
-         "An earlier answer to a similar question. It hasn't been confirmed by other players yet.",
-         "Community-verified — once other players upvote this answer too."}
-
-      msg[:pool_hit] ->
+      # Community-verified (trusted pool hit) is the ceiling. A provisional pool
+      # hit is *not* checked here — it carries the source row's citation, so it
+      # should read at its citation strength, the same as when freshly asked,
+      # rather than dropping a level just because it was served from the pool.
+      msg[:pool_hit] && !msg[:pool_provisional] ->
         {"Community-verified", 5, "#15803d",
          "Other players upvoted this same answer, so it's been confirmed by the community.", nil}
 
@@ -2431,6 +2471,11 @@ defmodule RuleMavenWeb.GameLive.Show do
         {"Cited passage, page unconfirmed", 3, "#2563eb",
          "The answer quotes rulebook text, but the exact page number couldn't be confirmed.",
          "Cited from rulebook — regenerate to try to pin the exact page."}
+
+      msg[:pool_hit] && msg[:pool_provisional] ->
+        {"Unverified — single source", 2, "#d97706",
+         "An earlier answer to a similar question with no rulebook citation. It hasn't been confirmed by other players yet.",
+         "Community-verified — once other players upvote this answer too."}
 
       true ->
         {"No direct citation", 1, "#d97706",
