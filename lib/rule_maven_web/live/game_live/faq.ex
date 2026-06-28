@@ -208,6 +208,28 @@ defmodule RuleMavenWeb.GameLive.Faq do
     """
   end
 
+  # Flatten markdown to plain text for the card preview. The preview is a short
+  # slice, so rendering real markdown (and slicing the HTML) would emit broken
+  # tags — strip the syntax to readable text instead.
+  defp strip_markdown(text) do
+    text
+    |> String.replace(~r/```.*?```/s, "")
+    |> String.replace(~r/`([^`]+)`/, "\\1")
+    |> String.replace(~r/!\[[^\]]*\]\([^)]*\)/, "")
+    |> String.replace(~r/\[([^\]]+)\]\([^)]*\)/, "\\1")
+    |> String.replace(~r/\*\*(.+?)\*\*/, "\\1")
+    |> String.replace(~r/__(.+?)__/, "\\1")
+    |> String.replace(~r/\*(.+?)\*/, "\\1")
+    |> String.replace(~r/_(.+?)_/, "\\1")
+    |> String.replace(~r/^\#{1,6}\s+/m, "")
+    |> String.replace(~r/^>\s?/m, "")
+    |> String.replace(~r/^[-*+]\s+/m, "")
+    |> String.replace(~r/^\d+\.\s+/m, "")
+    |> String.replace(~r/\s*\n\s*\n\s*/, " ")
+    |> String.replace(~r/\s*\n\s*/, " ")
+    |> String.trim()
+  end
+
   defp question_card(assigns) do
     ~H"""
     <div style="padding:0.75rem;border:1px solid var(--border);border-radius:0.45rem;background:var(--bg-surface)">
@@ -219,9 +241,10 @@ defmodule RuleMavenWeb.GameLive.Faq do
           >
             {@q.canonical_question || @q.question}
           </.link>
+          <% preview = strip_markdown(@q.canonical_answer || @q.answer || "") %>
           <div style="font-size:0.72rem;color:var(--text-secondary);line-height:1.45;word-break:break-word">
-            {String.slice(@q.canonical_answer || @q.answer || "", 0, 220)}
-            <%= if String.length(@q.canonical_answer || @q.answer || "") > 220 do %>
+            {String.slice(preview, 0, 220)}
+            <%= if String.length(preview) > 220 do %>
               <span style="color:var(--text-muted)">…</span>
             <% end %>
           </div>
