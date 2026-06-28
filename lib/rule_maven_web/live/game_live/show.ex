@@ -1832,7 +1832,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               </details>
             <% else %>
               <div
-                id={"chat-msg-#{idx}"}
+                id={"chat-msg-#{@active_thread_id}-#{idx}"}
                 class={[
                   "chat-msg",
                   msg.role == :user && "chat-msg-user"
