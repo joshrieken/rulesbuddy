@@ -73,14 +73,27 @@
           <nav class="header-nav" id="header-nav">
             <%= if me && RuleMaven.Users.can?(me, :admin) do %>
               <.link href={~p"/admin"} class="nav-link">Dashboard</.link>
-              <.link href={~p"/admin/questions"} class="nav-link">Questions</.link>
-              <.link href={~p"/admin/security"} class="nav-link">Security</.link>
-              <.link href={~p"/admin/threads"} class="nav-link">Threads</.link>
-              <.link href={~p"/admin/users"} class="nav-link">Users</.link>
-              <.link href={~p"/admin/themes"} class="nav-link nav-link-dim">Themes</.link>
-              <.link href={~p"/admin/invites"} class="nav-link">Invites</.link>
-              <.link href={~p"/admin/db"} class="nav-link nav-link-dim">DB</.link>
-              <.link href={~p"/oban"} class="nav-link nav-link-dim" target="_blank">Oban</.link>
+              <details class="user-dropdown">
+                <summary class="user-dropdown-toggle nav-link">Admin</summary>
+                <div class="user-dropdown-menu" style="left:0;right:auto;min-width:160px">
+                  <div class="user-dropdown-section">Review</div>
+                  <.link href={~p"/admin/questions"} class="user-dropdown-link">Questions</.link>
+                  <.link href={~p"/admin/moderation"} class="user-dropdown-link">Moderation</.link>
+                  <.link href={~p"/admin/audit"} class="user-dropdown-link">Audit Log</.link>
+                  <.link href={~p"/admin/threads"} class="user-dropdown-link">Threads</.link>
+                  <div class="user-dropdown-section">Manage</div>
+                  <.link href={~p"/admin/users"} class="user-dropdown-link">Users</.link>
+                  <.link href={~p"/admin/invites"} class="user-dropdown-link">Invites</.link>
+                  <.link href={~p"/admin/catalog"} class="user-dropdown-link">Catalog</.link>
+                  <.link href={~p"/admin/requests"} class="user-dropdown-link">Requests</.link>
+                  <div class="user-dropdown-section">System</div>
+                  <.link href={~p"/admin/security"} class="user-dropdown-link">Security</.link>
+                  <.link href={~p"/admin/db"} class="user-dropdown-link">DB Admin</.link>
+                  <.link href={~p"/admin/themes"} class="user-dropdown-link">Themes</.link>
+                  <.link href={~p"/settings"} class="user-dropdown-link">Settings</.link>
+                  <.link href={~p"/oban"} class="user-dropdown-link" target="_blank">Oban ↗</.link>
+                </div>
+              </details>
             <% end %>
           </nav>
 
@@ -139,16 +152,22 @@
           <%= if me && RuleMaven.Users.can?(me, :admin) do %>
             <div class="drawer-section">Admin</div>
             <.link href={~p"/admin"} class="drawer-link">Dashboard</.link>
+            <div class="drawer-section">Review</div>
             <.link href={~p"/admin/questions"} class="drawer-link">Questions</.link>
-            <.link href={~p"/admin/security"} class="drawer-link">Security</.link>
-            <.link href={~p"/admin/db"} class="drawer-link">DB Admin</.link>
+            <.link href={~p"/admin/moderation"} class="drawer-link">Moderation</.link>
+            <.link href={~p"/admin/audit"} class="drawer-link">Audit Log</.link>
             <.link href={~p"/admin/threads"} class="drawer-link">Review Threads</.link>
+            <div class="drawer-section">Manage</div>
             <.link href={~p"/admin/users"} class="drawer-link">Manage Users</.link>
             <.link href={~p"/admin/invites"} class="drawer-link">Invite Codes</.link>
+            <.link href={~p"/admin/catalog"} class="drawer-link">Game Catalog</.link>
+            <.link href={~p"/admin/requests"} class="drawer-link">Support Requests</.link>
+            <div class="drawer-section">System</div>
+            <.link href={~p"/admin/security"} class="drawer-link">Security</.link>
+            <.link href={~p"/admin/db"} class="drawer-link">DB Admin</.link>
             <.link href={~p"/admin/themes"} class="drawer-link">Theme Usage</.link>
-            <div class="drawer-section">Tools</div>
-            <.link href={~p"/oban"} class="drawer-link" target="_blank">Oban Dashboard ↗</.link>
             <.link href={~p"/settings"} class="drawer-link">Settings</.link>
+            <.link href={~p"/oban"} class="drawer-link" target="_blank">Oban Dashboard ↗</.link>
           <% end %>
           <div class="drawer-section"></div>
           <%= if me do %>
