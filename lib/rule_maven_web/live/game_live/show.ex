@@ -1415,7 +1415,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               patch={~p"/games/#{@game.id}?start=1"}
               style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.72rem;font-weight:600;color:var(--accent);text-decoration:none"
             >
-              ← Start screen
+              Start screen
             </.link>
           </div>
           <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
