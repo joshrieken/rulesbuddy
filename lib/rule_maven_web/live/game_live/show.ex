@@ -1382,7 +1382,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%= if @community_count > 0 do %>
               <.link
                 navigate={~p"/games/#{@game.id}/faq"}
-                style="display:inline-flex;align-items:center;gap:0.25rem;background:var(--accent);color:#fff;border:1px solid var(--accent);text-decoration:none;font-size:0.72rem;font-weight:700;padding:0.25rem 0.6rem;border-radius:0.35rem;flex-shrink:0;box-shadow:0 1px 4px color-mix(in srgb,var(--accent) 40%,transparent)"
+                style="display:inline-flex;align-items:center;gap:0.25rem;background:var(--accent);color:var(--accent-text,#fff);border:1px solid var(--accent);text-decoration:none;font-size:0.72rem;font-weight:700;padding:0.25rem 0.6rem;border-radius:0.35rem;flex-shrink:0;box-shadow:0 1px 4px color-mix(in srgb,var(--accent) 40%,transparent)"
               >
                 <span aria-hidden="true">💬</span> FAQ ({@community_count})
               </.link>
@@ -1442,7 +1442,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <span>
               Questions
               <%= if @pending_count > 0 do %>
-                <span style="display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border-radius:9999px;font-size:0.55rem;font-weight:700;padding:0 0.3rem;min-width:1.1em;height:1.1em;vertical-align:middle;margin-left:0.25rem">{@pending_count}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-text,#fff);border-radius:9999px;font-size:0.55rem;font-weight:700;padding:0 0.3rem;min-width:1.1em;height:1.1em;vertical-align:middle;margin-left:0.25rem">{@pending_count}</span>
               <% end %>
             </span>
             <button
@@ -1628,7 +1628,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               <.link
                 :if={RuleMaven.Users.can?(@current_user, :admin)}
                 navigate={~p"/games/#{@game.id}/edit"}
-                style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.3rem 0.75rem;border-radius:0.3rem"
+                style="background:var(--accent);color:var(--accent-text,#fff);text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.3rem 0.75rem;border-radius:0.3rem"
               >
                 Add rulebook text or PDF
               </.link>
@@ -1839,7 +1839,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 ]}
                 style={"display:flex;flex-direction:column;align-items:#{if msg.role == :user, do: "flex-end", else: "flex-start"}"}
               >
-                <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
+                <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:var(--accent-text,#fff);border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
                   <% stamp =
                     msg.role == :assistant && msg.content != "Thinking..." &&
                       verdict_stamp(msg[:verdict]) %>
@@ -1900,14 +1900,14 @@ defmodule RuleMavenWeb.GameLive.Show do
 
                   <%= if msg[:cited_passage] && msg.content != "Thinking..." do %>
                     <% on_user = msg.role == :user %>
-                    <figure style={"margin:0.75rem 0 0;border-radius:0.5rem;overflow:hidden;border:1px solid #{if on_user, do: "rgba(255,255,255,0.25)", else: "var(--border)"};background:#{if on_user, do: "rgba(255,255,255,0.1)", else: "var(--bg-subtle)"}"}>
+                    <figure style={"margin:0.75rem 0 0;border-radius:0.5rem;overflow:hidden;border:1px solid #{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 25%,transparent)", else: "var(--border)"};background:#{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 10%,transparent)", else: "var(--bg-subtle)"}"}>
                       <%= if msg[:cited_page] do %>
-                        <figcaption style={"display:flex;align-items:center;gap:0.35rem;padding:0.3rem 0.6rem;font-size:0.66rem;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;border-bottom:1px solid #{if on_user, do: "rgba(255,255,255,0.15)", else: "var(--border-subtle)"};color:#{if on_user, do: "rgba(255,255,255,0.85)", else: "var(--text-muted)"}"}>
+                        <figcaption style={"display:flex;align-items:center;gap:0.35rem;padding:0.3rem 0.6rem;font-size:0.66rem;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;border-bottom:1px solid #{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 15%,transparent)", else: "var(--border-subtle)"};color:#{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 85%,transparent)", else: "var(--text-muted)"}"}>
                           <span aria-hidden="true">&#128206;</span>
                           Rulebook &middot; p.{msg.cited_page}
                         </figcaption>
                       <% end %>
-                      <blockquote style={"margin:0;padding:0.55rem 0.7rem 0.55rem 0.85rem;border-left:3px solid #{if on_user, do: "rgba(255,255,255,0.5)", else: "var(--accent)"};font-style:italic;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#{if on_user, do: "rgba(255,255,255,0.92)", else: "var(--text)"}"}>
+                      <blockquote style={"margin:0;padding:0.55rem 0.7rem 0.55rem 0.85rem;border-left:3px solid #{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 50%,transparent)", else: "var(--accent)"};font-style:italic;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 92%,transparent)", else: "var(--text)"}"}>
                         {String.trim(msg.cited_passage)}
                       </blockquote>
                       <%= if msg[:cited_html_link] do %>
@@ -2075,7 +2075,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                         phx-value-id={msg[:id]}
                         phx-value-voice={v.id}
                         class="card-menu__item"
-                        style={if cur_voice == v.id, do: "background:var(--accent);color:#fff"}
+                        style={if cur_voice == v.id, do: "background:var(--accent);color:var(--accent-text,#fff)"}
                       >
                         <span aria-hidden="true">{v.emoji}</span>
                         <span>{v.label}</span>
@@ -2461,7 +2461,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
               <span style="font-size:0.65rem;color:var(--text-muted);font-weight:600;align-self:center">Include:</span>
               <%= for exp <- @expansions do %>
-                <label style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:#fff", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}>
+                <label style={"cursor:pointer;font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:0.3rem;#{if Map.get(@included_expansions, exp.id), do: "background:var(--accent);color:var(--accent-text,#fff)", else: "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border)"}"}>
                   <input
                     type="checkbox"
                     checked={Map.get(@included_expansions, exp.id)}

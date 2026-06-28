@@ -31,6 +31,10 @@
   --accent-dark: #4A3DB5;
   --accent-light: #8B7CF6;
   --accent-subtle: #F0ECFF;
+  /* Foreground for text placed ON --accent (buttons, user chat bubble). Static
+     themes use white; generated per-game themes override with black/white chosen
+     for contrast. Referenced as var(--accent-text, #fff) so this default wins. */
+  --accent-text: #FFFFFF;
   --yellow: #B8960F;
   --red: #C83030;
   --red-bg: #FFF0F0;
@@ -754,7 +758,7 @@ a { color: inherit; text-decoration: inherit; }
 
 ::selection {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--accent-text, var(--bg));
 }
 /* Yellow-accent themes need dark text on selection for contrast */
 [data-theme="golden-hour"] ::selection,
@@ -1538,7 +1542,7 @@ button:disabled, .btn:disabled, [type="button"]:disabled, [type="submit"]:disabl
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 55%, var(--accent-dark) 100%);
-  color: #FFFFFF;
+  color: var(--accent-text, #FFFFFF);
   border-color: var(--accent-dark);
 }
 
@@ -1605,7 +1609,7 @@ a.bg-blue-600,
 a[href*="new"] {
   display: inline-block;
   background: var(--accent);
-  color: #FFFFFF !important;
+  color: var(--accent-text, #FFFFFF) !important;
   padding: 0.5rem 1.5rem;
   border: 1px solid var(--accent-dark);
   border-radius: 6px;
@@ -1995,7 +1999,7 @@ textarea {
 
 .back-link:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text, #fff);
   border-color: var(--accent);
   box-shadow: 0 2px 8px var(--shadow-hover);
 }
@@ -2022,7 +2026,7 @@ textarea {
 
 .action-link:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text, #fff);
   border-color: var(--accent);
 }
 

@@ -100,6 +100,12 @@ defmodule RuleMaven.ThemePalette do
       "--border-strong" => hex(mix(text, bg, 0.62)),
       "--border-subtle" => hex(mix(text, bg, 0.88)),
       "--accent" => hex(accent),
+      # Foreground for text/icons placed ON the accent color (buttons, the user
+      # chat bubble). Black or white, whichever reads — a vivid light accent
+      # (e.g. yellow) keeps its color as a link on the page but flips to dark
+      # text when used as a fill. Defaults to #fff in static themes via
+      # `var(--accent-text, #fff)`, so only generated themes need this.
+      "--accent-text" => hex(readable_on(accent)),
       "--accent-dark" => hex(darken(accent, 0.18)),
       "--accent-light" => hex(lighten(accent, 0.20)),
       "--accent-subtle" => hex(mix(bg, accent, 0.12)),
@@ -115,6 +121,15 @@ defmodule RuleMaven.ThemePalette do
 
   defp scheme_key(:light), do: "light"
   defp scheme_key(:dark), do: "dark"
+
+  # Pick black or white text for use ON `color`, whichever has better contrast.
+  # Uses a slightly-off near-black/near-white so it never looks harsher than the
+  # rest of the UI. Compares against pure tones to decide the direction.
+  defp readable_on(color) do
+    dark = {26, 26, 26}
+    light = {255, 255, 255}
+    if contrast(dark, color) >= contrast(light, color), do: dark, else: light
+  end
 
   # Headings should be a touch stronger than body: darker on light, lighter on dark.
   defp darken_toward_text({r, g, b}, :light), do: darken({r, g, b}, 0.10)
