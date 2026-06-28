@@ -121,7 +121,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
 
       <h1 style="font-size:1.25rem;font-weight:700;margin-bottom:0.25rem">{@game.name} — FAQ</h1>
       <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:1rem">
-        The questions players ask most — answered straight from the rulebook.
+        The questions players ask most, with answers drawn from the rulebook.
       </p>
 
       <div
@@ -130,7 +130,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
       >
         <span style="font-size:1.1rem;line-height:1">📖</span>
         <p style="font-size:0.72rem;color:var(--text-secondary);line-height:1.45;margin:0">
-          Every answer here is <strong>grounded in the official rules</strong> and vetted by the community — promoted only after it holds up against the rulebook. No guesswork, no house rules.
+          These answers are <strong>drawn from the official rules</strong> and surfaced by the community as the most helpful. Always double-check the rulebook for anything that matters.
         </p>
       </div>
 
