@@ -50,7 +50,7 @@
 }
 
 /* Midnight — Tabletop Tavern, rich warm dark */
-[data-theme="dark"] {
+[data-theme="midnight"] {
   color-scheme: dark;
   --bg: #1a1410;
   --bg-surface: #241e18;
@@ -237,7 +237,7 @@
 }
 
 /* Parchment — warm medieval scroll */
-[data-theme="fantasy"] {
+[data-theme="parchment"] {
   color-scheme: light;
   --bg: #f5ecd7;
   --bg-surface: #fdf6e8;
@@ -268,7 +268,7 @@
 }
 
 /* Canopy — deep forest serenity */
-[data-theme="forest"] {
+[data-theme="canopy"] {
   color-scheme: dark;
   --bg: #0a1a0e;
   --bg-surface: #162418;
@@ -330,7 +330,7 @@
 }
 
 /* Golden Hour — warm sunny cheer */
-[data-theme="happy"] {
+[data-theme="golden-hour"] {
   color-scheme: light;
   --bg: #fef9f0;
   --bg-surface: #ffffff;
@@ -392,7 +392,7 @@
 }
 
 /* Lavender — soft approachable daylight */
-[data-theme="light"] {
+[data-theme="lavender"] {
   color-scheme: light;
   --bg: #faf8f5;
   --bg-surface: #ffffff;
@@ -454,7 +454,7 @@
 }
 
 /* Neon — cyberpunk green glow */
-[data-theme="matrix"] {
+[data-theme="neon"] {
   color-scheme: dark;
   --bg: #0d1117;
   --bg-surface: #131820;
@@ -516,7 +516,7 @@
 }
 
 /* Abyss — deep ocean depths */
-[data-theme="ocean"] {
+[data-theme="abyss"] {
   color-scheme: dark;
   --bg: #0a141e;
   --bg-surface: #101c2a;
@@ -547,7 +547,7 @@
 }
 
 /* Cassette — 80s synthwave neon */
-[data-theme="retro"] {
+[data-theme="cassette"] {
   color-scheme: dark;
   --bg: #100a20;
   --bg-surface: #1a1430;
@@ -578,7 +578,7 @@
 }
 
 /* Crypt — dark gothic cathedral */
-[data-theme="scary"] {
+[data-theme="crypt"] {
   color-scheme: dark;
   --bg: #120a0a;
   --bg-surface: #1c1212;
@@ -609,7 +609,7 @@
 }
 
 /* Nebula — deep space cosmic */
-[data-theme="scifi"] {
+[data-theme="nebula"] {
   color-scheme: dark;
   --bg: #0a0e1a;
   --bg-surface: #101830;
@@ -640,7 +640,7 @@
 }
 
 /* Dusk — warm sunset sky */
-[data-theme="sunset"] {
+[data-theme="dusk"] {
   color-scheme: dark;
   --bg: #1a1420;
   --bg-surface: #241c2a;
@@ -757,7 +757,7 @@ a { color: inherit; text-decoration: inherit; }
   color: var(--bg);
 }
 /* Yellow-accent themes need dark text on selection for contrast */
-[data-theme="happy"] ::selection,
+[data-theme="golden-hour"] ::selection,
 [data-theme="honey"] ::selection {
   color: var(--text);
 }
@@ -806,6 +806,16 @@ body {
   .game-card::before {
     transition: none !important;
   }
+}
+
+/* Manual ambient-animation off switch (data-motion="off" on <html>). Same set
+   as reduced-motion, but user-controlled from the header toggle. */
+[data-motion="off"] .header::after,
+[data-motion="off"] .header-icon,
+[data-motion="off"] .header-title-accent,
+[data-motion="off"] .app-shell::before,
+[data-motion="off"] .main-content {
+  animation: none !important;
 }
 
 /* Cards — board game card feel */
@@ -1199,7 +1209,37 @@ a:not([class]):hover {
 .header-controls {
   display: flex;
   align-items: center;
+  gap: 0.4rem;
   flex-shrink: 0;
+}
+
+.motion-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.motion-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+/* Show the sparkle when motion is on, the moon when off. */
+.motion-toggle .motion-toggle-off {
+  display: none;
+}
+[data-motion="off"] .motion-toggle .motion-toggle-on {
+  display: none;
+}
+[data-motion="off"] .motion-toggle .motion-toggle-off {
+  display: inline;
 }
 
 .theme-select {

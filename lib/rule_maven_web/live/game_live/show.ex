@@ -41,6 +41,10 @@ defmodule RuleMavenWeb.GameLive.Show do
        voice_sel: %{},
        voice_cache: %{},
        voice_pending: MapSet.new(),
+       # User's preferred default voice, auto-selected on every answer. Restored
+       # from localStorage on connect (per-browser, like the theme). "neutral"
+       # means no auto-voice.
+       default_voice: "neutral",
        rule_card: nil,
        # LLM-generated "Did you know?" facts (durable, per-game). Empty until the
        # worker fills them; the card falls back to a raw rulebook chunk meanwhile.
@@ -315,6 +319,44 @@ defmodule RuleMavenWeb.GameLive.Show do
     |> Enum.uniq()
   end
 
+  # Set the default voice and pre-generate its restyle for every answer in the
+  # open thread. Manual per-answer selections in `voice_sel` are left untouched;
+  # the default only fills in answers the user hasn't overridden (via the display
+  # fallback). Already-cached restyles are reused; uncached ones enqueue a job.
+  defp apply_default_voice(socket, voice) do
+    socket = assign(socket, default_voice: voice)
+
+    if voice == "neutral" or not RuleMaven.Voices.valid?(voice) do
+      socket
+    else
+      socket.assigns.conversation
+      |> Enum.filter(&(&1[:role] == :assistant && &1[:id]))
+      |> Enum.map(& &1[:id])
+      |> Enum.uniq()
+      |> Enum.reduce(socket, fn id, acc ->
+        cond do
+          Map.has_key?(acc.assigns.voice_cache, {id, voice}) ->
+            acc
+
+          MapSet.member?(acc.assigns.voice_pending, {id, voice}) ->
+            acc
+
+          cached = RuleMaven.Voices.get(id, voice) ->
+            assign(acc,
+              voice_cache: Map.put(acc.assigns.voice_cache, {id, voice}, cached)
+            )
+
+          true ->
+            %{question_log_id: id, voice: voice, game_id: acc.assigns.game.id}
+            |> RuleMaven.Workers.VoiceWorker.new()
+            |> Oban.insert()
+
+            assign(acc, voice_pending: MapSet.put(acc.assigns.voice_pending, {id, voice}))
+        end
+      end)
+    end
+  end
+
   # Own (non-pool) answer rows in the current thread. Other players who are
   # later served this answer from the pool vote on this same row, so loading
   # its counts lets the author see the community tally on their own answer.
@@ -428,6 +470,26 @@ defmodule RuleMavenWeb.GameLive.Show do
       end
     end
   end
+
+  # Choose a default voice, auto-applied to every answer. Persist it per-browser
+  # (the VoiceDefault hook writes localStorage) and apply it to the open thread.
+  def handle_event("set_default_voice", %{"voice" => voice}, socket) do
+    if RuleMaven.Voices.valid?(voice) do
+      {:noreply,
+       socket
+       |> apply_default_voice(voice)
+       |> push_event("save_default_voice", %{voice: voice})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Restore the saved default voice pushed by the VoiceDefault hook on connect.
+  def handle_event("default_voice_restore", %{"voice" => voice}, socket) do
+    {:noreply, apply_default_voice(socket, voice)}
+  end
+
+  def handle_event("default_voice_restore", _params, socket), do: {:noreply, socket}
 
   def handle_event("community_vote", %{"id" => id_str, "vote" => value}, socket) do
     {id, _} = Integer.parse(id_str)
@@ -1517,6 +1579,9 @@ defmodule RuleMavenWeb.GameLive.Show do
           </div>
         </div>
 
+        <!-- Restores the saved default voice from localStorage on connect. -->
+        <div id="voice-default-store" phx-hook="VoiceDefault" style="display:none"></div>
+
         <!-- Messages -->
         <div
           id="chat-messages"
@@ -1781,7 +1846,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <% end %>
                     <% else %>
                       <% v_sel =
-                        (msg.role == :assistant && Map.get(@voice_sel, msg[:id], "neutral")) ||
+                        (msg.role == :assistant && Map.get(@voice_sel, msg[:id], @default_voice)) ||
                           "neutral" %>
                       <% v_content =
                         if v_sel == "neutral",
@@ -1962,7 +2027,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <span style="font-size:0.6rem;color:var(--text-muted);font-weight:600;margin-right:0.15rem">
                     🎭 Voice:
                   </span>
-                  <% cur_voice = Map.get(@voice_sel, msg[:id], "neutral") %>
+                  <% cur_voice = Map.get(@voice_sel, msg[:id], @default_voice) %>
                   <%= for v <- RuleMaven.Voices.all() do %>
                     <% active = cur_voice == v.id %>
                     <button
@@ -1977,6 +2042,20 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <span>{v.label}</span>
                     </button>
                   <% end %>
+                  <% is_default = cur_voice == @default_voice %>
+                  <button
+                    type="button"
+                    phx-click="set_default_voice"
+                    phx-value-voice={cur_voice}
+                    title={
+                      if is_default,
+                        do: "This voice is your default on every answer",
+                        else: "Use this voice by default on every answer"
+                    }
+                    style={"margin-left:0.25rem;display:inline-flex;align-items:center;gap:0.2rem;border-radius:999px;font-size:0.62rem;cursor:pointer;padding:0.12rem 0.45rem;font-weight:600;border:1px dashed var(--border);background:none;color:#{if is_default, do: "var(--accent)", else: "var(--text-muted)"}"}
+                  >
+                    {if is_default, do: "★ Default", else: "☆ Set default"}
+                  </button>
                 </div>
 
                 <!-- Answer actions (copy + vote) -->

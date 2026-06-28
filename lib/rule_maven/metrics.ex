@@ -8,31 +8,37 @@ defmodule RuleMaven.Metrics do
   alias RuleMaven.Repo
   alias RuleMaven.Metrics.ThemeEvent
 
-  # Slug -> human label, in the order shown in the theme picker. The slugs are
-  # the `data-theme` values; the labels are what the user sees.
+  # Slug -> human label, in the order shown in the theme picker. The slug is the
+  # `data-theme` value AND the kebab-case of the label — one canonical name per
+  # theme, no drift. This list is the single source of truth: the picker, the
+  # CSS `[data-theme="…"]` blocks, and the allowlist all derive from it.
   @themes [
-    {"ocean", "Abyss"},
+    {"abyss", "Abyss"},
     {"arcade", "Arcade"},
     {"brass", "Brass"},
-    {"forest", "Canopy"},
-    {"retro", "Cassette"},
+    {"canopy", "Canopy"},
+    {"cassette", "Cassette"},
     {"coral", "Coral"},
-    {"scary", "Crypt"},
-    {"sunset", "Dusk"},
+    {"crypt", "Crypt"},
+    {"dusk", "Dusk"},
     {"ember", "Ember"},
     {"frost", "Frost"},
-    {"happy", "Golden Hour"},
+    {"golden-hour", "Golden Hour"},
     {"honey", "Honey"},
-    {"light", "Lavender"},
+    {"lavender", "Lavender"},
     {"marble", "Marble"},
     {"meadow", "Meadow"},
-    {"dark", "Midnight"},
-    {"scifi", "Nebula"},
-    {"matrix", "Neon"},
-    {"fantasy", "Parchment"},
+    {"midnight", "Midnight"},
+    {"nebula", "Nebula"},
+    {"neon", "Neon"},
+    {"parchment", "Parchment"},
     {"twilight", "Twilight"},
     {"void", "Void"}
   ]
+
+  @doc "Default theme slug for users who prefer light / dark color schemes."
+  def default_theme(:dark), do: "midnight"
+  def default_theme(_), do: "lavender"
 
   @doc "Ordered list of `{slug, label}` for every selectable theme."
   def themes, do: @themes

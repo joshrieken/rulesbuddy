@@ -11,14 +11,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script>
+      // Map legacy theme slugs to their standardized (kebab-of-label) names, so
+      // a user's saved theme survives the rename. Shared with the picker script.
+      window.__themeMigrate = {
+        ocean: 'abyss', forest: 'canopy', retro: 'cassette', scary: 'crypt',
+        sunset: 'dusk', happy: 'golden-hour', light: 'lavender',
+        dark: 'midnight', scifi: 'nebula', matrix: 'neon', fantasy: 'parchment'
+      };
       (function() {
         var html = document.documentElement;
         var saved = localStorage.getItem('theme');
         if (saved) {
-          html.setAttribute('data-theme', saved);
+          var migrated = window.__themeMigrate[saved] || saved;
+          if (migrated !== saved) localStorage.setItem('theme', migrated);
+          html.setAttribute('data-theme', migrated);
         } else {
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          html.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+          html.setAttribute('data-theme', prefersDark ? 'midnight' : 'lavender');
+        }
+        // Apply the saved ambient-motion preference before paint to avoid a flash.
+        if (localStorage.getItem('motion') === 'off') {
+          html.setAttribute('data-motion', 'off');
         }
       })();
     </script>
@@ -74,28 +87,19 @@
           <div class="header-right">
             <div class="header-controls">
               <select class="theme-select" id="theme-select" aria-label="Theme">
-                <option value="ocean">Abyss</option>
-                <option value="arcade">Arcade</option>
-                <option value="brass">Brass</option>
-                <option value="forest">Canopy</option>
-                <option value="retro">Cassette</option>
-                <option value="coral">Coral</option>
-                <option value="scary">Crypt</option>
-                <option value="sunset">Dusk</option>
-                <option value="ember">Ember</option>
-                <option value="frost">Frost</option>
-                <option value="happy">Golden Hour</option>
-                <option value="honey">Honey</option>
-                <option value="light">Lavender</option>
-                <option value="marble">Marble</option>
-                <option value="meadow">Meadow</option>
-                <option value="dark">Midnight</option>
-                <option value="scifi">Nebula</option>
-                <option value="matrix">Neon</option>
-                <option value="fantasy">Parchment</option>
-                <option value="twilight">Twilight</option>
-                <option value="void">Void</option>
+                <option :for={{slug, label} <- RuleMaven.Metrics.themes()} value={slug}>{label}</option>
               </select>
+              <button
+                type="button"
+                class="motion-toggle"
+                id="motion-toggle"
+                aria-pressed="false"
+                aria-label="Toggle ambient animations"
+                title="Turn ambient animations on/off"
+              >
+                <span class="motion-toggle-on">✨</span>
+                <span class="motion-toggle-off">🌙</span>
+              </button>
             </div>
 
             <%= cond do %>
@@ -178,11 +182,14 @@
 
         var saved = localStorage.getItem('theme');
         if (saved) {
+          var migrate = window.__themeMigrate || {};
+          saved = migrate[saved] || saved;
+          localStorage.setItem('theme', saved);
           html.setAttribute('data-theme', saved);
           select.value = saved;
         } else {
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var theme = prefersDark ? 'dark' : 'light';
+          var theme = prefersDark ? 'midnight' : 'lavender';
           html.setAttribute('data-theme', theme);
           select.value = theme;
         }
@@ -203,6 +210,22 @@
           apply(this.value);
           track(this.value);
         });
+
+        // Ambient-animation toggle.
+        var motionBtn = document.getElementById('motion-toggle');
+        if (motionBtn) {
+          function syncMotion() {
+            var off = localStorage.getItem('motion') === 'off';
+            html.setAttribute('data-motion', off ? 'off' : 'on');
+            motionBtn.setAttribute('aria-pressed', off ? 'true' : 'false');
+          }
+          syncMotion();
+          motionBtn.addEventListener('click', function() {
+            var off = localStorage.getItem('motion') === 'off';
+            localStorage.setItem('motion', off ? 'on' : 'off');
+            syncMotion();
+          });
+        }
       })();
     </script>
   </body>

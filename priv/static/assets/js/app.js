@@ -372,6 +372,28 @@ Hooks.ChecklistStore = {
   }
 };
 
+Hooks.VoiceDefault = {
+  key: "rm:default_voice",
+  mounted() {
+    let saved = "";
+    try {
+      saved = localStorage.getItem(this.key) || "";
+    } catch (_e) {
+      saved = "";
+    }
+    if (saved) {
+      this.pushEvent("default_voice_restore", { voice: saved });
+    }
+    this.handleEvent("save_default_voice", ({ voice }) => {
+      if (voice && voice !== "neutral") {
+        localStorage.setItem(this.key, voice);
+      } else {
+        localStorage.removeItem(this.key);
+      }
+    });
+  }
+};
+
 Hooks.InfiniteScroll = {
   mounted() {
     this.observer = new IntersectionObserver(([entry]) => {
