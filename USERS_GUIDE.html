@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule Maven — User Guide</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --ink: #e7e9ee;
+    --muted: #9aa0ad; --accent: #7ee0a8; --accent-2: #6ea8fe; --warn: #f6c177;
+    --danger: #f08a8a; --border: #2a2f3d;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16.5px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { display: grid; grid-template-columns: 240px 1fr; max-width: 1080px; margin: 0 auto; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 24px 18px; border-right: 1px solid var(--border); background: var(--panel); }
+  nav h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 18px 0 8px; }
+  nav a { display: block; color: var(--ink); text-decoration: none; padding: 4px 8px; border-radius: 6px; font-size: 14px; }
+  nav a:hover { background: var(--panel-2); color: var(--accent); }
+  nav .brand { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  nav .brand span { color: var(--accent); }
+  nav .tag { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  main { padding: 36px 48px 120px; min-width: 0; }
+  h1 { font-size: 32px; margin: 0 0 6px; }
+  h2 { font-size: 23px; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 18px; margin: 26px 0 8px; color: var(--accent-2); }
+  p, li { color: var(--ink); }
+  .lead { color: var(--muted); font-size: 19px; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 16px 0; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .note { border-left: 3px solid var(--accent); background: var(--panel-2); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .note.warn { border-color: var(--warn); }
+  .note b { color: var(--ink); }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps li { position: relative; padding-left: 40px; margin: 12px 0; }
+  .steps li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; background: var(--accent); color: #0b0d12; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size: 13px; margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .proto { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #0b0d12; background: var(--accent); padding: 2px 9px; border-radius: 999px; }
+  .meter { display: flex; gap: 3px; width: 90px; margin: 4px 0; }
+  .meter span { flex: 1; height: 5px; border-radius: 999px; background: var(--border); }
+  .meter span.on { background: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="brand">Rule <span>Maven</span></div>
+  <div class="tag">User guide</div>
+  <h2>Get going</h2>
+  <a href="#what">What is this?</a>
+  <a href="#find">Find your game</a>
+  <a href="#ask">Ask a question</a>
+  <h2>Answers</h2>
+  <a href="#read">Reading an answer</a>
+  <a href="#confidence">The confidence meter</a>
+  <a href="#vote">Voting &amp; the community</a>
+  <a href="#keep">Save &amp; organize</a>
+  <h2>More</h2>
+  <a href="#extras">Cheat sheets &amp; extras</a>
+  <a href="#add">Add your own game</a>
+  <a href="#faq">Quick answers</a>
+</nav>
+
+<main>
+<h1>User Guide <span class="proto">Prototype</span></h1>
+<p class="lead">Stuck on a rule mid-game? Ask Rule Maven in plain English and get an answer that quotes the exact page of the rulebook. No more flipping through the manual.</p>
+
+<div class="note">This is an early draft of the in-app <b>Help</b> for users. It'll get screenshots and polish later.</div>
+
+<h2 id="what">What is this?</h2>
+<p>Rule Maven knows the rules to your board games. Behind the scenes it has read the rulebook, so you can just <b>ask it questions</b> like you'd ask the friend who always knows the rules — except it shows you the page it got the answer from, so you can trust it.</p>
+<div class="grid">
+  <div class="card"><b>Ask anything</b><br><span class="muted">Plain English. "Can I trade during someone else's turn?"</span></div>
+  <div class="card"><b>See the proof</b><br><span class="muted">Every answer quotes the rulebook and the page.</span></div>
+  <div class="card"><b>Get better over time</b><br><span class="muted">Good answers get reused, so popular questions are instant.</span></div>
+</div>
+
+<h2 id="find">Find your game</h2>
+<p>The home page is your <b>game library</b>. To get to a game's question page:</p>
+<ul>
+  <li><b>Search</b> by name — the list filters as you type.</li>
+  <li><b>Filter</b> by category (board games, card games, RPGs, and more).</li>
+  <li><b>Open expansions</b> inline if a game has them.</li>
+  <li>Mark games as <b>owned</b> (your collection) or <b>favorite</b> them for quick access.</li>
+</ul>
+<p>Tap a game to open its <b>question page</b>.</p>
+
+<h2 id="ask">Ask a question</h2>
+<ol class="steps">
+  <li>Type your question in plain English and send it.</li>
+  <li>An answer appears in a moment — you'll see "Thinking…" first, then the real answer fills in. You don't have to wait on the screen.</li>
+  <li>Ask a <b>follow-up</b> and it remembers the conversation. Your questions are grouped into <b>threads</b> you can switch between.</li>
+</ol>
+<div class="note"><b>Shortcuts:</b> use the <b>quick-ask suggestions</b> to start with common questions. If your game has <b>expansions</b>, flip the toggle to include their rules in the answer. There's also a "<b>Did you know?</b>" rule tip that stays pinned at the top while you play.</div>
+
+<h2 id="read">Reading an answer</h2>
+<p>Each answer comes with a <b>cited passage</b> — the actual rulebook text it used — and the <b>page number</b> it's on. That quote is your proof: if you want to double-check, you know exactly where to look.</p>
+<p>If the rules don't actually cover your question, Rule Maven will say so rather than make something up. (You can reveal those "no answer" replies with <b>Show refused</b>.)</p>
+
+<h2 id="confidence">The confidence meter</h2>
+<p>Under each answer is a little bar showing <b>how sure</b> Rule Maven is. The more bars filled, the stronger the backing. Tap the <b>?</b> next to it any time to see what the level means and how it could get stronger.</p>
+<table>
+  <tr><th>Meter</th><th>Means</th></tr>
+  <tr><td><span class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></span><b>Verified</b></td><td>Other users upvoted this same answer. The community has confirmed it.</td></tr>
+  <tr><td><span class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></span><b>Strong</b></td><td>Quotes the rulebook and points to the exact page. Straight from the book.</td></tr>
+  <tr><td><span class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></span><b>Good</b></td><td>Quotes the rulebook, but the exact page couldn't be pinned down.</td></tr>
+  <tr><td><span class="meter"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></span><b>Fair</b></td><td>Reused from an earlier answer with no quote, and not confirmed by others yet.</td></tr>
+  <tr><td><span class="meter"><span class="on"></span><span></span><span></span><span></span><span></span></span><b>Low</b></td><td>No exact passage matched — it's the app's best read of the rules. Double-check anything important.</td></tr>
+</table>
+<div class="note"><b>Want a stronger answer?</b> The <b>?</b> bubble tells you the next level and how to reach it — often by tapping <b>Regenerate</b> to pull a fresh, cited answer, or by getting upvotes from other users.</div>
+
+<h2 id="vote">Voting &amp; the community</h2>
+<p>You and other users make the answers better:</p>
+<ul>
+  <li><b>👍 / 👎</b> — tell Rule Maven whether an answer was helpful.</li>
+  <li><b>See the tally</b> — answers show how many 👍 and 👎 they've gotten from users. When enough people agree an answer is right, it becomes <b>Verified</b> and is reused for everyone asking the same thing.</li>
+  <li><b>Regenerate</b> — not happy with an answer? Get a fresh one pulled from the rulebook.</li>
+</ul>
+<p class="muted">The more your upvoted answers help others, the more your votes count toward confirming answers.</p>
+
+<h2 id="keep">Save &amp; organize</h2>
+<table>
+  <tr><th>Do this</th><th>To…</th></tr>
+  <tr><td><b>Favorite</b> an answer</td><td>Find it again fast.</td></tr>
+  <tr><td><b>Pin</b> an answer</td><td>Keep an important ruling at the top of the game.</td></tr>
+  <tr><td><b>Copy</b></td><td>Grab the question and answer to share with your table.</td></tr>
+  <tr><td><b>Visibility</b></td><td>Keep a question private, or share it with the community.</td></tr>
+  <tr><td><b>Delete</b></td><td>Remove a question from your history.</td></tr>
+</table>
+
+<h2 id="extras">Cheat sheets &amp; extras</h2>
+<ul>
+  <li><b>Cheat sheet</b> — a condensed, one-glance summary of a game's rules. Great for setup and reminders.</li>
+  <li><b>Setup checklist</b> — step-by-step setup you can tick off; it remembers what you've checked.</li>
+  <li><b>Did you know?</b> — a random rule tip to learn something new about the game.</li>
+  <li><b>Voices</b> — for fun, you can have an answer re-told in a different persona's style.</li>
+</ul>
+
+<h2 id="add">Add your own game</h2>
+<p>Don't see your game? You can add it:</p>
+<ol class="steps">
+  <li>Use <b>New Game</b>, give it a name and category.</li>
+  <li>Add the rulebook — upload a PDF, Word doc, web page, spreadsheet, photos of the pages, or just paste the text.</li>
+  <li>Give it a minute to read the rulebook, then start asking.</li>
+</ol>
+<p>You can also <b>import your collection from BoardGameGeek</b> by entering your BGG username.</p>
+<div class="note warn"><b>About rulebooks:</b> to respect copyright, you can't download a game's original rulebook or read its full text in the app. The only rulebook text you'll see is the quoted passage inside an answer — that's by design.</div>
+
+<h2 id="faq">Quick answers</h2>
+<p><b>Why did the answer change when my friend asked the same thing?</b><br>It shouldn't drop in confidence — a reused answer keeps its rulebook citation. If you see different wording, someone may have regenerated it or the rulebook was updated.</p>
+<p><b>The answer says it can't find the rule.</b><br>The rulebook may not cover it, or the wording was tricky. Try rephrasing, or tap <b>Regenerate</b>.</p>
+<p><b>Can I trust the page numbers?</b><br>Yes — Rule Maven matches answers to the real printed page numbers, even when a book's numbering is odd.</p>
+<p><b>It's taking a while.</b><br>Hard questions take a few seconds. You can leave the page; the answer will be there when you come back.</p>
+
+<footer>
+  Rule Maven user guide · prototype for the in-app help section. Have fun, and may your rules disputes be short.
+</footer>
+</main>
+</div>
+</body>
+</html>

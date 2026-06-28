@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule Maven — Admin Guide</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --ink: #e7e9ee;
+    --muted: #9aa0ad; --accent: #f6c177; --accent-2: #7ee0a8; --warn: #f6c177;
+    --danger: #f08a8a; --border: #2a2f3d; --code: #11141b;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { display: grid; grid-template-columns: 250px 1fr; max-width: 1140px; margin: 0 auto; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 24px 18px; border-right: 1px solid var(--border); background: var(--panel); }
+  nav h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 18px 0 8px; }
+  nav a { display: block; color: var(--ink); text-decoration: none; padding: 4px 8px; border-radius: 6px; font-size: 14px; }
+  nav a:hover { background: var(--panel-2); color: var(--accent); }
+  nav .brand { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  nav .brand span { color: var(--accent); }
+  nav .tag { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  main { padding: 36px 48px 120px; min-width: 0; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  h2 { font-size: 23px; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 18px; margin: 26px 0 8px; color: var(--accent-2); }
+  p, li { color: var(--ink); }
+  .lead { color: var(--muted); font-size: 18px; }
+  code { background: var(--code); padding: 1.5px 6px; border-radius: 5px; font-size: 13.5px; font-family: "SF Mono", ui-monospace, Menlo, monospace; color: #d6deeb; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 16px 0; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .note { border-left: 3px solid var(--accent); background: var(--panel-2); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .note.warn { border-color: var(--warn); }
+  .note.danger { border-color: var(--danger); }
+  .note b { color: var(--ink); }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps li { position: relative; padding-left: 40px; margin: 12px 0; }
+  .steps li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; background: var(--accent); color: #0b0d12; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size: 13px; margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .proto { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #0b0d12; background: var(--accent); padding: 2px 9px; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="brand">Rule <span>Maven</span></div>
+  <div class="tag">Admin guide</div>
+  <h2>Start</h2>
+  <a href="#role">Your role</a>
+  <a href="#dashboard">The dashboard</a>
+  <h2>Rulebooks</h2>
+  <a href="#review">Reviewing rulebooks</a>
+  <a href="#lowconf">Low-confidence pages</a>
+  <a href="#cleanup">Cleaning text</a>
+  <h2>Answers</h2>
+  <a href="#moderate">Moderating Q&amp;A</a>
+  <a href="#faqpromo">Promoting to FAQ</a>
+  <a href="#staleness">After rulebook edits</a>
+  <h2>People &amp; catalog</h2>
+  <a href="#users">Users &amp; invites</a>
+  <a href="#catalog">Catalog &amp; requests</a>
+  <a href="#security">Security &amp; system</a>
+</nav>
+
+<main>
+<h1>Admin Guide <span class="proto">Prototype</span></h1>
+<p class="lead">For admins — the people who keep rulebooks accurate, answers trustworthy, and the community healthy. Everything here lives under <code>/admin</code> and the per-game review screens.</p>
+
+<div class="note">This is a prototype draft intended to become the in-app <b>Help → For admins</b> section. Wording and screenshots will be filled in against the live UI.</div>
+
+<h2 id="role">Your role</h2>
+<p>An <b>admin</b> can do everything a user can, plus the moderation and curation work below. Access is granted by capability, so your account simply has the <code>admin</code> capability — there's nothing to toggle per page.</p>
+<p>Three things only you can do that users cannot:</p>
+<ul>
+  <li><b>See extracted rulebook text</b> — the "View as HTML" page is admin-only (users only ever see source names and cited passages).</li>
+  <li><b>Approve what becomes searchable</b> — pending rulebooks aren't used in answers until you publish them.</li>
+  <li><b>Decide what the community trusts</b> — promoting, rejecting, and re-approving answers.</li>
+</ul>
+
+<h2 id="dashboard">The dashboard</h2>
+<p>Open <code>/admin</code> for the overview. From there you reach every tool:</p>
+<table>
+  <tr><th>Page</th><th>Use it to…</th></tr>
+  <tr><td><code>/admin</code></td><td>See the system at a glance.</td></tr>
+  <tr><td><code>/games/:id/review</code></td><td>Approve/reject a game's pending rulebooks; promote/reject pooled answers; re-approve flagged community answers.</td></tr>
+  <tr><td><code>/admin/questions</code></td><td>Moderate questions across all games.</td></tr>
+  <tr><td><code>/admin/threads</code></td><td>Review conversation threads.</td></tr>
+  <tr><td><code>/admin/users</code></td><td>Manage users and roles.</td></tr>
+  <tr><td><code>/admin/invites</code></td><td>Issue and revoke invite codes.</td></tr>
+  <tr><td><code>/admin/catalog</code> &amp; <code>/admin/requests</code></td><td>Curate the game catalog; handle user support requests.</td></tr>
+  <tr><td><code>/admin/security</code></td><td>Security overview.</td></tr>
+  <tr><td><code>/admin/db</code>, <code>/oban</code></td><td>Database inspector and background-job dashboard.</td></tr>
+</table>
+
+<h2 id="review">Reviewing rulebooks</h2>
+<p>When a rulebook is uploaded, it's extracted in the background and lands in <b>pending review</b>. It is <b>not used in answers</b> until you publish it. On <code>/games/:id/review</code> you:</p>
+<ol class="steps">
+  <li>Open the source in the <b>reader</b> and skim the extracted text against the real book.</li>
+  <li>Pay attention to <b>low-confidence pages</b> (next section) — those are where extraction was unsure.</li>
+  <li><b>Approve</b> to publish (it becomes retrievable) or <b>reject</b> if extraction failed badly.</li>
+</ol>
+<div class="note"><b>Quality gate:</b> only published documents are retrievable. A lower-quality upload sits in pending until you approve it, so a bad scan never silently feeds wrong answers.</div>
+
+<h2 id="lowconf">Low-confidence pages</h2>
+<p>Extraction scores every page. Pages where the app's two independent reads disagreed and couldn't be reconciled get an amber <b>"Low-confidence extraction"</b> badge in the reader, with a per-source count of how many to check.</p>
+<p>For each flagged page you can:</p>
+<ul>
+  <li><b>Fix it inline</b> — edit the text against the source. Editing re-chunks, re-embeds, and refreshes generated metadata for the game.</li>
+  <li><b>Re-extract (stronger model)</b> — re-render just that page and re-read it at the top tier. A background job swaps in the result when done; you don't wait.</li>
+</ul>
+
+<h2 id="cleanup">Cleaning text</h2>
+<p>Raw PDF text is often messy — broken line wraps, headers/footers, column soup. The <b>Clean</b> button runs each page through an LLM to produce a tidy version. Pick a strength: <b>Light</b>, <b>Standard</b>, or <b>Aggressive</b> (remembered per browser).</p>
+<table>
+  <tr><th>Button</th><th>Effect</th></tr>
+  <tr><td><b>Clean</b></td><td>First-pass clean of pages that have none yet.</td></tr>
+  <tr><td><b>Clean again</b></td><td>Re-clean the already-cleaned text for a further pass.</td></tr>
+  <tr><td><b>Wipe &amp; clean</b></td><td>Clear all prior cleaned text and re-clean every page from scratch, then re-chunk.</td></tr>
+</table>
+<div class="note"><b>It's safe to walk away.</b> Cleanup is a durable, resumable background job — it cleans one page at a time, writes each back as it finishes, and survives a server restart. A live counter shows progress. Cleaned text auto-applies and stays editable.</div>
+
+<h2 id="moderate">Moderating Q&amp;A</h2>
+<p>Users ask questions and vote on answers. Your job is to keep the good ones visible and the bad ones out of circulation.</p>
+<p>On <code>/admin/questions</code> and <code>/admin/threads</code> you can review what's being asked and answered across every game. Each answer carries a <b>confidence level</b> (Low → Verified) and community <b>vote tallies</b> to help you triage — start with high-traffic questions that have low confidence or split votes.</p>
+<table>
+  <tr><th>Signal</th><th>What it tells you</th></tr>
+  <tr><td><b>Verified</b> (5/5)</td><td>Community-confirmed via upvotes. Usually safe.</td></tr>
+  <tr><td><b>Strong</b> (4/5)</td><td>Quotes the rulebook with a page. Trustworthy but unconfirmed.</td></tr>
+  <tr><td><b>Good / Fair</b> (3–2)</td><td>Partial citation or single-source reuse. Spot-check these.</td></tr>
+  <tr><td><b>Low</b> (1/5)</td><td>No matched passage — the model reasoned. Verify before promoting.</td></tr>
+  <tr><td>Split votes</td><td>Users disagree. Read it against the rulebook and decide.</td></tr>
+</table>
+
+<h2 id="faqpromo">Promoting to the FAQ</h2>
+<p>The FAQ page (<code>/games/:id/faq</code>) is the curated, community-facing Q&amp;A for a game. From review you can <b>promote</b> a good answer into the canonical FAQ or <b>reject</b> one that shouldn't spread. Promotion makes an answer more trusted and more likely to be reused for similar future questions.</p>
+
+<h2 id="staleness">After you edit a rulebook</h2>
+<div class="note warn"><b>Important.</b> Cached answers were written against specific rulebook text. When you add, edit, clean, or delete rulebook content, the app <b>invalidates the answer pool</b> for that game: auto-generated cached answers are demoted, and community answers are flagged <code>needs_review</code> and skipped until you re-approve them. So after a meaningful edit, expect to revisit the affected community answers and re-approve the ones that still hold.</div>
+
+<h2 id="users">Users &amp; invites</h2>
+<ul>
+  <li><b><code>/admin/users</code></b> — see accounts and change roles. Granting the admin role gives the <code>admin</code> capability (all the powers in this guide).</li>
+  <li><b><code>/admin/invites</code></b> — registration can require an invite code. Issue codes to onboard people and revoke ones you no longer want used.</li>
+</ul>
+<p class="muted">Voter influence scales with reputation: contributors whose answers earn net upvotes have their votes weighted more heavily (up to a cap), so established users help surface good answers faster.</p>
+
+<h2 id="catalog">Catalog &amp; requests</h2>
+<ul>
+  <li><b><code>/admin/catalog</code></b> — curate which games the catalog covers.</li>
+  <li><b><code>/admin/requests</code></b> — users can flag a game they want supported; handle those here.</li>
+</ul>
+
+<h2 id="security">Security &amp; system</h2>
+<ul>
+  <li><b><code>/admin/security</code></b> — security overview.</li>
+  <li><b><code>/admin/db</code></b> — inspect the database directly.</li>
+  <li><b><code>/oban</code></b> — watch background jobs (extraction, cleanup, embedding, answering). If something seems stuck, this is where you look.</li>
+</ul>
+<div class="note danger"><b>Copyright reminder.</b> Original rulebook files are never downloadable by anyone, and the extracted-text view is admin-only. Don't paste full rulebook text anywhere users can reach it — the cited passage inside an answer is the only rulebook text users are meant to see.</div>
+
+<footer>
+  Rule Maven admin guide · prototype for the in-app help section. The running <code>/admin</code> dashboards are always the source of truth.
+</footer>
+</main>
+</div>
+</body>
+</html>
