@@ -55,7 +55,8 @@ Hooks.ChatScroll = {
   mounted() {
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
-    this.scrollToLatestAnswer();
+    // Don't auto-scroll on page load — leave the view at the top. Scrolling only
+    // happens on later updates (a new answer arriving) and the scroll_bottom event.
     this.handleEvent("scroll_bottom", () => this.scrollToBottom());
   },
   updated() {

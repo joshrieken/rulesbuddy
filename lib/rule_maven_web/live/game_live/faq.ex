@@ -102,7 +102,9 @@ defmodule RuleMavenWeb.GameLive.Faq do
   @impl true
   def render(assigns) do
     ~H"""
-    <div style="max-width:52rem;margin:0 auto;padding:1.5rem 1rem">
+    {RuleMavenWeb.GameLive.GameTheme.style_block(@game)}
+    <RuleMavenWeb.GameLive.GameTheme.blur_background image_url={@game.image_url} />
+    <div style="max-width:52rem;margin:0 auto;padding:1.5rem 1rem;position:relative;z-index:1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
         <.link navigate={~p"/games/#{@game.id}"} class="back-link" style="margin-bottom:0">
           &larr; Back to {@game.name}

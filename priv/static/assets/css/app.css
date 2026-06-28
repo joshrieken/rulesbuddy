@@ -35,6 +35,9 @@
      themes use white; generated per-game themes override with black/white chosen
      for contrast. Referenced as var(--accent-text, #fff) so this default wins. */
   --accent-text: #FFFFFF;
+  /* Text/icons on the header gradient. White for static themes; generated
+     per-game themes override with black/white for contrast. */
+  --header-text: #FFFFFF;
   --yellow: #B8960F;
   --red: #C83030;
   --red-bg: #FFF0F0;
@@ -1080,7 +1083,7 @@ a:not([class]):hover {
   font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 800;
-  color: #FFFFFF;
+  color: var(--header-text, #FFFFFF);
   letter-spacing: -0.02em;
 }
 
@@ -1090,7 +1093,7 @@ a:not([class]):hover {
   background-image: linear-gradient(
     100deg,
     var(--header-border) 0%,
-    #ffffff 50%,
+    var(--header-text, #ffffff) 50%,
     var(--accent-light) 100%
   );
   -webkit-background-clip: text;
@@ -1122,7 +1125,7 @@ a:not([class]):hover {
 
 .header-user {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.75);
+  color: color-mix(in srgb, var(--header-text, #fff) 75%, transparent);
 }
 
 .header-role-badge {
@@ -1140,14 +1143,14 @@ a:not([class]):hover {
 }
 
 .header-role-badge-player {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
+  color: color-mix(in srgb, var(--header-text, #fff) 70%, transparent);
 }
 
 .header-auth-link {
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.65);
+  color: color-mix(in srgb, var(--header-text, #fff) 65%, transparent);
   transition: color 0.15s;
   text-decoration: none;
   padding: 0.25rem 0.5rem;
@@ -1155,8 +1158,8 @@ a:not([class]):hover {
 }
 
 .header-auth-link:hover {
-  color: #FFFFFF;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--header-text, #FFFFFF);
+  background: color-mix(in srgb, var(--header-text, #fff) 10%, transparent);
 }
 
 /* ===== User Dropdown ===== */
@@ -1266,14 +1269,15 @@ a:not([class]):hover {
   padding: 0;
   font-size: 0.85rem;
   line-height: 1;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--header-text, #fff) 20%, transparent);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--header-text, #fff) 8%, transparent);
   cursor: pointer;
   transition: background 0.15s;
+  color: var(--header-text, #fff);
 }
 .motion-toggle:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
 }
 /* Show the sparkle when motion is on, the moon when off. */
 .motion-toggle .motion-toggle-off {
@@ -1291,10 +1295,10 @@ a:not([class]):hover {
   font-size: 0.7rem;
   line-height: 1;
   padding: 0.35rem 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--header-text, #fff) 20%, transparent);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--header-text, #fff) 8%, transparent);
+  color: color-mix(in srgb, var(--header-text, #fff) 70%, transparent);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   font-weight: 600;
@@ -1302,13 +1306,44 @@ a:not([class]):hover {
 }
 
 .theme-select:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #FFFFFF;
+  background: color-mix(in srgb, var(--header-text, #fff) 15%, transparent);
+  color: var(--header-text, #FFFFFF);
 }
 
 .theme-select option {
   background: #1C1C30;
   color: #E0E0EC;
+}
+
+/* Small pill links in the Q&A toolbar (Overview, View on BGG). */
+.pill-link {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  background: var(--bg-subtle);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.pill-link:hover {
+  color: var(--accent-text, #fff);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px var(--shadow-hover);
+}
+.pill-link-accent {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.pill-link-accent:hover {
+  color: var(--accent-text, #fff);
+  background: var(--accent);
 }
 
 /* ===== Flash Messages ===== */

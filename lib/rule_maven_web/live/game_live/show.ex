@@ -1272,27 +1272,10 @@ defmodule RuleMavenWeb.GameLive.Show do
     end
   end
 
-  # Inline `[data-theme="game-light"]` / `[data-theme="game-dark"]` variable
-  # blocks, scoped to this page. The user picks a variant explicitly in the theme
-  # menu (like every other theme), so there's no `prefers-color-scheme` switch.
-  # The `#game-theme` id is the availability marker the picker script looks for.
-  # Only values we generated (hex/rgba) are interpolated — no user input — so
-  # raw/1 is safe. Absent until the ThemePaletteWorker has produced a palette.
-  defp game_theme_block(%{game: %{theme_palette: %{"light" => light, "dark" => dark}}})
-       when is_map(light) and is_map(dark) do
-    css =
-      ~s|[data-theme="game-light"]{#{RuleMaven.ThemePalette.to_css(light)}}| <>
-        ~s|[data-theme="game-dark"]{#{RuleMaven.ThemePalette.to_css(dark)}}|
-
-    Phoenix.HTML.raw(~s(<style id="game-theme">#{css}</style>))
-  end
-
-  defp game_theme_block(_), do: Phoenix.HTML.raw("")
-
   @impl true
   def render(assigns) do
     ~H"""
-    {game_theme_block(assigns)}
+    {RuleMavenWeb.GameLive.GameTheme.style_block(@game)}
     <div
       class="chat-layout"
       data-refresh={@refresh}
@@ -1320,10 +1303,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:300px">{@game.name}</h1>
-            <.link
-              patch={~p"/games/#{@game.id}?start=1"}
-              style="flex-shrink:0;display:inline-flex;align-items:center;font-size:0.7rem;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--accent);border-radius:0.3rem;padding:0.15rem 0.5rem;background:color-mix(in srgb,var(--accent) 8%,transparent)"
-            >
+            <.link patch={~p"/games/#{@game.id}?start=1"} class="pill-link pill-link-accent">
               Overview
             </.link>
             <%= if @game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(@game.category) do %>
@@ -1331,7 +1311,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}"}
                 target="_blank"
                 rel="noopener"
-                style="flex-shrink:0;display:inline-flex;align-items:center;font-size:0.7rem;font-weight:600;color:var(--text-secondary);text-decoration:none;border:1px solid var(--border);border-radius:0.3rem;padding:0.15rem 0.5rem;background:var(--bg-subtle)"
+                class="pill-link"
               >View on BGG</.link>
             <% end %>
             <%!-- Rulebook sources dropdown --%>
@@ -1436,7 +1416,7 @@ defmodule RuleMavenWeb.GameLive.Show do
         <div
           id="question-sidebar"
           class={"question-sidebar #{if @sidebar_open, do: "", else: "sidebar-closed"}"}
-          style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
+          style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column;position:relative;z-index:1"
         >
           <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
             <span>

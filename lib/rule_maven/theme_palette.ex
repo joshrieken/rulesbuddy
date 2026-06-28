@@ -113,6 +113,9 @@ defmodule RuleMaven.ThemePalette do
       "--shadow-hover" => rgba(accent, 0.18),
       "--header-bg-start" => hex(darken(accent, 0.15)),
       "--header-bg-end" => hex(darken(accent, 0.38)),
+      # Text on the header gradient. Worst case is the lighter start, so pick
+      # black/white against that. Defaults to #fff in static themes.
+      "--header-text" => hex(readable_on(darken(accent, 0.15))),
       "--header-border" => @semantic[scheme_key(scheme)]["--yellow"],
       "--focus-ring" => rgba(accent, 0.18)
     }
