@@ -974,7 +974,10 @@ defmodule RuleMaven.LLM do
            }
          ],
          body = %{model: vision_model(), max_tokens: 600, messages: messages},
-         {:ok, %{answer: text}} <- do_request(body, 1, operation: "theme_palette") do
+         # Read :raw_response, not :answer — decode_answer/1 assumes the Q&A JSON
+         # schema and would extract a nonexistent "answer" key from our palette
+         # JSON, yielding "". raw_response is the unparsed model content.
+         {:ok, %{raw_response: text}} <- do_request(body, 1, operation: "theme_palette") do
       parse_theme_anchors(text)
     end
   end
