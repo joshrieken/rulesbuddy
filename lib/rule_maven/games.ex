@@ -729,6 +729,105 @@ defmodule RuleMaven.Games do
     )
   end
 
+  # ── Report = flag + trust-tiered auto-pull ───────────────────────────────
+  # A user "Report" both records a flag (for moderator review) and, depending on
+  # how trusted the answer is, may pull it from the pool immediately. The pull
+  # threshold scales with trust so one bad actor can't blank a valuable cache:
+  #   • provisional (auto-cached, unreviewed) → pulled on the first flag; cheap
+  #     to yank and it self-heals on the next ask.
+  #   • trusted / community → pulled only once `flag_quorum` *distinct,
+  #     non-suspended* users have an open flag; below that it just queues.
+  #   • admin-verified → never auto-pulled; only a moderator can.
+  @flag_quorum_default 3
+  @flag_limit_daily_default 20
+
+  @doc """
+  Records a report on an answer and applies the trust-tiered auto-pull policy.
+  Returns `{:ok, %{pulled: boolean}}` or `{:error, message}` (quota/insert).
+  """
+  def report_answer(question_log_id, user) do
+    with :ok <- check_flag_quota(user),
+         {:ok, _flag} <- flag_question(question_log_id, user.id) do
+      {:ok, %{pulled: maybe_auto_pull(question_log_id)}}
+    end
+  end
+
+  # Caps reports per user per rolling day so mass-flagging can't grief the queue
+  # or knock answers offline en masse. Admins are exempt.
+  defp check_flag_quota(user) do
+    if RuleMaven.Users.can?(user, :admin) do
+      :ok
+    else
+      since = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      count =
+        Repo.one(
+          from f in QuestionFlag,
+            where: f.user_id == ^user.id and f.updated_at >= ^since,
+            select: count(f.id)
+        ) || 0
+
+      limit = parse_limit(RuleMaven.Settings.get("flag_limit_daily"), @flag_limit_daily_default)
+
+      if count >= limit,
+        do: {:error, "Daily report limit reached. Thanks — a moderator will review the rest."},
+        else: :ok
+    end
+  end
+
+  # Decides whether this flag pulls the row now. Returns true if it did.
+  defp maybe_auto_pull(question_log_id) do
+    case Repo.get(QuestionLog, question_log_id) do
+      nil ->
+        false
+
+      %QuestionLog{needs_review: true} ->
+        # Already out of the pool — nothing more to do.
+        false
+
+      %QuestionLog{verified: true} ->
+        # Admin sign-off is never undone by users.
+        false
+
+      %QuestionLog{} = q ->
+        case pool_tier(q) do
+          :provisional ->
+            set_needs_review(question_log_id)
+            true
+
+          :trusted ->
+            quorum = parse_limit(RuleMaven.Settings.get("flag_quorum"), @flag_quorum_default)
+
+            if open_flagger_count(question_log_id) >= quorum do
+              set_needs_review(question_log_id)
+              true
+            else
+              false
+            end
+        end
+    end
+  end
+
+  # Distinct, non-suspended users with an open flag on this answer. Suspended
+  # accounts are excluded so a banned griefer (or a ring of them) can't push a
+  # trusted answer over quorum.
+  defp open_flagger_count(question_log_id) do
+    Repo.one(
+      from f in QuestionFlag,
+        join: u in RuleMaven.Users.User,
+        on: u.id == f.user_id,
+        where:
+          f.question_log_id == ^question_log_id and f.resolved == false and
+            is_nil(u.suspended_at),
+        select: count(f.user_id, :distinct)
+    ) || 0
+  end
+
+  defp set_needs_review(question_log_id) do
+    from(q in QuestionLog, where: q.id == ^question_log_id)
+    |> Repo.update_all(set: [needs_review: true])
+  end
+
   @doc "Set of question_log ids this user has an open (unresolved) flag on."
   def user_flagged_ids(nil), do: MapSet.new()
 

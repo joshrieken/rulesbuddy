@@ -90,4 +90,69 @@ defmodule RuleMaven.QuestionFlagsTest do
     Games.delete_question(q)
     assert Games.count_pending_flags() == 0
   end
+
+  # ── report_answer: trust-tiered auto-pull ──────────────────────────────────
+
+  defp reload(q), do: RuleMaven.Repo.get(RuleMaven.Games.QuestionLog, q.id)
+  defp make_community(q), do: Games.set_question_visibility(q.id, "community")
+
+  defp make_verified(q) do
+    {:ok, _} =
+      q |> Ecto.Changeset.change(verified: true, visibility: "community") |> RuleMaven.Repo.update()
+  end
+
+  test "provisional answer is pulled on the first report", %{q: q} do
+    assert {:ok, %{pulled: true}} = Games.report_answer(q.id, user_fixture("pr1"))
+    assert reload(q).needs_review
+  end
+
+  test "community answer needs a quorum of reporters before auto-pull", %{q: q} do
+    make_community(q)
+
+    assert {:ok, %{pulled: false}} = Games.report_answer(q.id, user_fixture("cr1"))
+    assert {:ok, %{pulled: false}} = Games.report_answer(q.id, user_fixture("cr2"))
+    refute reload(q).needs_review
+
+    # Third distinct reporter crosses the default quorum of 3.
+    assert {:ok, %{pulled: true}} = Games.report_answer(q.id, user_fixture("cr3"))
+    assert reload(q).needs_review
+  end
+
+  test "suspended reporters don't count toward quorum", %{q: q} do
+    make_community(q)
+
+    Games.report_answer(q.id, user_fixture("sr1"))
+    Games.report_answer(q.id, user_fixture("sr2"))
+
+    suspended = user_fixture("sr3")
+    {:ok, _} = Users.suspend_user(suspended)
+    assert {:ok, %{pulled: false}} = Games.report_answer(q.id, suspended)
+    refute reload(q).needs_review
+  end
+
+  test "admin-verified answers are never auto-pulled", %{q: q} do
+    make_verified(q)
+
+    for n <- 1..4 do
+      assert {:ok, %{pulled: false}} = Games.report_answer(q.id, user_fixture("vr#{n}"))
+    end
+
+    refute reload(q).needs_review
+  end
+
+  test "report respects the daily flag quota", %{game: game} do
+    RuleMaven.Settings.put("flag_limit_daily", "2")
+    u = user_fixture("quota")
+    [a, b, c] = for _ <- 1..3, do: log(game, user_fixture("a#{System.unique_integer([:positive])}"))
+
+    assert {:ok, _} = Games.report_answer(a.id, u)
+    assert {:ok, _} = Games.report_answer(b.id, u)
+    assert {:error, _} = Games.report_answer(c.id, u)
+  end
+
+  test "an already-pulled answer reports without double-acting", %{q: q} do
+    assert {:ok, %{pulled: true}} = Games.report_answer(q.id, user_fixture("dup1"))
+    # Second reporter: flag still records, but it's already out of the pool.
+    assert {:ok, %{pulled: false}} = Games.report_answer(q.id, user_fixture("dup2"))
+  end
 end

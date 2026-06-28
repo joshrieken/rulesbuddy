@@ -507,17 +507,43 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   def handle_event("flag_question", %{"id" => id_str}, socket) do
     {id, _} = Integer.parse(id_str)
-    uid = socket.assigns.current_user.id
+    user = socket.assigns.current_user
+    game = socket.assigns.game
 
-    case Games.flag_question(id, uid) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> assign(flagged_ids: MapSet.put(socket.assigns.flagged_ids, id))
-         |> put_flash(:info, "Reported — thanks. A moderator will take a look.")}
+    # `id` is the locally-visible answer. The flag (and any auto-pull) targets
+    # the *source* row behind a pool hit so reports concentrate on the real
+    # culprit, not each player's served copy.
+    msg = Enum.find(socket.assigns.conversation, &(&1[:id] == id && &1.role == :assistant))
+    flag_target = (msg && msg[:pool_source_id]) || id
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Couldn't submit that report.")}
+    # Scope to this game so a forged id from another game can't be flagged here.
+    if find_question_log(game, flag_target) do
+      case Games.report_answer(flag_target, user) do
+        {:ok, %{pulled: pulled}} ->
+          socket =
+            socket
+            |> assign(flagged_ids: MapSet.put(socket.assigns.flagged_ids, flag_target))
+            |> put_flash(:info, report_flash(pulled))
+
+          # Give the reporter a fresh, rulebook-grounded answer right away instead
+          # of leaving them on the answer they just flagged. Gated: resubmit_question
+          # runs check_rate_limit (quota + daily $ cap) and counts as one of their
+          # asks, and a short cooldown blocks report→regen hammering — so this can't
+          # be turned into free/unlimited generations.
+          cooldowns = socket.assigns.retry_cooldowns
+          now = System.system_time(:second)
+
+          if Map.get(cooldowns, id, 0) + 10 <= now do
+            resubmit_question(id, socket, skip_pool: true)
+          else
+            {:noreply, socket}
+          end
+
+        {:error, message} ->
+          {:noreply, put_flash(socket, :error, message)}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -902,6 +928,12 @@ defmodule RuleMavenWeb.GameLive.Show do
          )}
     end
   end
+
+  defp report_flash(true),
+    do: "Reported and pulled from the FAQ for review. Fetching you a fresh answer…"
+
+  defp report_flash(false),
+    do: "Reported — thanks. A moderator will take a look. Fetching you a fresh answer…"
 
   defp resubmit_question(id, socket, opts) do
     skip_pool = Keyword.get(opts, :skip_pool, false)
@@ -2264,8 +2296,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                           <button
                             type="button"
                             phx-click="flag_question"
-                            phx-value-id={flag_id}
-                            data-confirm="Report this answer as wrong or unhelpful? A moderator will review it."
+                            phx-value-id={msg.id}
+                            data-confirm="Report this answer as wrong or unhelpful? A moderator will review it, and we'll fetch you a fresh answer."
                             class="card-menu__item"
                             title="Report a wrong or unhelpful answer"
                           >🚩 Report</button>
