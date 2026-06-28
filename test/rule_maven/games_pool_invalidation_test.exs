@@ -57,9 +57,15 @@ defmodule RuleMaven.GamesPoolInvalidationTest do
       assert community.visibility == "community"
       assert community.needs_review
 
+      # The review backlog count reflects the flagged community row...
+      assert Games.needs_review_count() == 1
+
       # clear_needs_review re-approves it.
       {:ok, _} = Games.clear_needs_review(community)
       refute Repo.get!(QuestionLog, community.id).needs_review
+
+      # ...and drains once re-approved.
+      assert Games.needs_review_count() == 0
     end
 
     test "the pool lookup skips a flagged community answer" do

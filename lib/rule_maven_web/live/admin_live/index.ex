@@ -1,12 +1,12 @@
 defmodule RuleMavenWeb.AdminLive.Index do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.Users
+  alias RuleMaven.{Users, Games}
 
   @impl true
   def mount(_params, _session, socket) do
     if Users.can?(socket.assigns.current_user, :admin) do
-      {:ok, assign(socket, page_title: "Admin")}
+      {:ok, assign(socket, page_title: "Admin", review_backlog: Games.needs_review_count())}
     else
       {:ok, push_navigate(socket, to: ~p"/")}
     end
@@ -31,9 +31,20 @@ defmodule RuleMavenWeb.AdminLive.Index do
         </.link>
 
         <.link
-          navigate={~p"/admin/questions"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
+          navigate={
+            if @review_backlog > 0,
+              do: ~p"/admin/questions?status=needs_review",
+              else: ~p"/admin/questions"
+          }
+          style="position:relative;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
         >
+          <span
+            :if={@review_backlog > 0}
+            title="Community answers flagged stale by a rulebook change, awaiting re-approval"
+            style="position:absolute;top:0.6rem;right:0.6rem;background:var(--danger,#c0392b);color:#fff;font-size:0.7rem;font-weight:700;border-radius:999px;padding:0.1rem 0.45rem"
+          >
+            {@review_backlog} to review
+          </span>
           <div style="font-size:1.5rem;margin-bottom:0.4rem">💬</div>
           <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">Questions</div>
           <div style="font-size:0.8rem;color:var(--text-muted)">Browse, filter, and delete user questions.</div>

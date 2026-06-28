@@ -31,6 +31,15 @@ defmodule RuleMavenWeb.AdminLive.Questions do
 
   @impl true
   def handle_params(params, _uri, socket) do
+    socket =
+      case params["status"] do
+        s when s in ["needs_review", "answered", "pending", "refused", "error"] ->
+          socket |> assign(filter_status: s) |> reload()
+
+        _ ->
+          socket
+      end
+
     case params["focus"] && Integer.parse(params["focus"]) do
       {id, _} -> {:noreply, assign(socket, expanded_id: id)}
       _ -> {:noreply, socket}

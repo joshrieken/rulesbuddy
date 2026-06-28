@@ -692,6 +692,18 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Count of community answers flagged stale by a rulebook change and awaiting
+  re-approval. These stop serving until cleared, so a non-zero count is a
+  moderation backlog that should be drained.
+  """
+  def needs_review_count do
+    Repo.aggregate(
+      from(q in QuestionLog, where: q.needs_review == true and q.visibility == "community"),
+      :count
+    )
+  end
+
+  @doc """
   Re-chunk (and re-embed) every document, e.g. after changing how chunk text is
   derived. `chunk_document/1` clears + reinserts chunks and enqueues embedding.
   Returns the number of documents processed.
