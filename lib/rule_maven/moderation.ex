@@ -36,6 +36,7 @@ defmodule RuleMaven.Moderation do
         email: u.email,
         role: u.role,
         reputation: u.reputation,
+        monthly_quota: u.monthly_quota,
         confirmed: not is_nil(u.email_confirmed_at),
         suspended: not is_nil(u.suspended_at),
         is_admin: Users.can?(u, :admin),

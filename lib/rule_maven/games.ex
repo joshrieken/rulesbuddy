@@ -704,6 +704,20 @@ defmodule RuleMaven.Games do
     )
   end
 
+  @doc """
+  Answers currently pulled from the pool awaiting re-approval (`needs_review`),
+  whether pulled by a rulebook change or by user reports. Newest first, with the
+  game preloaded for display.
+  """
+  def list_needs_review_questions do
+    Repo.all(
+      from q in QuestionLog,
+        where: q.needs_review == true,
+        order_by: [desc: q.updated_at],
+        preload: [:game]
+    )
+  end
+
   # ── User answer flags ──
 
   @doc """
@@ -1132,10 +1146,14 @@ defmodule RuleMaven.Games do
     Repo.aggregate(from(q in QuestionLog, where: q.game_id == ^game.id), :count)
   end
 
+  # Counts a user's *billable* asks since `since` — fresh LLM generations only.
+  # Cache/pool hits (rows carrying a `pool_source_id`) are cheap and explicitly
+  # don't count against rate limits or quotas.
   def recent_question_count(user_id, since) do
     Repo.aggregate(
       from(q in QuestionLog,
-        where: q.user_id == ^user_id and q.inserted_at >= ^since
+        where:
+          q.user_id == ^user_id and q.inserted_at >= ^since and is_nil(q.pool_source_id)
       ),
       :count
     )
@@ -1344,7 +1362,8 @@ defmodule RuleMaven.Games do
 
       daily_limit = parse_limit(Settings.get("rate_limit_daily"), 50)
       weekly_limit = parse_limit(Settings.get("rate_limit_weekly"), 200)
-      monthly_limit = parse_limit(Settings.get("rate_limit_monthly"), 500)
+      # Monthly is the per-user, admin-tunable quota — not a global setting.
+      monthly_limit = user.monthly_quota || 200
 
       # Daily $ budget cap (0 = disabled). Estimated from logged token usage.
       cost_cap = parse_cost(Settings.get("user_daily_cost_cap"), 0.0)
@@ -1357,7 +1376,7 @@ defmodule RuleMaven.Games do
           {:error, "Weekly question limit reached (#{weekly_limit})."}
 
         monthly_count >= monthly_limit ->
-          {:error, "Monthly question limit reached (#{monthly_limit})."}
+          {:error, "Monthly question quota reached (#{monthly_limit}). An admin can raise it."}
 
         cost_cap > 0.0 and RuleMaven.LLM.user_cost_today(user.id) >= cost_cap ->
           {:error, "Daily usage budget reached. Please try again tomorrow."}

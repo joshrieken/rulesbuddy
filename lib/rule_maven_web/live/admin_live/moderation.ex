@@ -16,7 +16,8 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
     assign(socket,
       signals: Moderation.user_signals(),
       collusion: Moderation.collusion_pairs(),
-      flagged: Games.list_flagged_questions()
+      flagged: Games.list_flagged_questions(),
+      pulled: Games.list_needs_review_questions()
     )
   end
 
@@ -80,6 +81,38 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
 
       {:error, msg} ->
         {:noreply, put_flash(socket, :error, msg)}
+    end
+  end
+
+  defp do_event("set_quota", %{"user_id" => id, "quota" => quota}, socket) do
+    with {:ok, user} <- fetch(id),
+         {q, _} <- Integer.parse(to_string(quota)),
+         {:ok, updated} <- Users.set_quota(user, q) do
+      audit(socket, "user.set_quota", user, %{quota: updated.monthly_quota})
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "Set #{user.username}'s monthly quota to #{updated.monthly_quota}.")
+       |> load()}
+    else
+      {:error, msg} when is_binary(msg) -> {:noreply, put_flash(socket, :error, msg)}
+      _ -> {:noreply, put_flash(socket, :error, "Enter a valid quota.")}
+    end
+  end
+
+  defp do_event("reapprove_answer", %{"id" => id}, socket) do
+    with {qid, _} <- Integer.parse(to_string(id)),
+         %RuleMaven.Games.QuestionLog{} = q <- Repo.get(RuleMaven.Games.QuestionLog, qid),
+         {:ok, _} <- Games.clear_needs_review(q) do
+      Audit.log(socket.assigns.current_user, "question.reapprove",
+        target_type: "question",
+        target_id: qid,
+        target_label: q.question
+      )
+
+      {:noreply, socket |> put_flash(:info, "Re-approved — back in the pool.") |> load()}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Answer not found.")}
     end
   end
 
@@ -181,6 +214,7 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
               <th style={th()} title="Owned answers flagged stale">Review</th>
               <th style={th()} title="Answers promoted to the community pool">Pooled</th>
               <th style={th()}>Rep</th>
+              <th style={th()} title="Monthly question quota (fresh asks only)">Quota</th>
               <th style={th()} title="Votes cast (up / down)">Votes</th>
               <th style={th()}>Age</th>
               <th style={th()}>Actions</th>
@@ -206,6 +240,24 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
                 <td style={num(s.needs_review)}>{s.needs_review}</td>
                 <td style={td()}>{s.community}</td>
                 <td style={td()}>{s.reputation}</td>
+                <td style={td()}>
+                  <%= if s.is_admin do %>
+                    <span style="color:var(--text-muted)" title="Admins are exempt from quotas">—</span>
+                  <% else %>
+                    <form phx-submit="set_quota" style="display:flex;gap:0.2rem;align-items:center">
+                      <input type="hidden" name="user_id" value={s.user_id} />
+                      <input
+                        type="number"
+                        name="quota"
+                        value={s.monthly_quota}
+                        min="0"
+                        step="50"
+                        style="width:4.5rem;font-size:0.72rem;padding:0.1rem 0.25rem;border:1px solid var(--border);border-radius:0.25rem;background:var(--bg-surface);color:var(--text)"
+                      />
+                      <button type="submit" style={btn("var(--accent)")} title="Save quota">Set</button>
+                    </form>
+                  <% end %>
+                </td>
                 <td style={td()}>{s.votes_up}/{s.votes_down}</td>
                 <td style={td()}>{if s.age_days, do: "#{s.age_days}d", else: "—"}</td>
                 <td style={td()}>
@@ -291,6 +343,53 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
                   type="button"
                   phx-click="delete_flagged"
                   phx-value-id={f.question_log_id}
+                  data-confirm="Delete this answer? This can't be undone."
+                  style={btn("var(--danger,#c0392b)")}
+                >Delete answer</button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <h2 style="font-size:1.1rem;font-weight:700;margin:1.75rem 0 0.35rem">
+        Pulled from the pool — awaiting review
+        <span
+          :if={@pulled != []}
+          style="margin-left:0.4rem;font-size:0.7rem;font-weight:700;color:#fff;background:var(--danger,#c0392b);border-radius:999px;padding:0.05rem 0.45rem;vertical-align:middle"
+        >{length(@pulled)}</span>
+      </h2>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.75rem">
+        Answers auto-pulled by user reports or a rulebook change. They stop serving until you
+        re-approve them. Re-approve to put it back in the pool, or delete it.
+      </p>
+
+      <%= if @pulled == [] do %>
+        <p style="font-size:0.8rem;color:var(--text-muted)">Nothing awaiting review.</p>
+      <% else %>
+        <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:0.5rem">
+          <%= for q <- @pulled do %>
+            <div style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.75rem">
+              <div style="display:flex;gap:0.5rem;align-items:baseline;justify-content:space-between">
+                <span style="font-weight:600;font-size:0.85rem">{q.question}</span>
+                <span style={pill("var(--text-muted)")}>
+                  {q.game && q.game.name} · {q.visibility}
+                </span>
+              </div>
+              <p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0">
+                {String.slice(q.canonical_answer || q.answer || "", 0, 240)}
+              </p>
+              <div style="display:flex;gap:0.3rem;margin-top:0.35rem">
+                <button
+                  type="button"
+                  phx-click="reapprove_answer"
+                  phx-value-id={q.id}
+                  style={btn("var(--green)")}
+                >Re-approve</button>
+                <button
+                  type="button"
+                  phx-click="delete_flagged"
+                  phx-value-id={q.id}
                   data-confirm="Delete this answer? This can't be undone."
                   style={btn("var(--danger,#c0392b)")}
                 >Delete answer</button>

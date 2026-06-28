@@ -73,6 +73,10 @@ defmodule RuleMaven.Users do
   def unsuspend_user(%User{} = user),
     do: user |> User.suspension_changeset(false) |> Repo.update()
 
+  @doc "Sets a user's monthly question quota (admin action)."
+  def set_quota(%User{} = user, quota),
+    do: user |> User.quota_changeset(quota) |> Repo.update()
+
   @doc "Zeroes a user's reputation. Trust recompute on their rows can re-derive it."
   def reset_reputation(%User{} = user),
     do: user |> Ecto.Changeset.change(reputation: 0) |> Repo.update()

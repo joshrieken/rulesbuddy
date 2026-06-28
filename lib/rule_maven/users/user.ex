@@ -11,6 +11,9 @@ defmodule RuleMaven.Users.User do
     field :reputation, :integer, default: 0
     field :email_confirmed_at, :utc_datetime
     field :suspended_at, :utc_datetime
+    # Per-user monthly question allowance (fresh LLM generations only; cache hits
+    # don't count). Replaces the global monthly limit; an admin can raise it.
+    field :monthly_quota, :integer, default: 200
 
     timestamps(type: :utc_datetime)
   end
@@ -94,6 +97,17 @@ defmodule RuleMaven.Users.User do
   end
 
   def suspension_changeset(user, false), do: change(user, suspended_at: nil)
+
+  @doc "Admin-set monthly question quota. Clamped to a sane non-negative range."
+  def quota_changeset(user, quota) do
+    user
+    |> cast(%{monthly_quota: quota}, [:monthly_quota])
+    |> validate_required([:monthly_quota])
+    |> validate_number(:monthly_quota,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: 1_000_000
+    )
+  end
 
   @doc "True for anyone with the :admin capability."
   def admin?(user), do: can?(user, :admin)
