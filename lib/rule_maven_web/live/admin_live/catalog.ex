@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.AdminLive.Catalog do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{BGG, Games, Users}
+  alias RuleMaven.{Audit, BGG, Games, Users}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -60,6 +60,10 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
   def handle_event("clear_all_games", _params, socket) do
     {count, _} = Games.delete_all_games()
 
+    Audit.log(socket.assigns.current_user, "catalog.clear_all",
+      metadata: %{"deleted" => count}
+    )
+
     {:noreply,
      socket
      |> assign(confirm_clear: false, confirm_text: "", total_games: Games.count_games())
@@ -78,6 +82,10 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
 
     case result do
       {:ok, count} ->
+        Audit.log(socket.assigns.current_user, "catalog.import",
+          metadata: %{"imported" => count}
+        )
+
         {:noreply,
          socket
          |> assign(importing: false, result: count, total_games: Games.count_games())

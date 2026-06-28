@@ -2,7 +2,18 @@ defmodule RuleMavenWeb.AdminLive.Db do
   use RuleMavenWeb, :live_view
 
   alias Ecto.Adapters.SQL
-  alias RuleMaven.{Repo, Users}
+  alias RuleMaven.{Audit, Repo, Users}
+
+  # Tables that must never be mutated through this raw editor:
+  #   * audit_logs      — append-only by contract; editing here would void the
+  #                       forensic guarantee the whole audit story rests on.
+  #   * schema_migrations — corrupting it breaks migrations / the app.
+  #   * oban_*          — the job runtime owns these; hand-editing causes chaos.
+  # Reads stay allowed (browsing is useful); writes are refused.
+  @protected_exact ~w(audit_logs schema_migrations)
+  defp writable?(table) do
+    table not in @protected_exact and not String.starts_with?(table, "oban")
+  end
 
   @impl true
   def mount(_params, _session, socket) do
@@ -89,10 +100,24 @@ defmodule RuleMavenWeb.AdminLive.Db do
     table = socket.assigns.table_name
     pk = socket.assigns.pk_col
 
-    SQL.query!(Repo, "DELETE FROM #{safe(table)} WHERE #{safe(pk)} = $1", [id])
+    if writable?(table) do
+      SQL.query!(Repo, "DELETE FROM #{safe(table)} WHERE #{safe(pk)} = $1", [id])
 
-    rows = fetch_rows(table, socket.assigns.columns)
-    {:noreply, assign(socket, rows: rows, delete_id: nil)}
+      Audit.log(socket.assigns.current_user, "db.delete",
+        target_type: "row",
+        target_id: id,
+        target_label: "#{table}.#{pk}=#{id}",
+        metadata: %{"table" => table}
+      )
+
+      rows = fetch_rows(table, socket.assigns.columns)
+      {:noreply, assign(socket, rows: rows, delete_id: nil)}
+    else
+      {:noreply,
+       socket
+       |> assign(delete_id: nil)
+       |> put_flash(:error, "#{table} is protected — writes are disabled.")}
+    end
   end
 
   # New
@@ -138,6 +163,17 @@ defmodule RuleMavenWeb.AdminLive.Db do
     data = socket.assigns.form_data
     cols_map = Map.new(columns)
 
+    if writable?(table) do
+      do_save(socket, table, pk, columns, mode, data, cols_map)
+    else
+      {:noreply,
+       socket
+       |> assign(mode: nil, editing_id: nil, form_data: %{}, form_errors: %{})
+       |> put_flash(:error, "#{table} is protected — writes are disabled.")}
+    end
+  end
+
+  defp do_save(socket, table, pk, columns, mode, data, cols_map) do
     # Exclude pk from insert/update
     set_cols = Enum.filter(Map.keys(cols_map), &(&1 != pk))
     vals = Enum.map(set_cols, &parse_for_db(Map.get(data, &1), cols_map[&1]))
@@ -161,6 +197,13 @@ defmodule RuleMavenWeb.AdminLive.Db do
         sql = "UPDATE #{safe(table)} SET #{sets} WHERE #{safe(pk)} = $#{length(set_cols) + 1}"
         SQL.query!(Repo, sql, vals ++ [pk_val])
     end
+
+    Audit.log(socket.assigns.current_user, "db.#{mode}",
+      target_type: "row",
+      target_id: socket.assigns.editing_id,
+      target_label: "#{table}#{if mode == :edit, do: ".#{pk}=#{socket.assigns.editing_id}", else: ""}",
+      metadata: %{"table" => table, "columns" => set_cols}
+    )
 
     rows = fetch_rows(table, columns)
 
@@ -341,7 +384,13 @@ defmodule RuleMavenWeb.AdminLive.Db do
             >
               {if @view_mode == :table, do: "☰ Extended", else: "⊞ Table"}
             </button>
+            <span
+              :if={not writable?(@table_name)}
+              title="audit_logs, schema_migrations and oban_* are read-only"
+              style="font-size:0.7rem;font-weight:700;color:var(--text-muted);border:1px solid var(--border);border-radius:0.3rem;padding:0.25rem 0.5rem"
+            >🔒 Read-only</span>
             <button
+              :if={writable?(@table_name)}
               type="button"
               phx-click="new_row"
               style="background:var(--accent);color:#fff;border:none;padding:0.3rem 0.75rem;border-radius:0.375rem;font-size:0.75rem;font-weight:600;cursor:pointer"
@@ -438,7 +487,8 @@ defmodule RuleMavenWeb.AdminLive.Db do
                       </td>
                     <% end %>
                     <td style="padding:0.15rem 0.3rem;border-bottom:1px solid var(--border-subtle);white-space:nowrap">
-                      <div style="display:flex;gap:0.2rem;align-items:center">
+                      <span :if={not writable?(@table_name)} style="color:var(--text-muted)">—</span>
+                      <div :if={writable?(@table_name)} style="display:flex;gap:0.2rem;align-items:center">
                         <button
                           type="button"
                           phx-click="edit_row"
@@ -496,7 +546,10 @@ defmodule RuleMavenWeb.AdminLive.Db do
                     </div>
                   <% end %>
                 </div>
-                <div style="display:flex;gap:0.25rem;margin-top:0.3rem;padding-top:0.3rem;border-top:1px solid var(--border-subtle)">
+                <div
+                  :if={writable?(@table_name)}
+                  style="display:flex;gap:0.25rem;margin-top:0.3rem;padding-top:0.3rem;border-top:1px solid var(--border-subtle)"
+                >
                   <button
                     type="button"
                     phx-click="edit_row"

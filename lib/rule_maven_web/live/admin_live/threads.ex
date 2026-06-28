@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.AdminLive.Threads do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Games, Users}
+  alias RuleMaven.{Audit, Games, Users}
   alias RuleMaven.Games.QuestionLog
   alias RuleMaven.Repo
   import Ecto.Query
@@ -85,6 +85,12 @@ defmodule RuleMavenWeb.AdminLive.Threads do
       )
 
       RuleMaven.Workers.EmbedQuestionWorker.enqueue(root.id)
+
+      Audit.log(socket.assigns.current_user, "thread.merge_to_community",
+        target_type: "question",
+        target_id: root.id,
+        target_label: socket.assigns.merge_question
+      )
 
       threads = Games.all_question_threads()
 

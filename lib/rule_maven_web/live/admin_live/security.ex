@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.AdminLive.Security do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{Security, Games, Users}
+  alias RuleMaven.{Audit, Security, Games, Users}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -36,6 +36,12 @@ defmodule RuleMavenWeb.AdminLive.Security do
       q ->
         case Security.unblock_question(q) do
           {:ok, updated} ->
+            Audit.log(socket.assigns.current_user, "security.unblock",
+              target_type: "question",
+              target_id: q.id,
+              target_label: q.question
+            )
+
             expansion_ids = []
             recent_context = []
 
@@ -63,6 +69,13 @@ defmodule RuleMavenWeb.AdminLive.Security do
       nil -> {:noreply, socket}
       q ->
         Games.delete_question(q)
+
+        Audit.log(socket.assigns.current_user, "security.delete_blocked",
+          target_type: "question",
+          target_id: q.id,
+          target_label: q.question
+        )
+
         {:noreply, load_blocked(socket)}
     end
   end
@@ -74,6 +87,14 @@ defmodule RuleMavenWeb.AdminLive.Security do
       nil -> {:noreply, socket}
       p ->
         Security.toggle_pattern(p)
+
+        Audit.log(socket.assigns.current_user, "security.toggle_pattern",
+          target_type: "pattern",
+          target_id: p.id,
+          target_label: p.pattern,
+          metadata: %{"enabled" => !p.enabled}
+        )
+
         {:noreply, load_patterns(socket)}
     end
   end
@@ -85,13 +106,27 @@ defmodule RuleMavenWeb.AdminLive.Security do
       nil -> {:noreply, socket}
       p ->
         Security.delete_pattern(p)
+
+        Audit.log(socket.assigns.current_user, "security.delete_pattern",
+          target_type: "pattern",
+          target_id: p.id,
+          target_label: p.pattern
+        )
+
         {:noreply, load_patterns(socket)}
     end
   end
 
   def handle_event("add_pattern", %{"pattern" => pattern, "category" => category, "note" => note}, socket) do
     case Security.create_pattern(%{pattern: pattern, category: category, note: note}) do
-      {:ok, _} ->
+      {:ok, created} ->
+        Audit.log(socket.assigns.current_user, "security.add_pattern",
+          target_type: "pattern",
+          target_id: created.id,
+          target_label: created.pattern,
+          metadata: %{"category" => category}
+        )
+
         {:noreply, socket |> assign(new_pattern: "", new_note: "", add_error: nil) |> load_patterns()}
 
       {:error, changeset} ->

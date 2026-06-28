@@ -1,7 +1,7 @@
 defmodule RuleMavenWeb.AdminLive.Invites do
   use RuleMavenWeb, :live_view
 
-  alias RuleMaven.{InviteCodes, Users}
+  alias RuleMaven.{Audit, InviteCodes, Users}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -21,6 +21,13 @@ defmodule RuleMavenWeb.AdminLive.Invites do
     with {max_uses, ""} when max_uses >= 1 and max_uses <= 1000 <- Integer.parse(max_str),
          user_id <- socket.assigns.current_user.id,
          {:ok, code} <- InviteCodes.create_code(user_id, max_uses: max_uses) do
+      Audit.log(socket.assigns.current_user, "invite.create",
+        target_type: "invite_code",
+        target_id: code.id,
+        target_label: code.code,
+        metadata: %{"max_uses" => max_uses}
+      )
+
       codes = InviteCodes.list_codes()
       {:noreply, assign(socket, invite_codes: codes) |> put_flash(:info, "Created: #{code.code}")}
     else
@@ -32,6 +39,12 @@ defmodule RuleMavenWeb.AdminLive.Invites do
     with {id, ""} <- Integer.parse(id_str),
          code when not is_nil(code) <- InviteCodes.list_codes() |> Enum.find(&(&1.id == id)),
          {:ok, _} <- InviteCodes.deactivate_code(code) do
+      Audit.log(socket.assigns.current_user, "invite.deactivate",
+        target_type: "invite_code",
+        target_id: code.id,
+        target_label: code.code
+      )
+
       codes = InviteCodes.list_codes()
       {:noreply, assign(socket, invite_codes: codes) |> put_flash(:info, "Code deactivated.")}
     else
