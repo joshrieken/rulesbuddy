@@ -39,7 +39,7 @@ defmodule RuleMavenWeb.Layouts do
     ~H"""
     <div
       id={@id}
-      style="position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;min-width:20rem;max-width:24rem"
+      style="position:fixed;top:4.25rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;width:min(24rem,calc(100vw - 2rem))"
     >
       <div
         :if={msg = Phoenix.Flash.get(@flash, :info)}
