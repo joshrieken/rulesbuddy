@@ -272,6 +272,29 @@ defmodule RuleMaven.GamesTest do
     q
   end
 
+  describe "update_canonical/3 (curated FAQ text)" do
+    setup do
+      game = game_fixture()
+      q = log_question!(game.id, nil, "How many cards?", "Draw five.")
+      %{q: q}
+    end
+
+    test "sets canonical question and answer", %{q: q} do
+      {:ok, updated} = Games.update_canonical(q, "How many cards do I draw?", "You draw five cards.")
+      assert updated.canonical_question == "How many cards do I draw?"
+      assert updated.canonical_answer == "You draw five cards."
+    end
+
+    test "blank strings clear back to nil", %{q: q} do
+      {:ok, set} = Games.update_canonical(q, "Q", "A")
+      assert set.canonical_question == "Q"
+
+      {:ok, cleared} = Games.update_canonical(set, "  ", "")
+      assert cleared.canonical_question == nil
+      assert cleared.canonical_answer == nil
+    end
+  end
+
   describe "DMCA takedowns" do
     test "take_down_game/3 records the takedown and restore clears it" do
       game = game_fixture()

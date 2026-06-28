@@ -1385,7 +1385,11 @@ defmodule RuleMaven.Games do
     }
 
     with {:ok, updated} <- q |> QuestionLog.changeset(attrs) |> Repo.update() do
-      RuleMaven.Workers.EmbedQuestionWorker.enqueue(updated.id)
+      # Skip the re-embed enqueue under manual Oban (tests); enqueue in prod.
+      unless Application.get_env(:rule_maven, Oban)[:testing] == :manual do
+        RuleMaven.Workers.EmbedQuestionWorker.enqueue(updated.id)
+      end
+
       {:ok, updated}
     end
   end
