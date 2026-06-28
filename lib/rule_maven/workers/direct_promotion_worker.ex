@@ -22,6 +22,9 @@ defmodule RuleMaven.Workers.DirectPromotionWorker do
       from q in QuestionLog,
         where: q.pooled == true and q.refused == false and q.visibility != "community",
         where: not is_nil(q.question_embedding),
+        # Deterministic seeding for the greedy clustering below: highest-trust
+        # rows seed clusters first, ties broken by id.
+        order_by: [desc: q.trust_score, asc: q.id],
         select: %{
           id: q.id,
           game_id: q.game_id,

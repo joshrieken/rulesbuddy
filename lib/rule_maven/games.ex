@@ -1071,15 +1071,18 @@ defmodule RuleMaven.Games do
     # Promoting to community makes the row cache-eligible.
     attrs = %{visibility: visibility, pooled: visibility == "community" or q.pooled}
 
-    q
-    |> QuestionLog.changeset(attrs)
-    |> Repo.update()
+    with {:ok, updated} <- q |> QuestionLog.changeset(attrs) |> Repo.update() do
+      # Keep trust_score consistent with the new tier (community floors it).
+      RuleMaven.Games.Trust.recompute_trust(updated)
+      {:ok, updated}
+    end
   end
 
   def set_question_visibility(id, visibility) when is_integer(id) do
     set = [visibility: visibility]
     set = if visibility == "community", do: Keyword.put(set, :pooled, true), else: set
     Repo.update_all(from(q in QuestionLog, where: q.id == ^id), set: set)
+    if q = Repo.get(QuestionLog, id), do: RuleMaven.Games.Trust.recompute_trust(q)
   end
 
   def check_rate_limit(nil), do: {:error, "Not logged in."}
@@ -2306,6 +2309,8 @@ defmodule RuleMaven.Games do
           value
 
         true ->
+          # Upsert on the (question_log_id, user_id) unique index so a concurrent
+          # double-submit updates the existing vote instead of raising.
           %QuestionVote{}
           |> QuestionVote.changeset(%{
             question_log_id: question_log_id,
@@ -2313,7 +2318,10 @@ defmodule RuleMaven.Games do
             value: value,
             weight: weight
           })
-          |> Repo.insert!()
+          |> Repo.insert!(
+            on_conflict: {:replace, [:value, :weight, :updated_at]},
+            conflict_target: [:question_log_id, :user_id]
+          )
 
           value
       end
