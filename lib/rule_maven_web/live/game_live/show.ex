@@ -1323,7 +1323,10 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%!-- Rulebook sources dropdown --%>
             <div :if={@sources != []} style="flex-shrink:0;position:relative">
               <details class="sources-dropdown">
-                <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.2rem;color:var(--text-muted);font-size:0.7rem;font-weight:600;user-select:none;padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:0.3rem;background:var(--bg-subtle)">
+                <summary
+                  class="pill-link"
+                  style="cursor:pointer;list-style:none;gap:0.2rem;user-select:none"
+                >
                   <span>📖</span>
                   <span>Rulebooks</span>
                   <span style="font-size:0.6rem;opacity:0.6">▾</span>
