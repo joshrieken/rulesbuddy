@@ -18,6 +18,10 @@ defmodule RuleMaven.ThemePalette do
   matching the `[data-theme="…"]` variable blocks hand-authored in `app.css`.
   """
 
+  # Near-black the header gradient is built on; accent is mixed in for a hint of
+  # the game's hue while staying dark enough for the white-text header design.
+  @header_dark {24, 22, 20}
+
   # Semantic status colors kept constant per scheme so "danger is red" survives
   # whatever the cover's palette is. Tuned to read on the respective backgrounds.
   @semantic %{
@@ -111,11 +115,15 @@ defmodule RuleMaven.ThemePalette do
       "--accent-subtle" => hex(mix(bg, accent, 0.12)),
       "--shadow" => shadow,
       "--shadow-hover" => rgba(accent, 0.18),
-      "--header-bg-start" => hex(darken(accent, 0.15)),
-      "--header-bg-end" => hex(darken(accent, 0.38)),
-      # Text on the header gradient. Worst case is the lighter start, so pick
-      # black/white against that. Defaults to #fff in static themes.
-      "--header-text" => hex(readable_on(darken(accent, 0.15))),
+      # The header is always a dark, lightly accent-tinted gradient — like every
+      # static theme. The whole header design (white text, glowing yellow icon,
+      # the "Maven" gradient) assumes a dark bar, so we mix the accent into a
+      # near-black rather than just darkening it, which would leave a bright
+      # accent (e.g. yellow) header that looks garish and washes out the text.
+      "--header-bg-start" => hex(mix(@header_dark, accent, 0.22)),
+      "--header-bg-end" => hex(mix(@header_dark, accent, 0.10)),
+      # Text on the (dark) header gradient — effectively white.
+      "--header-text" => hex(readable_on(mix(@header_dark, accent, 0.22))),
       "--header-border" => @semantic[scheme_key(scheme)]["--yellow"],
       "--focus-ring" => rgba(accent, 0.18)
     }
