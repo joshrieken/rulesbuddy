@@ -2229,10 +2229,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
                   <!-- Overflow: secondary actions (copy, regenerate) -->
                   <details class="card-menu" style="margin-left:auto">
-                    <summary
-                      style="font-size:0.9rem;line-height:1;color:var(--text-muted);padding:0 0.25rem"
-                      title="More actions"
-                    >
+                    <summary class="card-menu__trigger" title="More actions">
                       ⋯
                     </summary>
                     <div class="card-menu__pop card-menu__pop--right card-menu__pop--up">

@@ -11,9 +11,8 @@ const VOTE_THANKS = [
   ["🎲", "Thanks, you rule!"],
   ["🌟", "Gold star for you!"],
 ];
-function showVoteThanks() {
+function showToast(emoji, msg) {
   document.querySelectorAll(".vote-toast").forEach((t) => t.remove());
-  const [emoji, msg] = VOTE_THANKS[Math.floor(Math.random() * VOTE_THANKS.length)];
   const toast = document.createElement("div");
   toast.className = "vote-toast";
   const e = document.createElement("span");
@@ -25,6 +24,10 @@ function showVoteThanks() {
   toast.appendChild(t);
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2700);
+}
+function showVoteThanks() {
+  const [emoji, msg] = VOTE_THANKS[Math.floor(Math.random() * VOTE_THANKS.length)];
+  showToast(emoji, msg);
 }
 window.addEventListener("phx:vote_thanks", showVoteThanks);
 
@@ -348,29 +351,46 @@ Hooks.ScrollToMessage = {
 
 Hooks.ClipboardCopy = {
   mounted() {
-    this.el.addEventListener("click", () => {
+    this.el.addEventListener("click", async () => {
       const text = this.el.getAttribute("data-clipboard-text");
       if (!text) return;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => {
-          const origHTML = this.el.innerHTML;
-          this.el.innerHTML = "✓ Copied";
-          setTimeout(() => { this.el.innerHTML = origHTML; }, 1500);
-        });
-      } else {
-        // Fallback for older browsers / non-HTTPS
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed"; ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        const origHTML = this.el.innerHTML;
-        this.el.innerHTML = "✓ Copied";
-        setTimeout(() => { this.el.innerHTML = origHTML; }, 1500);
-      }
+      const ok = await this.copy(text);
+      this.feedback(ok);
     });
+  },
+  async copy(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {
+      /* fall through to execCommand */
+    }
+    // Fallback for older browsers / non-HTTPS
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  },
+  feedback(ok) {
+    const orig = this.el.innerHTML;
+    this.el.classList.add(ok ? "card-menu__item--ok" : "card-menu__item--err");
+    this.el.innerHTML = ok ? "✓ Copied!" : "✕ Copy failed";
+    if (window.showToast) showToast(ok ? "📋" : "⚠️", ok ? "Copied to clipboard!" : "Couldn't copy");
+    setTimeout(() => {
+      this.el.innerHTML = orig;
+      this.el.classList.remove("card-menu__item--ok", "card-menu__item--err");
+    }, 1500);
   }
 };
 

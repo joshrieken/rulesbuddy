@@ -2210,6 +2210,41 @@ textarea {
 .card-menu > summary::-webkit-details-marker {
   display: none;
 }
+.card-menu > summary {
+  border-radius: 0.35rem;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.card-menu > summary:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+/* The ⋯ overflow trigger: give it a real button affordance (hover, active,
+   and a highlighted state while its menu is open). */
+.card-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.card-menu__trigger:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+  border-color: var(--border);
+}
+.card-menu__trigger:active {
+  transform: scale(0.92);
+}
+.card-menu[open] > .card-menu__trigger {
+  background: var(--bg-subtle);
+  color: var(--text);
+  border-color: var(--border);
+}
 .card-menu__pop {
   position: absolute;
   z-index: 30;
@@ -2255,6 +2290,14 @@ textarea {
 }
 .card-menu__item:hover {
   background: var(--bg-subtle);
+}
+.card-menu__item--ok {
+  color: var(--accent-ink, var(--accent)) !important;
+  font-weight: 700;
+}
+.card-menu__item--err {
+  color: var(--danger, #c0392b) !important;
+  font-weight: 700;
 }
 
 /* ===== Up-vote thank-you toast ===== */
