@@ -25,183 +25,149 @@ defmodule RuleMavenWeb.AdminLive.Index do
 
       <h1 style="font-size:1.5rem;font-weight:700;margin:0.25rem 0 1rem">Admin Dashboard</h1>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:0.75rem">
-        <.link
-          navigate={~p"/admin/security"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🛡️</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Security
-          </div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">
-            Blocked questions and injection pattern management.
-          </div>
-        </.link>
-
-        <.link
+      <.section title="Review">
+        <.card
           navigate={
             if @review_backlog > 0,
               do: ~p"/admin/questions?status=needs_review",
               else: ~p"/admin/questions"
           }
-          style="position:relative;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <span
-            :if={@review_backlog > 0}
-            title="Community answers flagged stale by a rulebook change, awaiting re-approval"
-            style="position:absolute;top:0.6rem;right:0.6rem;background:var(--danger,#c0392b);color:#fff;font-size:0.7rem;font-weight:700;border-radius:999px;padding:0.1rem 0.45rem"
-          >
-            {@review_backlog} to review
-          </span>
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">💬</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Questions
-          </div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">
-            Browse, filter, and delete user questions.
-          </div>
-        </.link>
-
-        <.link
+          icon="💬"
+          title="Questions"
+          desc="Browse, filter, and delete user questions."
+          badge={@review_backlog > 0 && "#{@review_backlog} to review"}
+          badge_title="Community answers flagged stale by a rulebook change, awaiting re-approval"
+        />
+        <.card
           navigate={~p"/admin/moderation"}
-          style="position:relative;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <span
-            :if={@flag_backlog > 0}
-            title="Answers users reported as wrong or unhelpful, awaiting review"
-            style="position:absolute;top:0.6rem;right:0.6rem;background:var(--danger,#c0392b);color:#fff;font-size:0.7rem;font-weight:700;border-radius:999px;padding:0.1rem 0.45rem"
-          >
-            {@flag_backlog} reported
-          </span>
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🚩</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Moderation
-          </div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">
-            Per-user abuse signals, vote rings, suspend/pull-answers.
-          </div>
-        </.link>
-
-        <.link
+          icon="🚩"
+          title="Moderation"
+          desc="Per-user abuse signals, vote rings, suspend/pull-answers."
+          badge={@flag_backlog > 0 && "#{@flag_backlog} reported"}
+          badge_title="Answers users reported as wrong or unhelpful, awaiting review"
+        />
+        <.card
           navigate={~p"/admin/audit"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">📜</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Audit Log
-          </div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">
-            Append-only record of sensitive admin actions.
-          </div>
-        </.link>
-
-        <.link
-          navigate={~p"/admin/db"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🗄️</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            DB Admin
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Browse, edit, and manage database tables directly.
-          </div>
-        </.link>
-
-        <.link
+          icon="📜"
+          title="Audit Log"
+          desc="Append-only record of sensitive admin actions."
+        />
+        <.card
           navigate={~p"/admin/threads"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">💬</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Review Threads
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Review Q&A threads with followups. Merge into FAQ entries.
-          </div>
-        </.link>
+          icon="🧵"
+          title="Review Threads"
+          desc="Review Q&A threads with followups. Merge into FAQ entries."
+        />
+      </.section>
 
-        <.link
-          navigate={~p"/admin/catalog"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">📦</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Game Catalog
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Bulk-import the full BoardGameGeek catalog (~150k games).
-          </div>
-        </.link>
-
-        <.link
-          navigate={~p"/admin/requests"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🙋</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Support Requests
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Games users want supported, ranked by demand.
-          </div>
-        </.link>
-
-        <.link
+      <.section title="Manage">
+        <.card
           navigate={~p"/admin/users"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">👥</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Manage Users
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Promote players to game masters. Manage roles.
-          </div>
-        </.link>
-
-        <.link
+          icon="👥"
+          title="Manage Users"
+          desc="Promote players to game masters. Manage roles."
+        />
+        <.card
           navigate={~p"/admin/invites"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🎟️</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Invite Codes
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Generate invite codes for new user registration.
-          </div>
-        </.link>
+          icon="🎟️"
+          title="Invite Codes"
+          desc="Generate invite codes for new user registration."
+        />
+        <.card
+          navigate={~p"/admin/catalog"}
+          icon="📦"
+          title="Game Catalog"
+          desc="Bulk-import the full BoardGameGeek catalog (~150k games)."
+        />
+        <.card
+          navigate={~p"/admin/requests"}
+          icon="🙋"
+          title="Support Requests"
+          desc="Games users want supported, ranked by demand."
+        />
+      </.section>
 
-        <.link
+      <.section title="System">
+        <.card
+          navigate={~p"/admin/security"}
+          icon="🛡️"
+          title="Security"
+          desc="Blocked questions and injection pattern management."
+        />
+        <.card
+          navigate={~p"/admin/db"}
+          icon="🗄️"
+          title="DB Admin"
+          desc="Browse, edit, and manage database tables directly."
+        />
+        <.card
+          navigate={~p"/admin/themes"}
+          icon="🎨"
+          title="Theme Usage"
+          desc="Which themes users have selected."
+        />
+        <.card
+          navigate={~p"/settings"}
+          icon="🔧"
+          title="Settings"
+          desc="LLM provider, model, API keys, rate limits."
+        />
+        <.card
           href="/oban"
           target="_blank"
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">⚙️</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Oban Dashboard ↗
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            Background job queue and processing dashboard.
-          </div>
-        </.link>
-
-        <.link
-          navigate={~p"/settings"}
-          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
-        >
-          <div style="font-size:1.5rem;margin-bottom:0.4rem">🔧</div>
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
-            Settings
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">
-            LLM provider, model, API keys, rate limits.
-          </div>
-        </.link>
-      </div>
+          icon="⚙️"
+          title="Oban Dashboard ↗"
+          desc="Background job queue and processing dashboard."
+        />
+      </.section>
     </div>
+    """
+  end
+
+  slot :inner_block, required: true
+  attr :title, :string, required: true
+
+  defp section(assigns) do
+    ~H"""
+    <h2 style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:1.25rem 0 0.5rem">
+      {@title}
+    </h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:0.75rem">
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  attr :desc, :string, required: true
+  attr :navigate, :string, default: nil
+  attr :href, :string, default: nil
+  attr :target, :string, default: nil
+  attr :badge, :any, default: nil
+  attr :badge_title, :string, default: nil
+
+  defp card(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      href={@href}
+      target={@target}
+      style="position:relative;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;text-decoration:none;display:block"
+    >
+      <span
+        :if={@badge}
+        title={@badge_title}
+        style="position:absolute;top:0.6rem;right:0.6rem;background:var(--danger,#c0392b);color:#fff;font-size:0.7rem;font-weight:700;border-radius:999px;padding:0.1rem 0.45rem"
+      >
+        {@badge}
+      </span>
+      <div style="font-size:1.5rem;margin-bottom:0.4rem">{@icon}</div>
+      <div style="font-weight:700;font-size:0.9rem;color:var(--text);margin-bottom:0.2rem">
+        {@title}
+      </div>
+      <div style="font-size:0.8rem;color:var(--text-muted)">{@desc}</div>
+    </.link>
     """
   end
 end
