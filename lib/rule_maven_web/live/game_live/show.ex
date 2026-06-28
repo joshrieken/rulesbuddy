@@ -1291,6 +1291,12 @@ defmodule RuleMavenWeb.GameLive.Show do
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:300px">{@game.name}</h1>
+            <.link
+              patch={~p"/games/#{@game.id}?start=1"}
+              style="flex-shrink:0;display:inline-flex;align-items:center;font-size:0.7rem;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--accent);border-radius:0.3rem;padding:0.15rem 0.5rem;background:color-mix(in srgb,var(--accent) 8%,transparent)"
+            >
+              Overview
+            </.link>
             <%= if @game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(@game.category) do %>
               <.link
                 href={"https://boardgamegeek.com/boardgame/#{@game.bgg_id}"}
@@ -1410,14 +1416,6 @@ defmodule RuleMavenWeb.GameLive.Show do
           class={"question-sidebar #{if @sidebar_open, do: "", else: "sidebar-closed"}"}
           style="flex-shrink:0;width:16rem;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg-surface);padding:0.5rem 0;font-size:0.9rem;display:flex;flex-direction:column"
         >
-          <div style="padding:0.5rem 0.75rem 0.25rem;display:flex;justify-content:center">
-            <.link
-              patch={~p"/games/#{@game.id}?start=1"}
-              style="display:inline-flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--accent);border-radius:0.4rem;padding:0.3rem 0.85rem;background:color-mix(in srgb,var(--accent) 8%,transparent)"
-            >
-              Overview
-            </.link>
-          </div>
           <div style="padding:0.35rem 0.75rem;font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
             <span>
               Questions
