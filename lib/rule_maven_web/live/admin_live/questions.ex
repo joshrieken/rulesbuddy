@@ -120,16 +120,20 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         {:noreply, socket}
 
       q ->
-        Games.delete_question(q)
+        case Games.delete_question(q) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "question.delete",
+              target_type: "question",
+              target_id: q.id,
+              target_label: q.question,
+              metadata: %{game_id: q.game_id, author_id: q.user_id}
+            )
 
-        Audit.log(socket.assigns.current_user, "question.delete",
-          target_type: "question",
-          target_id: q.id,
-          target_label: q.question,
-          metadata: %{game_id: q.game_id, author_id: q.user_id}
-        )
+            {:noreply, reload(socket)}
 
-        {:noreply, reload(socket)}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't delete that question.")}
+        end
     end
   end
 
@@ -141,16 +145,20 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         {:noreply, socket}
 
       q ->
-        Games.update_question_visibility(q, vis)
+        case Games.update_question_visibility(q, vis) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "question.set_visibility",
+              target_type: "question",
+              target_id: q.id,
+              target_label: q.question,
+              metadata: %{from: q.visibility, to: vis}
+            )
 
-        Audit.log(socket.assigns.current_user, "question.set_visibility",
-          target_type: "question",
-          target_id: q.id,
-          target_label: q.question,
-          metadata: %{from: q.visibility, to: vis}
-        )
+            {:noreply, reload(socket)}
 
-        {:noreply, reload(socket)}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't change visibility.")}
+        end
     end
   end
 
@@ -162,8 +170,19 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         {:noreply, socket}
 
       q ->
-        Games.clear_needs_review(q)
-        {:noreply, reload(socket)}
+        case Games.clear_needs_review(q) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "question.reapprove",
+              target_type: "question",
+              target_id: q.id,
+              target_label: q.question
+            )
+
+            {:noreply, reload(socket)}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't re-approve that answer.")}
+        end
     end
   end
 

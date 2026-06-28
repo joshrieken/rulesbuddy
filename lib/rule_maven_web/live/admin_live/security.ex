@@ -68,15 +68,19 @@ defmodule RuleMavenWeb.AdminLive.Security do
     case Enum.find(socket.assigns.blocked, &(&1.id == id)) do
       nil -> {:noreply, socket}
       q ->
-        Games.delete_question(q)
+        case Games.delete_question(q) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "security.delete_blocked",
+              target_type: "question",
+              target_id: q.id,
+              target_label: q.question
+            )
 
-        Audit.log(socket.assigns.current_user, "security.delete_blocked",
-          target_type: "question",
-          target_id: q.id,
-          target_label: q.question
-        )
+            {:noreply, load_blocked(socket)}
 
-        {:noreply, load_blocked(socket)}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't delete that entry.")}
+        end
     end
   end
 
@@ -86,16 +90,20 @@ defmodule RuleMavenWeb.AdminLive.Security do
     case Enum.find(socket.assigns.patterns, &(&1.id == id)) do
       nil -> {:noreply, socket}
       p ->
-        Security.toggle_pattern(p)
+        case Security.toggle_pattern(p) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "security.toggle_pattern",
+              target_type: "pattern",
+              target_id: p.id,
+              target_label: p.pattern,
+              metadata: %{"enabled" => !p.enabled}
+            )
 
-        Audit.log(socket.assigns.current_user, "security.toggle_pattern",
-          target_type: "pattern",
-          target_id: p.id,
-          target_label: p.pattern,
-          metadata: %{"enabled" => !p.enabled}
-        )
+            {:noreply, load_patterns(socket)}
 
-        {:noreply, load_patterns(socket)}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't update the pattern.")}
+        end
     end
   end
 
@@ -105,15 +113,19 @@ defmodule RuleMavenWeb.AdminLive.Security do
     case Enum.find(socket.assigns.patterns, &(&1.id == id)) do
       nil -> {:noreply, socket}
       p ->
-        Security.delete_pattern(p)
+        case Security.delete_pattern(p) do
+          {:ok, _} ->
+            Audit.log(socket.assigns.current_user, "security.delete_pattern",
+              target_type: "pattern",
+              target_id: p.id,
+              target_label: p.pattern
+            )
 
-        Audit.log(socket.assigns.current_user, "security.delete_pattern",
-          target_type: "pattern",
-          target_id: p.id,
-          target_label: p.pattern
-        )
+            {:noreply, load_patterns(socket)}
 
-        {:noreply, load_patterns(socket)}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't delete the pattern.")}
+        end
     end
   end
 

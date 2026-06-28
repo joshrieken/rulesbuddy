@@ -158,16 +158,20 @@ defmodule RuleMavenWeb.AdminLive.Moderation do
             {:noreply, put_flash(socket, :error, "Answer not found.")}
 
           q ->
-            Games.delete_question(q)
+            case Games.delete_question(q) do
+              {:ok, _} ->
+                Audit.log(socket.assigns.current_user, "question.delete",
+                  target_type: "question",
+                  target_id: qid,
+                  target_label: q.question,
+                  metadata: %{via: "moderation"}
+                )
 
-            Audit.log(socket.assigns.current_user, "question.delete",
-              target_type: "question",
-              target_id: qid,
-              target_label: q.question,
-              metadata: %{via: "moderation_flags"}
-            )
+                {:noreply, socket |> put_flash(:info, "Deleted the flagged answer.") |> load()}
 
-            {:noreply, socket |> put_flash(:info, "Deleted the flagged answer.") |> load()}
+              {:error, _} ->
+                {:noreply, put_flash(socket, :error, "Couldn't delete that answer.")}
+            end
         end
 
       :error ->

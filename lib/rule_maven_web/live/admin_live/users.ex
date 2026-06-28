@@ -53,12 +53,18 @@ defmodule RuleMavenWeb.AdminLive.Users do
         {:noreply, put_flash(socket, :error, "User not found.")}
 
       user ->
-        {:ok, _} = Users.update_user_role(user, "user")
-        audit(socket, "role.demote", user, %{to: "user"})
-        users = Users.list_users()
+        case guard_demote(user, socket) do
+          :ok ->
+            {:ok, _} = Users.update_user_role(user, "user")
+            audit(socket, "role.demote", user, %{to: "user"})
+            users = Users.list_users()
 
-        {:noreply,
-         assign(socket, users: users) |> put_flash(:info, "#{user.username} demoted to user.")}
+            {:noreply,
+             assign(socket, users: users) |> put_flash(:info, "#{user.username} demoted to user.")}
+
+          {:error, msg} ->
+            {:noreply, put_flash(socket, :error, msg)}
+        end
     end
   end
 
@@ -118,6 +124,21 @@ defmodule RuleMavenWeb.AdminLive.Users do
       target_label: user.username,
       metadata: metadata
     )
+  end
+
+  # Block the two ways role demotion can lock everyone out: demoting yourself,
+  # or removing the last remaining admin.
+  defp guard_demote(user, socket) do
+    cond do
+      user.id == socket.assigns.current_user.id ->
+        {:error, "You can't demote yourself."}
+
+      Users.can?(user, :admin) and Users.count_admins() <= 1 ->
+        {:error, "Can't demote the last admin. Promote another admin first."}
+
+      true ->
+        :ok
+    end
   end
 
   @impl true

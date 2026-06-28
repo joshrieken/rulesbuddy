@@ -274,6 +274,29 @@ defmodule RuleMaven.UsersTest do
     end
   end
 
+  describe "count_admins/0 (last-admin lockout guard)" do
+    test "counts only admin-role users" do
+      assert Users.count_admins() == 0
+
+      {:ok, _admin} =
+        Users.create_user(%{
+          username: "the_admin",
+          email: "admin@test.com",
+          password: "testpass1234",
+          role: "admin"
+        })
+
+      {:ok, _plain} =
+        Users.create_user(%{
+          username: "plain",
+          email: "plain@test.com",
+          password: "testpass1234"
+        })
+
+      assert Users.count_admins() == 1
+    end
+  end
+
   describe "session revocation (force logout)" do
     setup do
       {:ok, user} =

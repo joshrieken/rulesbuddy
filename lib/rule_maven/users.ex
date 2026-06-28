@@ -24,6 +24,11 @@ defmodule RuleMaven.Users do
     Repo.all(from u in User, order_by: [desc: u.inserted_at])
   end
 
+  @doc "Count of users with the admin role. Used to prevent last-admin lockout."
+  def count_admins do
+    Repo.aggregate(from(u in User, where: u.role == "admin"), :count)
+  end
+
   def create_user(attrs) do
     %User{}
     |> User.registration_changeset(attrs)
