@@ -58,7 +58,6 @@ defmodule RuleMaven.Prompts do
     "verdict": string,           // classify the answer for a verdict stamp. Exactly one of: "legal" (the asked action/move IS permitted by the rules), "illegal" (the asked action/move is NOT permitted / forbidden), "silent" (use ONLY when refusing — rulebook does not cover it), "info" (a factual/explanatory answer that is not a yes/no legality question, e.g. "how does scoring work"). If the question is not about whether something is allowed, use "info". On refusal always "silent".
     "citation": string,          // verbatim supporting prose — follow CITATION RULES above exactly. Empty string only when refusing.
     "page": integer,             // page number of the citation per CITATION RULES. Required for every non-refusal answer; use null only when refusing.
-    "followup": boolean,         // true if this question is a followup to the recent conversation (references a prior exchange, uses pronouns like "it"/"that"/"they"), else false
     "followups": [string],       // 2-3 natural next questions a player might ask. Empty array on refusal.
     "also_asked": [string]       // if the user's message contained more than one distinct question, the exact text of the additional questions (answer only the FIRST in "answer"). Empty array otherwise.
   }

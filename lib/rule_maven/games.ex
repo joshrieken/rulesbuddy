@@ -944,39 +944,13 @@ defmodule RuleMaven.Games do
     )
   end
 
-  @doc """
-  Finds the most recent root question (no parent) from the given user in the game.
-  Excludes the current question_log_id. Returns the parent question's ID, or nil.
-  """
-  def find_parent_question_id(game_id, user_id, exclude_id) do
-    query =
-      from q in QuestionLog,
-        where: q.game_id == ^game_id,
-        where: q.user_id == ^user_id,
-        where: is_nil(q.parent_question_id),
-        where: q.id != ^exclude_id,
-        order_by: [desc: q.inserted_at],
-        limit: 1
-
-    case Repo.one(query) do
-      %QuestionLog{id: id} -> id
-      nil -> nil
-    end
-  end
-
   def grouped_questions(%Game{} = game, opts \\ []) do
     all = recent_questions(game, 200, opts)
 
-    # Separate roots (no parent) from followups
-    {roots, followups} = Enum.split_with(all, &is_nil(&1.parent_question_id))
-
-    # Group roots by exact question text (same question asked again = history)
-    roots_by_text = Enum.group_by(roots, &String.downcase(String.trim(&1.question)))
-
-    # Group followups by parent_question_id
-    followups_by_parent = Enum.group_by(followups, & &1.parent_question_id)
-
-    roots_by_text
+    # Group by exact question text (same question asked again = regen history).
+    # Questions are self-contained — no followup threading.
+    all
+    |> Enum.group_by(&String.downcase(String.trim(&1.question)))
     |> Enum.map(fn {_key, entries} ->
       sorted =
         entries
@@ -991,16 +965,7 @@ defmodule RuleMaven.Games do
       primary = List.first(sorted)
       history = if length(sorted) > 1, do: tl(sorted), else: []
 
-      # Collect followups for this root (and its history entries)
-      all_ids = Enum.map(entries, & &1.id)
-
-      followups =
-        all_ids |> Enum.flat_map(&Map.get(followups_by_parent, &1, [])) |> Enum.uniq_by(& &1.id)
-
-      # Sort followups by insertion time
-      followups = Enum.sort_by(followups, & &1.inserted_at, NaiveDateTime)
-
-      %{primary: primary, history: history, followups: followups}
+      %{primary: primary, history: history, followups: []}
     end)
     |> Enum.sort_by(& &1.primary.inserted_at, {:desc, DateTime})
   end
@@ -1179,7 +1144,6 @@ defmodule RuleMaven.Games do
       from q in QuestionLog,
         where: q.game_id == ^game.id,
         where: q.visibility == "community",
-        where: is_nil(q.parent_question_id),
         where: q.refused == false,
         order_by: [desc: q.inserted_at],
         limit: 50
@@ -1202,7 +1166,6 @@ defmodule RuleMaven.Games do
       from q in QuestionLog,
         where: q.game_id == ^game.id,
         where: q.refused == true,
-        where: is_nil(q.parent_question_id),
         order_by: [desc: q.inserted_at],
         limit: 50
 
@@ -1355,18 +1318,9 @@ defmodule RuleMaven.Games do
   suitable for admin review and consolidation.
   """
   def question_threads(%Game{} = game) do
-    all = recent_questions(game, 200)
-
-    # Roots and their followups
-    {roots, followups} = Enum.split_with(all, &is_nil(&1.parent_question_id))
-    followups_by_parent = Enum.group_by(followups, & &1.parent_question_id)
-
-    roots
-    |> Enum.map(fn root ->
-      children = Map.get(followups_by_parent, root.id, [])
-      %{root: root, followups: children}
-    end)
-    |> Enum.reject(fn %{root: r} -> String.contains?(r.answer || "", "Thinking...") end)
+    recent_questions(game, 200)
+    |> Enum.reject(fn r -> String.contains?(r.answer || "", "Thinking...") end)
+    |> Enum.map(fn root -> %{root: root, followups: []} end)
     |> Enum.sort_by(& &1.root.inserted_at, {:desc, DateTime})
   end
 
@@ -1379,28 +1333,13 @@ defmodule RuleMaven.Games do
   Returns all question threads across all games.
   """
   def all_question_threads do
-    roots =
-      Repo.all(
-        from q in base_question_query(),
-          where: is_nil(q.parent_question_id),
-          where: q.answer != "Thinking...",
-          limit: 200,
-          preload: [:game]
-      )
-
-    root_ids = Enum.map(roots, & &1.id)
-
-    followups_by_parent =
-      Repo.all(
-        from q in QuestionLog,
-          where: q.parent_question_id in ^root_ids,
-          order_by: [asc: q.inserted_at]
-      )
-      |> Enum.group_by(& &1.parent_question_id)
-
-    Enum.map(roots, fn root ->
-      %{root: root, followups: Map.get(followups_by_parent, root.id, [])}
-    end)
+    Repo.all(
+      from q in base_question_query(),
+        where: q.answer != "Thinking...",
+        limit: 200,
+        preload: [:game]
+    )
+    |> Enum.map(fn root -> %{root: root, followups: []} end)
   end
 
   # ── Chunking (RAG) ──

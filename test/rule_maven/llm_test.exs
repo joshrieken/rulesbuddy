@@ -24,18 +24,6 @@ defmodule RuleMaven.LLMTest do
       assert result.cited_passage =~ "You may move up to 4 spaces"
     end
 
-    test "extracts followup flag" do
-      mock_llm(fn _body ->
-        {:ok, %{answer: "Yes.", cited_passage: "You may move.", followup: true, followups: []}}
-      end)
-
-      {:ok, game} = Games.create_game(%{name: "Test"})
-
-      {:ok, result} = LLM.ask(game, "Can I move?")
-
-      assert result.followup == true
-    end
-
     test "extracts followup suggestions" do
       mock_llm(fn _body ->
         {:ok,

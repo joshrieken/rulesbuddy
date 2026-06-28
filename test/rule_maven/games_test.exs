@@ -61,63 +61,30 @@ defmodule RuleMaven.GamesTest do
     end
   end
 
-  describe "followup chains" do
+  describe "grouped questions" do
     setup do
       game = game_fixture()
 
       user =
         Repo.insert!(%RuleMaven.Users.User{
-          username: "test_followups",
-          email: "test_followups@test.com",
+          username: "test_grouped",
+          email: "test_grouped@test.com",
           password_hash: "x"
         })
 
       %{game: game, user: user}
     end
 
-    test "find_parent_question_id/3 returns nil when no root questions exist", %{
+    test "grouped_questions/1 keeps each question self-contained (no nesting)", %{
       game: game,
       user: user
     } do
-      q = log_question!(game.id, user.id, "First question", "Answer 1")
-      assert Games.find_parent_question_id(game.id, user.id, q.id) == nil
-    end
-
-    test "find_parent_question_id/3 returns most recent root question", %{game: game, user: user} do
-      root = log_question!(game.id, user.id, "Root question", "Root answer")
-      q2 = log_question!(game.id, user.id, "Second question", "Answer 2")
-
-      parent_id = Games.find_parent_question_id(game.id, user.id, q2.id)
-      assert parent_id == root.id
-    end
-
-    test "find_parent_question_id/3 excludes the current question", %{game: game, user: user} do
-      q = log_question!(game.id, user.id, "Only question", "Answer")
-      parent_id = Games.find_parent_question_id(game.id, user.id, q.id)
-      assert parent_id == nil
-    end
-
-    test "find_parent_question_id/3 skips followups and finds the root", %{game: game, user: user} do
-      root = log_question!(game.id, user.id, "Root Q", "Root A")
-      _fu1 = log_question!(game.id, user.id, "Followup 1", "FU1 A", root.id)
-      fu2 = log_question!(game.id, user.id, "Followup 2", "FU2 A")
-
-      # fu2 should find root (the most recent non-followup), not fu1
-      parent_id = Games.find_parent_question_id(game.id, user.id, fu2.id)
-      assert parent_id == root.id
-    end
-
-    test "grouped_questions/1 nests followups under their parent", %{game: game, user: user} do
-      root = log_question!(game.id, user.id, "Root Q", "Root A")
-      fu = log_question!(game.id, user.id, "Followup Q", "Followup A", root.id)
+      _q1 = log_question!(game.id, user.id, "Root Q", "Root A")
+      _q2 = log_question!(game.id, user.id, "Followup Q", "Followup A")
 
       grouped = Games.grouped_questions(game)
-      assert length(grouped) == 1
-
-      group = hd(grouped)
-      assert group.primary.id == root.id
-      assert length(group.followups) == 1
-      assert hd(group.followups).id == fu.id
+      assert length(grouped) == 2
+      assert Enum.all?(grouped, &(&1.followups == []))
     end
 
     test "grouped_questions/1 groups same text into history", %{game: game, user: user} do
@@ -208,13 +175,12 @@ defmodule RuleMaven.GamesTest do
       assert hd(community).question == "User2 Q"
     end
 
-    test "community_questions/2 only returns root questions", %{game: game, user1: user1} do
-      root = log_question!(game.id, user1.id, "Root Q", "Root A", nil, "community")
-      _fu = log_question!(game.id, user1.id, "Followup Q", "FU A", root.id, "community")
+    test "community_questions/2 returns all community questions", %{game: game, user1: user1} do
+      _q1 = log_question!(game.id, user1.id, "First Q", "A1", nil, "community")
+      _q2 = log_question!(game.id, user1.id, "Second Q", "A2", nil, "community")
 
       community = Games.community_questions(game)
-      assert length(community) == 1
-      assert hd(community).id == root.id
+      assert length(community) == 2
     end
 
     test "log_question/1 defaults to private visibility", %{game: game, user1: user1} do

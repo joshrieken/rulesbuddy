@@ -108,7 +108,6 @@ defmodule RuleMaven.LLM do
            model: model_name,
            question_embedding: question_embedding,
            faq_hit: false,
-           followup: llm_result[:followup] || false,
            followups: llm_result[:followups] || [],
            also_asked: llm_result[:also_asked] || [],
            cleaned_question: llm_result[:cleaned_question],
@@ -497,7 +496,6 @@ defmodule RuleMaven.LLM do
           cited_passage: nilable_string(map["citation"]),
           cited_page: coerce_page(map["page"]),
           verdict: coerce_verdict(map["verdict"]),
-          followup: map["followup"] == true,
           followups: string_list(map["followups"]),
           cleaned_question: nilable_string(map["cleaned_question"]),
           also_asked: string_list(map["also_asked"])
@@ -509,7 +507,6 @@ defmodule RuleMaven.LLM do
           cited_passage: nil,
           cited_page: nil,
           verdict: nil,
-          followup: false,
           followups: [],
           cleaned_question: nil,
           also_asked: []

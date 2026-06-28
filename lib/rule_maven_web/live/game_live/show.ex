@@ -207,7 +207,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     end)
   end
 
-  # Build flat conversation for a single thread (root + history + followups).
+  # Build flat conversation for a single thread (root + regen history).
   defp build_conversation_for_thread(grouped, thread_id) do
     case Enum.find(grouped, &(&1.primary.id == thread_id)) do
       nil -> []
@@ -272,39 +272,7 @@ defmodule RuleMavenWeb.GameLive.Show do
           }
         end)
 
-      followup_msgs =
-        Enum.flat_map(g.followups, fn f ->
-          f_user = %{
-            id: f.id,
-            role: :user,
-            content: f.question,
-            cleaned_question: f.cleaned_question,
-            refused: f.refused,
-            followup: true,
-            timestamp: f.inserted_at
-          }
-
-          f_asst = %{
-            id: f.id,
-            role: :assistant,
-            content: f.answer,
-            cited_passage: f.cited_passage,
-            cited_page: f.cited_page,
-            verdict: f.verdict,
-            llm_provider: f.llm_provider,
-            llm_model: f.llm_model,
-            pinned: f.pinned,
-            refused: f.refused,
-            raw_response: f.raw_response,
-            followups: f.followups,
-            also_asked: f.also_asked,
-            timestamp: f.inserted_at
-          }
-
-          [f_user, f_asst]
-        end)
-
-      [user_msg, assistant_msg | history_msgs] ++ followup_msgs
+      [user_msg, assistant_msg | history_msgs]
     end)
     |> Enum.sort_by(& &1.timestamp, {:asc, DateTime})
     |> mark_pending_thinking()
@@ -1040,13 +1008,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 t
             end)
 
-          # If followup, rebuild threads from DB to move it under parent (remove orphan root)
-          if ql.parent_question_id do
-            grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
-            build_thread_summaries(grouped)
-          else
-            updated
-          end
+          updated
         else
           socket.assigns.threads
         end
@@ -1059,7 +1021,6 @@ defmodule RuleMavenWeb.GameLive.Show do
               msg
               |> Map.put(:content, ql.question)
               |> Map.put(:cleaned_question, ql.cleaned_question)
-              |> Map.put(:followup, data[:followup] || false)
 
             %{id: ^question_log_id, role: :assistant} = msg ->
               if ql.answer == "Thinking..." do
@@ -1752,7 +1713,6 @@ defmodule RuleMavenWeb.GameLive.Show do
           <% end %>
 
           <%= for {msg, idx} <- @conversation |> Enum.with_index() do %>
-            <% is_followup = msg.role == :user && msg[:followup] %>
             <%= if msg[:history] do %>
               <details style="width:100%;margin-bottom:0.1rem">
                 <summary style="font-size:0.72rem;color:var(--text-muted);cursor:pointer;list-style:none;padding:0.15rem 0.5rem;border-radius:0.25rem;background:var(--bg-subtle);display:inline-block">
@@ -1769,15 +1729,11 @@ defmodule RuleMavenWeb.GameLive.Show do
                 id={"chat-msg-#{idx}"}
                 class={[
                   "chat-msg",
-                  msg.role == :user && "chat-msg-user",
-                  is_followup && "chat-msg-followup"
+                  msg.role == :user && "chat-msg-user"
                 ]}
                 style={"display:flex;flex-direction:column;align-items:#{if msg.role == :user, do: "flex-end", else: "flex-start"}"}
               >
-                <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if is_followup && msg.role == :user, do: ";font-size:0.85rem;opacity:0.92", else: ""}#{if is_followup && msg.role != :user, do: ";margin-left:2rem;font-size:0.85rem;opacity:0.92", else: ""}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
-                  <%= if is_followup do %>
-                    <div style="font-size:0.6rem;opacity:0.6;margin-bottom:0.15rem">↳ followup</div>
-                  <% end %>
+                <div style={"max-width:85%;padding:0.75rem 1rem;border-radius:0.85rem;font-size:0.95rem;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,0.08);#{if msg.role == :user, do: "background:var(--accent);color:#fff;border-bottom-right-radius:0.25rem;margin-left:auto", else: "background:var(--bg-surface);color:var(--text);border-bottom-left-radius:0.25rem"}#{if msg[:refused], do: ";opacity:0.72", else: ""}"}>
                   <% stamp =
                     msg.role == :assistant && msg.content != "Thinking..." &&
                       verdict_stamp(msg[:verdict]) %>

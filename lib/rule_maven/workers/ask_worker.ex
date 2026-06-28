@@ -74,7 +74,6 @@ defmodule RuleMaven.Workers.AskWorker do
 
           if ql = get_question_log!(question_log_id) do
             raw_passage = llm_result[:cited_passage]
-            followup? = llm_result[:followup] || false
             # Strip [Page N] markers from display passage AFTER extracting page number
             passage =
               if raw_passage do
@@ -129,14 +128,6 @@ defmodule RuleMaven.Workers.AskWorker do
               question_embedding: llm_result[:question_embedding]
             }
 
-            update_attrs =
-              if followup? && user_id do
-                parent_id = Games.find_parent_question_id(game_id, user_id, question_log_id)
-                Map.put(update_attrs, :parent_question_id, parent_id)
-              else
-                update_attrs
-              end
-
             case Games.log_question_update(ql, update_attrs) do
               {:ok, updated} ->
                 pool_hit? = llm_result[:pool_hit] || false
@@ -159,7 +150,6 @@ defmodule RuleMaven.Workers.AskWorker do
                      tier: llm_result[:tier],
                      verified: llm_result[:verified] || false,
                      source_question_log_id: llm_result[:source_question_log_id],
-                     followup: followup?,
                      followups: if(refused?, do: [], else: llm_result[:followups] || []),
                      also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
                      cited_page: cited_page,
