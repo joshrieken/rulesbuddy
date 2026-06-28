@@ -1285,7 +1285,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       <div
         :if={@conversation != [] && @game.image_url}
         aria-hidden="true"
-        style={"position:absolute;inset:0;z-index:0;background-image:url('#{@game.image_url}');background-size:cover;background-position:center;filter:blur(30px) saturate(1.1);opacity:0.12;pointer-events:none"}
+        style={"position:absolute;inset:0;z-index:0;background-image:url('#{@game.image_url}');background-size:cover;background-position:center;filter:blur(16px) saturate(1.15);opacity:0.22;pointer-events:none"}
       >
       </div>
       <!-- Header -->
