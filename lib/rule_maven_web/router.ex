@@ -11,6 +11,15 @@ defmodule RuleMavenWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug RuleMavenWeb.AuthPlug
+    plug :put_dyk_seed
+  end
+
+  # Fresh per-page-load seed for the "Did you know?" card. Baked into the
+  # session (and thus data-phx-session) on each GET, so the dead render and the
+  # connected LiveView mount pick the SAME fact — no flicker, no layout shift —
+  # while a real refresh re-rolls it for variety.
+  defp put_dyk_seed(conn, _opts) do
+    Plug.Conn.put_session(conn, :dyk_seed, :rand.uniform(1_000_000_000))
   end
 
   pipeline :api do

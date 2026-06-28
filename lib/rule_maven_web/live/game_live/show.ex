@@ -7,10 +7,14 @@ defmodule RuleMavenWeb.GameLive.Show do
   @max_concurrent 5
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     {:ok,
      assign(socket,
        is_admin: RuleMaven.Users.can?(socket.assigns.current_user, :admin),
+       # Per-page-load seed (set by the :put_dyk_seed plug). Identical across the
+       # dead render and the connected mount, so the "Did you know?" card picks
+       # the same fact on both; re-rolls on a real refresh.
+       dyk_seed: session["dyk_seed"] || :rand.uniform(1_000_000_000),
        game: nil,
        question: "",
        conversation: [],
@@ -131,12 +135,10 @@ defmodule RuleMavenWeb.GameLive.Show do
         community_user_votes: cv_user,
         question_categories: question_categories,
         dyk_facts: dyk_facts,
-        # Pick the fact deterministically (seeded by the active thread) so the
-        # static HTTP render and the connected WS render choose the SAME fact.
-        # Random-at-mount made the card either reshuffle or pop in and shove
-        # content down when the socket connected. Manual shuffle + new answers
-        # still randomize via fact_card/1.
-        rule_card: dyk_card_for(dyk_facts, active_thread_id),
+        # Seed the pick with the per-load dyk_seed so the dead render and the
+        # connected mount agree (no flicker, no layout shift) while a refresh
+        # re-rolls it. Manual shuffle + new answers still randomize via fact_card/1.
+        rule_card: dyk_card_for(dyk_facts, socket.assigns.dyk_seed),
         setup_status: setup_status,
         setup_checklist: setup_checklist
       )
@@ -2566,7 +2568,8 @@ defmodule RuleMavenWeb.GameLive.Show do
 
   # Deterministic fact pick for the initial render: the static and connected
   # mounts must agree, else the card flickers or shifts layout on connect.
-  # Seeded by the active thread so it's stable per page-load but varies by view.
+  # Seeded by the per-load dyk_seed (stable across both renders, re-rolled on
+  # refresh).
   defp dyk_card_for([], _seed), do: nil
 
   defp dyk_card_for(facts, seed) do
