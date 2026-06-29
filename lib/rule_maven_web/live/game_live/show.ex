@@ -2031,11 +2031,22 @@ defmodule RuleMavenWeb.GameLive.Show do
                       <% v_pending = MapSet.member?(@voice_pending, {msg[:id], v_sel}) %>
                       <div class="answer-in">
                         <%= if v_pending && is_nil(v_content) do %>
-                          <div style="font-size:0.68rem;opacity:0.7;font-style:italic;margin-bottom:0.3rem;color:var(--text-muted)">
-                            🎭 putting it in character…
+                          <div
+                            class="voice-loader"
+                            id={"voice-loader-#{msg[:id]}"}
+                            phx-hook="VoiceLoader"
+                            phx-update="ignore"
+                            data-phrases={Jason.encode!(RuleMaven.Voices.loading_phrases(v_sel, @game))}
+                          >
+                            <div class="voice-loader__row">
+                              <span class="voice-loader__spinner" aria-hidden="true"></span>
+                              <span class="voice-loader__phrase">Reticulating splines…</span>
+                            </div>
+                            <div class="voice-loader__bar"><div class="voice-loader__fill"></div></div>
                           </div>
+                        <% else %>
+                          {render_markdown(v_content || msg.content)}
                         <% end %>
-                        {render_markdown(v_content || msg.content)}
                       </div>
                     <% end %>
                   </div>
