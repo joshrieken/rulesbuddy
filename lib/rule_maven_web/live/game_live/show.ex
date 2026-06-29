@@ -2613,7 +2613,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             panel; picking a question asks it and closes (ask_suggestion). --%>
       <div
         :if={@suggestions_modal}
-        style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;padding:1rem"
+        style="position:fixed;top:0;left:0;right:0;bottom:var(--jobpanel-h, 0px);z-index:60;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;padding:1rem"
       >
         <div
           phx-click-away="close_suggestions"
