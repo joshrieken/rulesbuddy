@@ -2581,14 +2581,24 @@ defmodule RuleMavenWeb.GameLive.Form do
         <.link navigate={~p"/"} class="back-link" style="margin-bottom:0">
           &larr; Back to games
         </.link>
-        <.link
-          :if={@game}
-          navigate={~p"/games/#{@game.id}"}
-          class="back-link"
-          style="margin-bottom:0"
-        >
-          Ask questions &rarr;
-        </.link>
+        <div style="display:flex;align-items:center;gap:1rem">
+          <.link
+            :if={@game}
+            navigate={~p"/games/#{@game.id}/prepare"}
+            class="back-link"
+            style="margin-bottom:0"
+          >
+            Prepare game &rarr;
+          </.link>
+          <.link
+            :if={@game}
+            navigate={~p"/games/#{@game.id}"}
+            class="back-link"
+            style="margin-bottom:0"
+          >
+            Ask questions &rarr;
+          </.link>
+        </div>
       </div>
 
       <h1 class="text-2xl font-bold mb-6">
