@@ -830,6 +830,9 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   defp step_link(id, game) when id in [:suggestions, :setup, :did_you_know, :voices, :theme],
     do: %{href: ~p"/games/#{game}", label: "View on game page"}
 
+  # Categories are managed in place on this page now — no edit-page round-trip.
+  defp step_link(:categories, _game), do: nil
+
   defp step_link(_id, game), do: %{href: ~p"/games/#{game}/edit", label: "Manage on edit page"}
 
   # bgg_data is an unstructured BGG payload — surface only its scalar fields as a
