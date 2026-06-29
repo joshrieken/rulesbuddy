@@ -32,6 +32,19 @@ defmodule RuleMaven.Voices do
 
   @game_prefix "g:"
 
+  # Shared SimCity-style nonsense, blended into every voice's loading screen so the
+  # panel never looks sparse. Flavor only — never rules or facts.
+  @generic_loading [
+    "Reticulating splines…",
+    "Consulting the errata…",
+    "Bribing the rules lawyer…",
+    "Re-shuffling the meeples…",
+    "Aligning the hex grid…",
+    "Untangling the turn order…",
+    "Waking the rules lawyer…",
+    "Calibrating the dice…"
+  ]
+
   # id => %{label, emoji, style}. "neutral" is the canonical default and is NOT
   # stored or restyled — it just shows the original answer.
   @voices [
@@ -41,28 +54,56 @@ defmodule RuleMaven.Voices do
       label: "Rules Lawyer",
       emoji: "🧑‍⚖️",
       style:
-        "a rules lawyer who treats every ruling like a courtroom win they've been waiting all day for. Dry, faintly condescending, savors phrases like \"per the rules as written\" and \"I'll allow it.\" Never insults you — just leaves you feeling slightly dumb for having asked."
+        "a rules lawyer who treats every ruling like a courtroom win they've been waiting all day for. Dry, faintly condescending, savors phrases like \"per the rules as written\" and \"I'll allow it.\" Never insults you — just leaves you feeling slightly dumb for having asked.",
+      loading: [
+        "Filing the motion…",
+        "Citing precedent…",
+        "Objecting on principle…",
+        "Reviewing the bylaws…",
+        "Stamping the verdict…"
+      ]
     },
     %{
       id: "pirate",
       label: "Pirate",
       emoji: "🏴‍☠️",
       style:
-        "a tired pirate quartermaster who'd rather be plundering than doing paperwork. Deadpan nautical metaphors, audible sighing, quiet contempt for landlubbers who can't read a rulebook. Salty but never a costume — go light on \"arr\" and \"matey\"; the comedy is the attitude, not the accent."
+        "a tired pirate quartermaster who'd rather be plundering than doing paperwork. Deadpan nautical metaphors, audible sighing, quiet contempt for landlubbers who can't read a rulebook. Salty but never a costume — go light on \"arr\" and \"matey\"; the comedy is the attitude, not the accent.",
+      loading: [
+        "Swabbing the rules…",
+        "Consulting the charts…",
+        "Hoisting the errata…",
+        "Counting the doubloons…",
+        "Sighing at landlubbers…"
+      ]
     },
     %{
       id: "robot",
       label: "Robot Referee",
       emoji: "🤖",
       style:
-        "an officious referee bot a little too confident in its own authority. Clipped, bureaucratic, treats each rule as a non-negotiable directive and may threaten to log your infraction. Occasionally glitches mid-sentence. Self-serious to the point of comedy — no winking, no \"BEEP boop\" cuteness."
+        "an officious referee bot a little too confident in its own authority. Clipped, bureaucratic, treats each rule as a non-negotiable directive and may threaten to log your infraction. Occasionally glitches mid-sentence. Self-serious to the point of comedy — no winking, no \"BEEP boop\" cuteness.",
+      loading: [
+        "Parsing directive…",
+        "Logging your infraction…",
+        "Recalibrating authority…",
+        "Buffering ruling…",
+        "Asserting compliance…"
+      ]
     },
     %{
       id: "coach",
       label: "Hype Coach",
       emoji: "📣",
       style:
-        "a motivational coach who genuinely believes this board game is the championship final. Wildly over-invested, treats every rule like a game-winning play, one timeout away from happy tears. The joke is the disproportionate intensity — commit to it; still delivers the exact rule, just louder than necessary."
+        "a motivational coach who genuinely believes this board game is the championship final. Wildly over-invested, treats every rule like a game-winning play, one timeout away from happy tears. The joke is the disproportionate intensity — commit to it; still delivers the exact rule, just louder than necessary.",
+      loading: [
+        "Hyping the play…",
+        "Drawing up the rule…",
+        "Calling the timeout…",
+        "Believing in you…",
+        "Rallying the table…"
+      ]
     }
   ]
 
@@ -120,6 +161,22 @@ defmodule RuleMaven.Voices do
       true ->
         nil
     end
+  end
+
+  @doc """
+  Loading-screen phrases for a voice within a game's scope: the voice's own
+  phrases (global `:loading` or a generated voice's `loading_phrases`) followed
+  by the shared generic pool, de-duplicated. Never returns an empty list.
+  """
+  def loading_phrases(voice, game) do
+    own =
+      case get_def(voice, game) do
+        %{loading: l} when is_list(l) -> l
+        %{loading_phrases: l} when is_list(l) -> l
+        _ -> []
+      end
+
+    (own ++ @generic_loading) |> Enum.reject(&(&1 in [nil, ""])) |> Enum.uniq()
   end
 
   @doc "Cached restyle content for one (question, voice), or nil."

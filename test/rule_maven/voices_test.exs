@@ -49,6 +49,37 @@ defmodule RuleMaven.VoicesTest do
     end
   end
 
+  describe "loading_phrases/2" do
+    test "returns a non-empty list for neutral (generic pool only)" do
+      g = game()
+      phrases = Voices.loading_phrases("neutral", g)
+      assert is_list(phrases) and phrases != []
+      assert Enum.all?(phrases, &is_binary/1)
+    end
+
+    test "returns a non-empty list for an unknown voice (generic pool only)" do
+      g = game()
+      assert Voices.loading_phrases("does-not-exist", g) != []
+    end
+
+    test "global voice phrases come before the generic pool and include both" do
+      g = game()
+      phrases = Voices.loading_phrases("pirate", g)
+      pirate_own = Voices.get_def("pirate").loading
+      assert pirate_own != []
+      # the voice's own phrases are present
+      assert Enum.all?(pirate_own, &(&1 in phrases))
+      # generic pool is blended in (more than just the voice's own)
+      assert length(phrases) > length(pirate_own)
+    end
+
+    test "de-duplicates phrases" do
+      g = game()
+      phrases = Voices.loading_phrases("pirate", g)
+      assert phrases == Enum.uniq(phrases)
+    end
+  end
+
   describe "replace_generated stability" do
     test "unchanged style keeps the row id and any cached restyles" do
       g = game()
