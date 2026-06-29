@@ -86,14 +86,11 @@ defmodule RuleMavenWeb.GameLive.Form do
         expanded_source_id: nil,
         reader_mode: "paginated",
         # Current page index per source entry (id => idx) for the inline + modal
-        # paginated views, plus whether the page picker selects by Sheet or Page.
+        # paginated views.
         source_page: %{},
         # Manual "page 1 is on sheet N" entry per source (id => string), for the
         # detection-failed fallback numbering.
         page_one_input: %{},
-        # Persisted per-browser (localStorage → connect params) so the user's
-        # Sheet/Page choice survives reloads. Defaults to "sheet" before connect.
-        reader_label_mode: restore_reader_label(socket),
         # Which text layer each source shows (id => "original"|"edited"|"cleaned").
         # Unset sources fall back to the most-refined layer present.
         editor_tab: %{}
@@ -693,14 +690,6 @@ defmodule RuleMavenWeb.GameLive.Form do
     {:noreply, assign(socket, reader_mode: mode)}
   end
 
-  def handle_event("set_reader_label_mode", %{"mode" => mode}, socket)
-      when mode in ~w(sheet page) do
-    {:noreply,
-     socket
-     |> assign(reader_label_mode: mode)
-     |> push_event("save_reader_label", %{mode: mode})}
-  end
-
   # Set the current page index for one source entry (inline + modal share this).
   # The select lives inside the save form, so LiveView serializes the whole form
   # on change; the entry id is encoded in the select's name ("pagesel_<id>") and
@@ -756,7 +745,15 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("source_page_step", %{"id" => id, "delta" => delta}, socket) do
     id = String.to_integer(id)
     cur = Map.get(socket.assigns.source_page, id, 0)
-    {:noreply, persist_source_page(socket, id, cur + String.to_integer(delta))}
+    # Clamp so keyboard paging (which can fire past the ends) stays in range.
+    count =
+      case Enum.find(socket.assigns.source_entries, &(&1.id == id)) do
+        %{pages: pages} -> length(pages)
+        _ -> 0
+      end
+
+    next = (cur + String.to_integer(delta)) |> max(0) |> min(max(count - 1, 0))
+    {:noreply, persist_source_page(socket, id, next)}
   end
 
   # Stash the "page 1 is on sheet N" input as the user types (name encodes the
@@ -801,8 +798,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
         {:noreply,
          socket
-         |> assign(source_entries: entries, reader_label_mode: "page")
-         |> push_event("save_reader_label", %{mode: "page"})
+         |> assign(source_entries: entries)
          |> put_flash(:info, "Numbered pages from sheet #{sheet}.")}
 
       {entry, {sheet, _}} when sheet >= 1 ->
@@ -816,8 +812,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
         {:noreply,
          socket
-         |> assign(source_entries: entries, reader_label_mode: "page")
-         |> push_event("save_reader_label", %{mode: "page"})
+         |> assign(source_entries: entries)
          |> put_flash(:info, "Numbered pages from sheet #{sheet}. Save to apply.")}
 
       _ ->
@@ -2142,21 +2137,15 @@ defmodule RuleMavenWeb.GameLive.Form do
   attr :id, :integer, required: true
   attr :pages, :list, required: true
   attr :cur, :integer, required: true
-  attr :label_mode, :string, required: true
 
   defp page_nav(assigns) do
-    printed = Enum.filter(Enum.with_index(assigns.pages), fn {p, _i} -> p.printed end)
-    mode = if assigns.label_mode == "page" and printed != [], do: "page", else: "sheet"
-
     assigns =
       assign(assigns,
         count: length(assigns.pages),
-        printed: printed,
-        mode: mode,
         step_style:
-          "height:1.9rem;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:1rem;line-height:1;padding:0 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer",
+          "height:2.6rem;min-width:2.6rem;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:1.5rem;line-height:1;padding:0 0.7rem;border-radius:0.4rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer",
         select_style:
-          "width:auto;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;padding:0 0.45rem;font-size:0.85rem;background:var(--bg);color:var(--text);cursor:pointer"
+          "height:2.6rem;min-width:9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.4rem;padding:0 0.7rem;font-size:1.05rem;font-weight:600;background:var(--bg);color:var(--text);cursor:pointer"
       )
 
     ~H"""
@@ -2170,48 +2159,22 @@ defmodule RuleMavenWeb.GameLive.Form do
         phx-value-id={@id}
         phx-value-delta="-1"
         disabled={@cur <= 0}
+        title="Previous page (← or h)"
         style={@step_style}
       >‹</button>
 
-      <div
-        :if={@printed != []}
-        style="display:inline-flex;align-items:stretch;height:1.9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.3rem;overflow:hidden"
-      >
-        <button
-          type="button"
-          phx-click="set_reader_label_mode"
-          phx-value-mode="sheet"
-          style={"display:inline-flex;align-items:center;font-size:0.68rem;padding:0 0.5rem;border:none;cursor:pointer;background:#{if @mode == "sheet", do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if @mode == "sheet", do: "white", else: "var(--text-secondary)"}"}
-        >Sheet</button>
-        <button
-          type="button"
-          phx-click="set_reader_label_mode"
-          phx-value-mode="page"
-          style={"display:inline-flex;align-items:center;font-size:0.68rem;padding:0 0.5rem;border:none;cursor:pointer;background:#{if @mode == "page", do: "var(--accent)", else: "var(--bg-subtle)"};color:#{if @mode == "page", do: "white", else: "var(--text-secondary)"}"}
-        >Page</button>
-      </div>
-
-      <label style="display:inline-flex;align-items:center;height:1.9rem;margin:0;gap:0.3rem;font-size:0.7rem;color:var(--text-muted)">
-        {if @mode == "page", do: "Page", else: "Sheet"}
+      <label style="display:inline-flex;align-items:center;height:2.6rem;margin:0;gap:0.45rem;font-size:0.95rem;font-weight:600;color:var(--text-secondary)">
+        Page
         <%!-- No <form> wrapper (would nest in the save form). Entry id is encoded
-              in the name ("pagesel_<id>") and read from _target on change. --%>
+              in the name ("pagesel_<id>") and read from _target on change.
+              List every page so unnumbered front/back matter stays reachable:
+              numbered pages show their printed number; unnumbered ones show their
+              sheet (otherwise an unnumbered sheet would vanish from the dropdown
+              or falsely render as the first printed page). --%>
         <select name={"pagesel_#{@id}"} phx-change="set_source_page" style={@select_style}>
-          <%= if @mode == "page" do %>
-            <%!-- List every page so unnumbered front/back matter stays reachable.
-                  Numbered pages show their printed number; unnumbered ones show
-                  their sheet (otherwise they'd disappear from the dropdown and an
-                  unnumbered sheet would falsely render as the first printed page). --%>
-            <%!-- The <label> already prefixes "Page", so numbered options are bare
-                  numbers (matching the Sheet dropdown). Unnumbered pages still need
-                  their "Sheet N" qualifier since they have no page number. --%>
-            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>
-              {if p.printed, do: "#{p.printed}", else: "Sheet #{p.sheet} (unnumbered)"}
-            </option>
-          <% else %>
-            <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>
-              {p.sheet}
-            </option>
-          <% end %>
+          <option :for={{p, i} <- Enum.with_index(@pages)} value={i} selected={i == @cur}>
+            {if p.printed, do: "#{p.printed}", else: "Sheet #{p.sheet} (unnumbered)"}
+          </option>
         </select>
       </label>
 
@@ -2221,9 +2184,10 @@ defmodule RuleMavenWeb.GameLive.Form do
         phx-value-id={@id}
         phx-value-delta="1"
         disabled={@cur >= @count - 1}
+        title="Next page (→ or l)"
         style={@step_style}
       >›</button>
-      <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">{@cur + 1} / {@count}</span>
+      <span style="font-size:1rem;font-weight:600;color:var(--text-muted);white-space:nowrap">{@cur + 1} / {@count}</span>
     </div>
     """
   end
@@ -2366,19 +2330,6 @@ defmodule RuleMavenWeb.GameLive.Form do
       >⚠ {@flagged} page(s) flagged for review — navigate to them to verify.</span>
     </div>
     """
-  end
-
-  # Per-browser Sheet/Page preference, delivered via the LiveSocket connect
-  # params (localStorage). nil before the socket connects → default "sheet".
-  defp restore_reader_label(socket) do
-    if connected?(socket) do
-      case get_connect_params(socket) do
-        %{"reader_label" => m} when m in ~w(sheet page) -> m
-        _ -> "sheet"
-      end
-    else
-      "sheet"
-    end
   end
 
   @edit_tabs ~w(details rulebook manage generated cheatsheet danger)
@@ -3159,12 +3110,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% layer = editor_layer(entry, @editor_tab) %>
                   <% editable = layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil %>
                   <.layer_tabs id={entry.id} current={layer} />
-                  <.page_nav
-                    id={entry.id}
-                    pages={entry.pages}
-                    cur={cur}
-                    label_mode={@reader_label_mode}
-                  />
+                  <.page_nav id={entry.id} pages={entry.pages} cur={cur} />
                   <.page_detection_badge
                     id={entry.id}
                     pages={entry.pages}
@@ -3306,6 +3252,9 @@ defmodule RuleMavenWeb.GameLive.Form do
                 end %>
                 <div style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:stretch;justify-content:center;padding:1.5rem">
                   <div
+                    id="reader-modal"
+                    phx-hook="ReaderKeys"
+                    data-reader-id={reader.id}
                     phx-click-away="close_source"
                     phx-window-keydown="close_source"
                     phx-key="Escape"
@@ -3338,12 +3287,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                         :if={@reader_mode == "paginated" and page_count > 0}
                         style="margin-left:auto"
                       >
-                        <.page_nav
-                          id={reader.id}
-                          pages={pages}
-                          cur={cur}
-                          label_mode={@reader_label_mode}
-                        />
+                        <.page_nav id={reader.id} pages={pages} cur={cur} />
                       </div>
                       <div style={
                         if(@reader_mode == "paginated" and page_count > 0,

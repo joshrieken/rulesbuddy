@@ -508,6 +508,37 @@ Hooks.VoiceDefault = {
   }
 };
 
+// Arrow keys / h / l flip pages while the rulebook reader modal is open.
+// Window-level so it works regardless of focus, but ignored while the user is
+// typing in an input/textarea/contenteditable (so editing text isn't hijacked).
+Hooks.ReaderKeys = {
+  mounted() {
+    this._handler = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t && (t.isContentEditable ||
+                t.tagName === "INPUT" ||
+                t.tagName === "TEXTAREA" ||
+                t.tagName === "SELECT")) return;
+
+      let delta = 0;
+      if (e.key === "ArrowLeft" || e.key === "h") delta = -1;
+      else if (e.key === "ArrowRight" || e.key === "l") delta = 1;
+      else return;
+
+      e.preventDefault();
+      this.pushEvent("source_page_step", {
+        id: this.el.dataset.readerId,
+        delta: String(delta)
+      });
+    };
+    window.addEventListener("keydown", this._handler);
+  },
+  destroyed() {
+    window.removeEventListener("keydown", this._handler);
+  }
+};
+
 Hooks.InfiniteScroll = {
   mounted() {
     this.observer = new IntersectionObserver(([entry]) => {
@@ -527,9 +558,6 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
     _csrf_token: csrfToken,
     // Remembered game-list view (playable/mine/all) so it survives reloads.
     list_view: localStorage.getItem("rm:gamelist:view") || "",
-    // Remembered rulebook reader page-label mode (sheet|page) so the user's
-    // choice survives reloads. Restored in GameLive.Form mount.
-    reader_label: localStorage.getItem("rm:reader:label") || "",
     // Remembered cleanup strength (light|standard|aggressive). Restored in mount.
     clean_level: localStorage.getItem("rm:clean:level") || "",
     // Remembered game-edit tab per game ({gameId: tab}) so a refresh reopens it.
@@ -538,12 +566,6 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
     reader_pages: localStorage.getItem("rm:reader:pages") || ""
   }),
   hooks: Hooks
-});
-
-// Persist the reader Sheet/Page choice when the form pushes "save_reader_label".
-// Unconsumed server push_events are dispatched as window "phx:<event>" events.
-window.addEventListener("phx:save_reader_label", (e) => {
-  localStorage.setItem("rm:reader:label", e.detail.mode);
 });
 
 // Persist the cleanup strength choice.
