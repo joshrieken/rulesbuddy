@@ -969,6 +969,77 @@ defmodule RuleMaven.LLM do
     end
   end
 
+  @doc """
+  Generates a set of in-character persona voices themed to a specific game from
+  its rulebook text. Each voice is a tone instruction (never a rule source) the
+  restyler later uses to re-voice canonical answers. Returns
+  `{:ok, [%{slug, label, emoji, style}]}` (3–6 entries) or `{:error, reason}`.
+  The model decides the count; a thin rulebook yields fewer.
+  """
+  def generate_voices(game_name, rulebook_text) do
+    prompt =
+      RuleMaven.Prompts.render("generate_voices", %{
+        game_name: game_name,
+        rulebook: sample_across(rulebook_text, 6000, 2000)
+      })
+
+    case chat(prompt, "generate_voices",
+           system: RuleMaven.Prompts.template("generate_voices_system"),
+           max_tokens: 1200
+         ) do
+      {:ok, text} ->
+        {:ok, parse_voices(text)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Decode the voices JSON array, tolerating ```fences``` and stray prose, then
+  # coerce each entry to a clean voice map. Bad/incomplete entries are dropped;
+  # slugs are normalized and de-duplicated; the list is capped at 6.
+  defp parse_voices(text) do
+    json =
+      case Regex.run(~r/\[.*\]/s, text || "") do
+        [match] -> match
+        _ -> text || ""
+      end
+
+    case Jason.decode(json) do
+      {:ok, list} when is_list(list) ->
+        list
+        |> Enum.map(&coerce_voice/1)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq_by(& &1.slug)
+        |> Enum.take(6)
+
+      _ ->
+        []
+    end
+  end
+
+  defp coerce_voice(%{"label" => label, "emoji" => emoji, "style" => style} = m)
+       when is_binary(label) and is_binary(emoji) and is_binary(style) do
+    label = String.trim(label)
+    style = String.trim(style)
+    slug = m |> Map.get("slug", label) |> to_string() |> slugify()
+
+    if label != "" and style != "" and slug != "" do
+      %{slug: slug, label: label, emoji: String.trim(emoji), style: style}
+    end
+  end
+
+  defp coerce_voice(_), do: nil
+
+  # Stable, namespace-safe slug: lowercase, non-alphanumerics → "-", trimmed.
+  defp slugify(s) do
+    s
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+    |> String.slice(0, 40)
+  end
+
   # Parse the verifier's "1,4,5" / "none" reply into a MapSet of kept indices.
   # Returns :all on an unparseable non-"none" reply (fail-open, never drop all on
   # a glitch); an empty set only when the model explicitly says "none".

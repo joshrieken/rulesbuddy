@@ -363,6 +363,44 @@ defmodule RuleMaven.Prompts do
   {{answer}}
   """
 
+  # ── Per-game voice generation: invent personas themed to THIS game. ──
+  @generate_voices_system "You design fun, in-character persona \"voices\" for a board game, themed to its setting and tone. A voice is ONLY a speaking style — never a rule. Output strictly the requested JSON, no prose, no code fences."
+
+  # Vars: game_name, rulebook
+  @generate_voices """
+  Invent persona voices for the board game "{{game_name}}", themed to its world,
+  setting, and tone. These are speaking styles used to re-narrate rules answers
+  in character — pick personas a fan of THIS game would find delightful (a
+  faction, a character archetype, an in-world narrator), not generic ones.
+
+  Return between 3 and 6 voices — fewer if the theme is thin; do not pad.
+
+  Return ONLY a JSON array — no prose, no code fences — of objects with this
+  exact shape:
+
+  [
+    {
+      "slug": "kebab-case-stable-id",
+      "label": "Short Display Name",
+      "emoji": "🙂",
+      "style": "a one-sentence description of how this persona talks, in the same form as 'a swashbuckling pirate who uses nautical slang.'"
+    }
+  ]
+
+  Rules:
+  - "slug" is a short stable lowercase kebab-case id for the persona concept
+    (e.g. "imperial-droid"); reuse the same slug for the same concept.
+  - "label" is 1–3 words; "emoji" is a single emoji that fits the persona.
+  - "style" describes ONLY tone/voice (vocabulary, cadence, catchphrases). It
+    must NOT contain any rule, number, or game fact — the restyler keeps facts
+    unchanged and only borrows the voice.
+  - Make them distinct from each other and from the generic globals (plain,
+    rules lawyer, pirate, robot, hype coach). Lean into THIS game's flavor.
+
+  Rulebook excerpt (for theme only):
+  {{rulebook}}
+  """
+
   # ── Cheat sheet: pre-compressor, generator system, and one prompt per level. ──
   @cheat_compress_system "You are a rulebook compressor. Extract only mechanical rules. Strip ALL flavor, examples, setup narrative, component descriptions. Keep only the rules themselves."
 
@@ -693,6 +731,22 @@ defmodule RuleMaven.Prompts do
       description: "Rewrites an answer in a persona's voice, keeping every fact identical.",
       vars: ~w(style answer),
       default: @voice_restyle
+    },
+    %{
+      key: "generate_voices_system",
+      group: "Voice",
+      label: "Per-game voices — system",
+      description: "System primer for generating game-themed persona voices.",
+      vars: [],
+      default: @generate_voices_system
+    },
+    %{
+      key: "generate_voices",
+      group: "Voice",
+      label: "Per-game voices — prompt",
+      description: "Invents 3–6 persona voices themed to a specific game from its rulebook.",
+      vars: ~w(game_name rulebook),
+      default: @generate_voices
     },
     %{
       key: "cheat_compress_system",

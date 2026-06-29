@@ -47,6 +47,10 @@ defmodule RuleMavenWeb.GameLive.Show do
        voice_sel: %{},
        voice_cache: %{},
        voice_pending: MapSet.new(),
+       # Voices available on this game: the built-in globals plus the game's own
+       # generated, themed personas. Filled in once the game loads; updated live
+       # by {:voices_ready} when generation finishes.
+       voices: RuleMaven.Voices.all(),
        # User's preferred default voice, auto-selected on every answer. Restored
        # from localStorage on connect (per-browser, like the theme). "neutral"
        # means no auto-voice.
@@ -87,6 +91,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game:#{game.id}")
       Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Setup.topic(game.id))
+      Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.VoiceSuggestionsWorker.topic(game.id))
     end
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
@@ -142,6 +147,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     socket =
       assign(socket,
         game: game,
+        voices: RuleMaven.Voices.for_game(game),
         page_title: game.name,
         conversation: conversation,
         threads: threads,
@@ -331,7 +337,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   defp apply_default_voice(socket, voice) do
     socket = assign(socket, default_voice: voice)
 
-    if voice == "neutral" or not RuleMaven.Voices.valid?(voice) do
+    if voice == "neutral" or not RuleMaven.Voices.valid?(voice, socket.assigns.game) do
       socket
     else
       socket.assigns.conversation
@@ -448,7 +454,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   def handle_event("set_voice", %{"id" => id_str, "voice" => voice}, socket) do
     {id, _} = Integer.parse(id_str)
 
-    if not RuleMaven.Voices.valid?(voice) do
+    if not RuleMaven.Voices.valid?(voice, socket.assigns.game) do
       {:noreply, socket}
     else
       sel = Map.put(socket.assigns.voice_sel, id, voice)
@@ -479,7 +485,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   # Choose a default voice, auto-applied to every answer. Persist it per-browser
   # (the VoiceDefault hook writes localStorage) and apply it to the open thread.
   def handle_event("set_default_voice", %{"voice" => voice}, socket) do
-    if RuleMaven.Voices.valid?(voice) do
+    if RuleMaven.Voices.valid?(voice, socket.assigns.game) do
       {:noreply,
        socket
        |> apply_default_voice(voice)
@@ -1295,6 +1301,12 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   def handle_info({:did_you_know_ready, _facts}, socket), do: {:noreply, socket}
+
+  # The game's themed persona voices just finished generating — swap the voice
+  # list in so the switcher shows them live (already-selected voices unaffected).
+  def handle_info({:voices_ready, voices}, socket) when is_list(voices) do
+    {:noreply, assign(socket, voices: voices)}
+  end
 
   def handle_info(:check_stale, socket) do
     stale_cutoff = DateTime.utc_now() |> DateTime.add(-120, :second)
@@ -2127,8 +2139,8 @@ defmodule RuleMavenWeb.GameLive.Show do
                   <!-- Persona voice switcher (collapsed into a dropdown) -->
                   <% cur_voice = Map.get(@voice_sel, msg[:id], @default_voice) %>
                   <% cur =
-                    Enum.find(RuleMaven.Voices.all(), &(&1.id == cur_voice)) ||
-                      hd(RuleMaven.Voices.all()) %>
+                    Enum.find(@voices, &(&1.id == cur_voice)) ||
+                      hd(@voices) %>
                   <% is_default = cur_voice == @default_voice %>
                   <details class="card-menu">
                     <summary style="font-size:0.65rem;color:var(--text-muted);font-weight:600;border:1px solid var(--border);border-radius:999px;padding:0.12rem 0.5rem;background:var(--bg-surface)">
@@ -2138,7 +2150,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     </summary>
                     <div class="card-menu__pop card-menu__pop--up">
                       <button
-                        :for={v <- RuleMaven.Voices.all()}
+                        :for={v <- @voices}
                         type="button"
                         phx-click="set_voice"
                         phx-value-id={msg[:id]}
