@@ -98,7 +98,8 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
 
             case RulebookDownloader.reextract_page(doc.pdf_path, page.sheet,
                    on_log: log,
-                   label: label
+                   label: label,
+                   game_id: doc.game_id
                  ) do
               {:ok, result} ->
                 Games.replace_page(doc, index, result)

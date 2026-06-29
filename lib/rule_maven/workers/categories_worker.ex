@@ -37,7 +37,7 @@ defmodule RuleMaven.Workers.CategoriesWorker do
 
     Jobs.event(run, :info, "Reading #{String.length(text)} chars to derive rule categories…")
 
-    case RuleMaven.LLM.generate_categories(game.name, text) do
+    case RuleMaven.LLM.generate_categories(game.name, text, game_id) do
       {:ok, cats} ->
         Jobs.event(run, :info, "Derived #{length(cats)} categories: #{category_names(cats)}")
 

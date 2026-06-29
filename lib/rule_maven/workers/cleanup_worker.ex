@@ -87,7 +87,7 @@ defmodule RuleMaven.Workers.CleanupWorker do
     stats =
       todo
       |> Task.async_stream(
-        fn page -> {page.index, clean_one(page, level, mode, critic?)} end,
+        fn page -> {page.index, clean_one(page, level, mode, critic?, game_id)} end,
         max_concurrency: @max_concurrency,
         ordered: false,
         timeout: :infinity,
@@ -173,7 +173,7 @@ defmodule RuleMaven.Workers.CleanupWorker do
   # can be retried, instead of persisting raw text as if it were cleaned. `meta`
   # carries the in/out char counts and a status (:cleaned | :unchanged |
   # :kept_raw | :empty) so the job log can report what actually happened.
-  defp clean_one(page, level, mode, critic?) do
+  defp clean_one(page, level, mode, critic?, game_id) do
     # "again" re-cleans the current cleaned copy; "raw" cleans the original.
     body = if mode == "again", do: Games.effective_page_text(page), else: page.text || ""
     # The printed page number lives on the page separately — strip it from the
@@ -181,10 +181,12 @@ defmodule RuleMaven.Workers.CleanupWorker do
     body = Games.strip_printed_number(body, page.printed)
 
     try do
-      case RuleMaven.LLM.cleanup_page(body, level, page.printed) do
+      case RuleMaven.LLM.cleanup_page(body, level, page.printed, game_id: game_id) do
         {:ok, text, status} ->
           meta = clean_meta(status, body, text)
-          {:ok, text, Map.put(meta, :defects, maybe_critique(critic?, meta.status, body, text))}
+
+          {:ok, text,
+           Map.put(meta, :defects, maybe_critique(critic?, meta.status, body, text, game_id))}
 
         {:error, _} ->
           :failed
@@ -198,14 +200,14 @@ defmodule RuleMaven.Workers.CleanupWorker do
 
   # Only worth critiquing a page the model actually rewrote (:cleaned). An error
   # from the critic must never fail the page — fall back to "no defects".
-  defp maybe_critique(true, :cleaned, body, text) do
-    case RuleMaven.LLM.critique_cleanup(body, text) do
+  defp maybe_critique(true, :cleaned, body, text, game_id) do
+    case RuleMaven.LLM.critique_cleanup(body, text, game_id: game_id) do
       {:ok, defects} -> defects
       {:error, _} -> []
     end
   end
 
-  defp maybe_critique(_critic?, _status, _body, _text), do: []
+  defp maybe_critique(_critic?, _status, _body, _text, _game_id), do: []
 
   # Per-page result detail for the job log. A model that returned its input
   # essentially unchanged is reported as :unchanged (distinct from :kept_raw,

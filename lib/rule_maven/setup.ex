@@ -67,14 +67,20 @@ defmodule RuleMaven.Setup do
       # "output only JSON" instruction — or an over-structured spec — makes our
       # reasoning model (deepseek-v4-flash) spend its whole budget "thinking" and
       # return empty content. A simple labelled-bullet ask generates reliably.
-      prompt = RuleMaven.Prompts.render("setup_generate", %{game_name: game.name, rulebook: source})
+      prompt =
+        RuleMaven.Prompts.render("setup_generate", %{game_name: game.name, rulebook: source})
 
       # Generous budget for the reasoning-model overhead (see Did-you-know).
-      case LLM.chat(prompt, "setup_#{game.name}", system: system, max_tokens: 8000) do
+      case LLM.chat(prompt, "setup_#{game.name}",
+             operation: "setup",
+             game_id: game.id,
+             system: system,
+             max_tokens: 8000
+           ) do
         {:ok, content} ->
           case parse_sections(content) do
             nil -> {:error, "Could not parse the setup checklist. Please retry."}
-            map -> {:ok, Jason.encode!(verify_checklist(game.name, text, map))}
+            map -> {:ok, Jason.encode!(verify_checklist(game, text, map))}
           end
 
         {:error, reason} ->
@@ -145,7 +151,11 @@ defmodule RuleMaven.Setup do
   # Fail-open — a verify error, an unparseable reply, OR a reply that would drop
   # the ENTIRE checklist keeps the original (a real game always has some valid
   # setup, so an all-empty result means the checker misfired, not a bad list).
-  defp verify_checklist(game_name, text, %{"components" => comps, "setup" => steps} = map) do
+  defp verify_checklist(
+         %{name: game_name, id: game_id},
+         text,
+         %{"components" => comps, "setup" => steps} = map
+       ) do
     comp_texts = comps
     step_texts = Enum.map(steps, &step_text/1)
     items = comp_texts ++ step_texts
@@ -166,6 +176,8 @@ defmodule RuleMaven.Setup do
         })
 
       case LLM.chat(prompt, "setup_verify_#{game_name}",
+             operation: "setup",
+             game_id: game_id,
              system:
                "You are a strict board-game rulebook fact-checker. Pass only setup items that are fully and accurately supported; reject anything misleading, garbled, or unconfirmed.",
              max_tokens: 600
@@ -192,7 +204,7 @@ defmodule RuleMaven.Setup do
     end
   end
 
-  defp verify_checklist(_game_name, _text, map), do: map
+  defp verify_checklist(_game, _text, map), do: map
 
   defp step_text(%{"title" => t, "detail" => d}) do
     [t, d] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" — ")
@@ -249,7 +261,9 @@ defmodule RuleMaven.Setup do
   defp step_list(v) when is_list(v) do
     v
     |> Enum.filter(&is_map/1)
-    |> Enum.map(fn s -> %{"title" => to_string(s["title"]), "detail" => to_string(s["detail"])} end)
+    |> Enum.map(fn s ->
+      %{"title" => to_string(s["title"]), "detail" => to_string(s["detail"])}
+    end)
     |> Enum.reject(&(&1["title"] in [nil, "", "nil"]))
   end
 

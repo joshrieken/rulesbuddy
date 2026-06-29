@@ -17,6 +17,12 @@ defmodule RuleMaven.Games.Game do
     # %{"light" => %{"--bg" => "#…", …}, "dark" => %{…}}
     field :theme_palette, :map
 
+    # Readiness: `playable` is the denormalized end-of-pipeline flag (RAG-ready
+    # *and* reviewed), recomputed by `RuleMaven.Readiness`. Indexed; the catalog
+    # "Playable" list filters on it instead of a per-row document join.
+    field :playable, :boolean, default: false
+    field :playable_at, :utc_datetime
+
     # Lightweight DMCA takedown. When `taken_down_at` is set the game is hidden
     # from listings and new asks are blocked; reason + complainant are recorded
     # for the takedown log. Cleared to restore.

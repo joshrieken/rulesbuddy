@@ -32,8 +32,9 @@ defmodule RuleMaven.Extract.Critic do
   """
   def verify(image, candidate, opts \\ []) do
     max_rounds = opts[:max_rounds] || @default_max_rounds
-    critique_fn = opts[:critique_fn] || (&default_critique/2)
-    transcribe_fn = opts[:transcribe_fn] || (&default_transcribe/2)
+    game_id = opts[:game_id]
+    critique_fn = opts[:critique_fn] || (&default_critique(&1, &2, game_id))
+    transcribe_fn = opts[:transcribe_fn] || (&default_transcribe(&1, &2, game_id))
 
     loop(image, candidate, 0, max_rounds, critique_fn, transcribe_fn)
   end
@@ -72,13 +73,15 @@ defmodule RuleMaven.Extract.Critic do
     end
   end
 
-  defp default_critique(image, text), do: RuleMaven.LLM.critique_page(image, text)
+  defp default_critique(image, text, game_id),
+    do: RuleMaven.LLM.critique_page(image, text, game_id: game_id)
 
-  defp default_transcribe(image, guidance) do
+  defp default_transcribe(image, guidance, game_id) do
     RuleMaven.LLM.transcribe_page_image(image,
       model: RuleMaven.LLM.vision_model(:escalate),
       max_tokens: 8192,
-      guidance: guidance
+      guidance: guidance,
+      game_id: game_id
     )
   end
 end

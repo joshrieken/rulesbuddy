@@ -72,6 +72,7 @@ defmodule RuleMavenWeb.Router do
       # hook halts non-admins before mount — the in-mount redirect alone is
       # client-side and does not stop forged events on a raw socket.
       live "/games/:id/review", GameLive.Review, :index
+      live "/games/:id/prepare", GameLive.Prepare, :index
       live "/admin", AdminLive.Index, :index
       live "/admin/db", AdminLive.Db, :index
       live "/admin/security", AdminLive.Security, :index

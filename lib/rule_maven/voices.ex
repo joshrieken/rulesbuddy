@@ -160,18 +160,23 @@ defmodule RuleMaven.Voices do
         {:ok, cached}
 
       true ->
-        with {:ok, styled} <- generate(voice_def, canonical, game_name(game)) do
+        with {:ok, styled} <- generate(voice_def, canonical, game_name(game), game_id(game)) do
           store(question_log_id, voice, styled)
           {:ok, styled}
         end
     end
   end
 
-  defp generate(%{id: id, style: style}, canonical, game_name) do
+  defp generate(%{id: id, style: style}, canonical, game_name, game_id) do
     system = RuleMaven.Prompts.template("voice_restyle_system")
     prompt = RuleMaven.Prompts.render("voice_restyle", %{style: style, answer: canonical})
 
-    LLM.chat(prompt, "voice_#{id}_#{game_name}", system: system, max_tokens: 700)
+    LLM.chat(prompt, "voice_#{id}_#{game_name}",
+      operation: "voice",
+      game_id: game_id,
+      system: system,
+      max_tokens: 700
+    )
   end
 
   defp store(question_log_id, voice, content) do

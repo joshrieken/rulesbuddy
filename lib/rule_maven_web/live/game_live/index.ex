@@ -112,7 +112,9 @@ defmodule RuleMavenWeb.GameLive.Index do
     base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
 
     if RuleMaven.Users.can?(user, :admin),
-      do: [{"all", "All Games"}] ++ base ++ [{"needs_bgg", "Needs Pull"}, {"requested", "Requested"}],
+      do:
+        [{"all", "All Games"}] ++
+          base ++ [{"needs_bgg", "Needs Pull"}, {"requested", "Requested"}],
       else: base
   end
 
@@ -206,7 +208,7 @@ defmodule RuleMavenWeb.GameLive.Index do
     do: Games.list_requested_games()
 
   defp load_view_games(_playable, _user_id, _search, _category, _limit),
-    do: Games.list_games_with_documents()
+    do: Games.list_playable_games()
 
   # Assign the current games plus their expansion/source counts. Counts are
   # computed only for the games actually visible (display_count), in a couple of
@@ -265,7 +267,6 @@ defmodule RuleMavenWeb.GameLive.Index do
 
     {:noreply, assign(socket, expanded_games: expanded)}
   end
-
 
   @impl true
   def handle_event("delete_game", %{"id" => id_str}, socket) do
@@ -546,6 +547,7 @@ defmodule RuleMavenWeb.GameLive.Index do
       if db_paged?(socket.assigns.view),
         do: reload_games(socket),
         else: assign_games(socket, socket.assigns.games)
+
     {:noreply, push_event(socket, "save_count", %{count: count})}
   end
 
@@ -653,72 +655,72 @@ defmodule RuleMavenWeb.GameLive.Index do
     ~H"""
     <div class="game-list">
       <div class="list-controls">
-      <form phx-change="search" phx-submit="search" class="mb-4">
-        <div style="position:relative;display:flex;align-items:center">
-          <input
-            type="text"
-            id="game-search"
-            name="search"
-            value={@search}
-            placeholder="Filter by name..."
-            class="w-full border rounded px-3 py-2 pr-8 text-sm"
-            autocomplete="off"
-            autofocus
-            phx-hook="Refocus"
-          />
-          <button
-            :if={@search != ""}
-            type="button"
-            phx-click="clear_search"
-            style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);font-size:0.85rem;cursor:pointer;padding:0;line-height:1;height:1.2rem;display:flex;align-items:center"
-          >✕</button>
+        <form phx-change="search" phx-submit="search" class="mb-4">
+          <div style="position:relative;display:flex;align-items:center">
+            <input
+              type="text"
+              id="game-search"
+              name="search"
+              value={@search}
+              placeholder="Filter by name..."
+              class="w-full border rounded px-3 py-2 pr-8 text-sm"
+              autocomplete="off"
+              autofocus
+              phx-hook="Refocus"
+            />
+            <button
+              :if={@search != ""}
+              type="button"
+              phx-click="clear_search"
+              style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);font-size:0.85rem;cursor:pointer;padding:0;line-height:1;height:1.2rem;display:flex;align-items:center"
+            >✕</button>
+          </div>
+        </form>
+
+        <div class="mb-4 flex gap-2 flex-wrap" id="view-tabs" phx-hook="ViewPref">
+          <%= for {key, label} <- view_tabs(@current_user) do %>
+            <button
+              type="button"
+              phx-click="set_view"
+              phx-value-view={key}
+              style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--accent);background:#{if @view == key, do: "var(--accent)", else: "transparent"};color:#{if @view == key, do: "white", else: "var(--accent)"}"}
+            >{label}</button>
+          <% end %>
         </div>
-      </form>
 
-      <div class="mb-4 flex gap-2 flex-wrap" id="view-tabs" phx-hook="ViewPref">
-        <%= for {key, label} <- view_tabs(@current_user) do %>
-          <button
-            type="button"
-            phx-click="set_view"
-            phx-value-view={key}
-            style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--accent);background:#{if @view == key, do: "var(--accent)", else: "transparent"};color:#{if @view == key, do: "white", else: "var(--accent)"}"}
-          >{label}</button>
-        <% end %>
-      </div>
+        <% present_categories =
+          @games
+          |> Enum.map(&(&1.category || "board_game"))
+          |> Enum.uniq()
+          |> Enum.sort() %>
 
-      <% present_categories =
-        @games
-        |> Enum.map(&(&1.category || "board_game"))
-        |> Enum.uniq()
-        |> Enum.sort() %>
-
-      <%= if length(present_categories) > 1 do %>
-        <div class="mb-4 flex gap-2 flex-wrap">
-          <button
-            type="button"
-            phx-click="set_category_filter"
-            phx-value-category=""
-            style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if is_nil(@category_filter), do: "var(--blue)", else: "transparent"};color:#{if is_nil(@category_filter), do: "white", else: "var(--blue)"}"}
-          >All</button>
-          <%= for cat <- present_categories do %>
+        <%= if length(present_categories) > 1 do %>
+          <div class="mb-4 flex gap-2 flex-wrap">
             <button
               type="button"
               phx-click="set_category_filter"
-              phx-value-category={cat}
-              style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if @category_filter == cat, do: "var(--blue)", else: "transparent"};color:#{if @category_filter == cat, do: "white", else: "var(--blue)"}"}
-            ><%= RuleMaven.Games.Category.label(cat) %></button>
-          <% end %>
-        </div>
-      <% end %>
+              phx-value-category=""
+              style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if is_nil(@category_filter), do: "var(--blue)", else: "transparent"};color:#{if is_nil(@category_filter), do: "white", else: "var(--blue)"}"}
+            >All</button>
+            <%= for cat <- present_categories do %>
+              <button
+                type="button"
+                phx-click="set_category_filter"
+                phx-value-category={cat}
+                style={"display:inline-block;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--blue);background:#{if @category_filter == cat, do: "var(--blue)", else: "transparent"};color:#{if @category_filter == cat, do: "white", else: "var(--blue)"}"}
+              >{RuleMaven.Games.Category.label(cat)}</button>
+            <% end %>
+          </div>
+        <% end %>
 
-      <div class="flex gap-2 flex-wrap">
-        <.button
-          :if={RuleMaven.Users.can?(@current_user, :admin)}
-          variant="primary"
-          navigate={~p"/games/new"}
-        >+ Add Game</.button>
-        <.button variant="secondary" navigate={~p"/games/import"}>Sync Your BGG Collection</.button>
-      </div>
+        <div class="flex gap-2 flex-wrap">
+          <.button
+            :if={RuleMaven.Users.can?(@current_user, :admin)}
+            variant="primary"
+            navigate={~p"/games/new"}
+          >+ Add Game</.button>
+          <.button variant="secondary" navigate={~p"/games/import"}>Sync Your BGG Collection</.button>
+        </div>
       </div>
 
       <% filtered = filtered_games(@games, @search, @category_filter) %>
@@ -729,10 +731,10 @@ defmodule RuleMavenWeb.GameLive.Index do
           <%= for {game, idx} <- Enum.with_index(display_games) do %>
             <% expansion_count = Map.get(@expansion_counts, game.id, 0) %>
             <% expanded = Map.get(@expanded_games, game.id) %>
-            <% playable = Map.get(@source_counts, game.id, 0) > 0 %>
+            <% has_source = Map.get(@source_counts, game.id, 0) > 0 %>
             <%!-- In "My Collection", games without a rulebook are shown grayed
                   out with nothing to do but request support. --%>
-            <% unsupported = @view == "mine" and not playable %>
+            <% unsupported = @view == "mine" and not has_source %>
             <%!-- Admins can pull BGG data for any showing game that lacks it. --%>
             <% needs_pull =
               RuleMaven.Users.can?(@current_user, :admin) and not is_nil(game.bgg_id) and
@@ -752,9 +754,29 @@ defmodule RuleMavenWeb.GameLive.Index do
                 />
               <% end %>
               <div class="flex-1 min-w-0" style="pointer-events:none">
-                <h2 class="text-lg font-semibold">{game.name}</h2>
+                <h2 class="text-lg font-semibold">
+                  {game.name}
+                  <span
+                    :if={game.playable}
+                    title="Ready to play — rulebook reviewed and searchable"
+                    style="font-size:0.6rem;font-weight:700;vertical-align:middle;color:var(--green,#16a34a);border:1px solid var(--green,#16a34a);border-radius:999px;padding:0.05rem 0.4rem;margin-left:0.4rem"
+                  >
+                    ✓ Ready
+                  </span>
+                  <.link
+                    :if={
+                      has_source and not game.playable and RuleMaven.Users.can?(@current_user, :admin)
+                    }
+                    navigate={~p"/games/#{game.id}/prepare"}
+                    style="font-size:0.6rem;font-weight:700;vertical-align:middle;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.05rem 0.4rem;margin-left:0.4rem;pointer-events:auto"
+                  >
+                    Prepare →
+                  </.link>
+                </h2>
                 <p class="text-sm text-gray-500">
-                  <span style="font-size:0.7rem;font-weight:600;opacity:0.65">{RuleMaven.Games.Category.label(game.category)}</span>
+                  <span style="font-size:0.7rem;font-weight:600;opacity:0.65">{RuleMaven.Games.Category.label(
+                    game.category
+                  )}</span>
                   &middot; {Map.get(@source_counts, game.id, 0)} source(s)
                   <%= if game.year_published do %>
                     &middot; {game.year_published}
@@ -782,7 +804,9 @@ defmodule RuleMavenWeb.GameLive.Index do
                   <% exp_to_pull = Map.get(@expansion_pull_counts, game.id, 0) %>
                   <% exp_syncing = Map.has_key?(@expansion_sync, game.id) %>
                   <button
-                    :if={RuleMaven.Users.can?(@current_user, :admin) and (exp_to_pull > 0 or exp_syncing)}
+                    :if={
+                      RuleMaven.Users.can?(@current_user, :admin) and (exp_to_pull > 0 or exp_syncing)
+                    }
                     type="button"
                     phx-click="pull_expansions"
                     phx-value-id={game.id}
@@ -814,81 +838,81 @@ defmodule RuleMavenWeb.GameLive.Index do
                     >Request</button>
                   <% end %>
                 <% else %>
-                <button
-                  :if={needs_pull}
-                  type="button"
-                  phx-click="pull_bgg"
-                  phx-value-id={game.id}
-                  disabled={MapSet.member?(@bgg_pulling, game.id)}
-                  style={"background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2;cursor:#{if MapSet.member?(@bgg_pulling, game.id), do: "default", else: "pointer"};opacity:#{if MapSet.member?(@bgg_pulling, game.id), do: "0.6", else: "1"}"}
-                >{if MapSet.member?(@bgg_pulling, game.id), do: "⟳ Pulling…", else: "⬇ Pull BGG"}</button>
-                <a
-                  :if={game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(game.category)}
-                  id={"bgg-link-#{game.id}"}
-                  href={"https://boardgamegeek.com/boardgame/#{game.bgg_id}"}
-                  target="_blank"
-                  rel="noopener"
-                  phx-hook="ExternalLink"
-                  style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
-                >BGG</a>
-                <.link
-                  :if={Map.get(@source_counts, game.id, 0) > 0}
-                  navigate={~p"/games/#{game.id}"}
-                  style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
-                >Ask</.link>
-                <span
-                  :if={Map.get(@source_counts, game.id, 0) == 0}
-                  style="display:inline-block;visibility:hidden;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;line-height:1.2"
-                >Ask</span>
-                <% in_collection = MapSet.member?(@collection_ids, game.id) %>
-                <% favorited = MapSet.member?(@favorite_ids, game.id) %>
-                <button
-                  type="button"
-                  phx-click="toggle_collection"
-                  phx-value-id={game.id}
-                  title={
-                    if in_collection,
-                      do: "In your collection — click to remove",
-                      else: "Add to your collection (games you own)"
-                  }
-                  style={"background:#{if in_collection, do: "color-mix(in srgb,var(--accent) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if in_collection, do: "var(--accent)", else: "var(--text-muted)"};border:1px solid #{if in_collection, do: "var(--accent)", else: "var(--border)"};font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2;white-space:nowrap"}
-                >{if in_collection, do: "✓ Collection", else: "+ Collection"}</button>
-                <button
-                  type="button"
-                  phx-click="toggle_favorite"
-                  phx-value-id={game.id}
-                  title={if favorited, do: "Remove from favorites", else: "Add to favorites"}
-                  style={"background:#{if favorited, do: "color-mix(in srgb,var(--red) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if favorited, do: "var(--red)", else: "var(--text-muted)"};border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem;line-height:1.2"}
-                >{if favorited, do: "♥", else: "♡"}</button>
-                <.link
-                  :if={RuleMaven.Users.can?(@current_user, :admin)}
-                  navigate={~p"/games/#{game.id}/edit"}
-                  class="action-link"
-                >Edit</.link>
-                <%= if RuleMaven.Users.can?(@current_user, :admin) do %>
-                  <%= if @delete_id == game.id do %>
-                    <span class="text-xs" style="color:var(--red);padding:0.2rem 0">Delete?</span>
-                    <button
-                      type="button"
-                      phx-click="confirm_delete"
-                      phx-value-id={game.id}
-                      style="background:var(--red-bg);color:var(--red);border:1px solid var(--red);font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
-                    >Yes</button>
-                    <button
-                      type="button"
-                      phx-click="cancel_delete"
-                      style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
-                    >No</button>
-                  <% else %>
-                    <button
-                      type="button"
-                      phx-click="delete_game"
-                      phx-value-id={game.id}
-                      style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem"
-                      title="Delete game"
-                    >✕</button>
+                  <button
+                    :if={needs_pull}
+                    type="button"
+                    phx-click="pull_bgg"
+                    phx-value-id={game.id}
+                    disabled={MapSet.member?(@bgg_pulling, game.id)}
+                    style={"background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2;cursor:#{if MapSet.member?(@bgg_pulling, game.id), do: "default", else: "pointer"};opacity:#{if MapSet.member?(@bgg_pulling, game.id), do: "0.6", else: "1"}"}
+                  >{if MapSet.member?(@bgg_pulling, game.id), do: "⟳ Pulling…", else: "⬇ Pull BGG"}</button>
+                  <a
+                    :if={game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(game.category)}
+                    id={"bgg-link-#{game.id}"}
+                    href={"https://boardgamegeek.com/boardgame/#{game.bgg_id}"}
+                    target="_blank"
+                    rel="noopener"
+                    phx-hook="ExternalLink"
+                    style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
+                  >BGG</a>
+                  <.link
+                    :if={Map.get(@source_counts, game.id, 0) > 0}
+                    navigate={~p"/games/#{game.id}"}
+                    style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
+                  >Ask</.link>
+                  <span
+                    :if={Map.get(@source_counts, game.id, 0) == 0}
+                    style="display:inline-block;visibility:hidden;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;line-height:1.2"
+                  >Ask</span>
+                  <% in_collection = MapSet.member?(@collection_ids, game.id) %>
+                  <% favorited = MapSet.member?(@favorite_ids, game.id) %>
+                  <button
+                    type="button"
+                    phx-click="toggle_collection"
+                    phx-value-id={game.id}
+                    title={
+                      if in_collection,
+                        do: "In your collection — click to remove",
+                        else: "Add to your collection (games you own)"
+                    }
+                    style={"background:#{if in_collection, do: "color-mix(in srgb,var(--accent) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if in_collection, do: "var(--accent)", else: "var(--text-muted)"};border:1px solid #{if in_collection, do: "var(--accent)", else: "var(--border)"};font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2;white-space:nowrap"}
+                  >{if in_collection, do: "✓ Collection", else: "+ Collection"}</button>
+                  <button
+                    type="button"
+                    phx-click="toggle_favorite"
+                    phx-value-id={game.id}
+                    title={if favorited, do: "Remove from favorites", else: "Add to favorites"}
+                    style={"background:#{if favorited, do: "color-mix(in srgb,var(--red) 14%,transparent)", else: "var(--bg-subtle)"};color:#{if favorited, do: "var(--red)", else: "var(--text-muted)"};border:1px solid var(--border);font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem;line-height:1.2"}
+                  >{if favorited, do: "♥", else: "♡"}</button>
+                  <.link
+                    :if={RuleMaven.Users.can?(@current_user, :admin)}
+                    navigate={~p"/games/#{game.id}/edit"}
+                    class="action-link"
+                  >Edit</.link>
+                  <%= if RuleMaven.Users.can?(@current_user, :admin) do %>
+                    <%= if @delete_id == game.id do %>
+                      <span class="text-xs" style="color:var(--red);padding:0.2rem 0">Delete?</span>
+                      <button
+                        type="button"
+                        phx-click="confirm_delete"
+                        phx-value-id={game.id}
+                        style="background:var(--red-bg);color:var(--red);border:1px solid var(--red);font-size:0.7rem;font-weight:600;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
+                      >Yes</button>
+                      <button
+                        type="button"
+                        phx-click="cancel_delete"
+                        style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:0.3rem"
+                      >No</button>
+                    <% else %>
+                      <button
+                        type="button"
+                        phx-click="delete_game"
+                        phx-value-id={game.id}
+                        style="color:var(--text-muted);background:var(--bg-subtle);border:1px solid var(--border);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.45rem;border-radius:0.3rem"
+                        title="Delete game"
+                      >✕</button>
+                    <% end %>
                   <% end %>
-                <% end %>
                 <% end %>
               </div>
             </div>
@@ -924,8 +948,15 @@ defmodule RuleMavenWeb.GameLive.Index do
                   <div class="flex-1 min-w-0" style="pointer-events:none">
                     <h2 class="text-base font-semibold">
                       {exp.name}
-                      <span :if={sync && exp.bgg_data} style="color:var(--green);font-size:0.7rem;font-weight:600">✓</span>
-                      <span :if={sync && is_nil(exp.bgg_data)} class="animate-pulse" style="color:var(--text-muted);font-size:0.7rem;font-weight:600">⏳</span>
+                      <span
+                        :if={sync && exp.bgg_data}
+                        style="color:var(--green);font-size:0.7rem;font-weight:600"
+                      >✓</span>
+                      <span
+                        :if={sync && is_nil(exp.bgg_data)}
+                        class="animate-pulse"
+                        style="color:var(--text-muted);font-size:0.7rem;font-weight:600"
+                      >⏳</span>
                     </h2>
                     <p class="text-xs text-gray-500">
                       Expansion

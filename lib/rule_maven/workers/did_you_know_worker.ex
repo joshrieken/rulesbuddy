@@ -59,7 +59,7 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
       "Reading #{String.length(text)} chars of rulebook for did-you-know facts…"
     )
 
-    case RuleMaven.LLM.generate_did_you_know(game.name, text) do
+    case RuleMaven.LLM.generate_did_you_know(game.name, text, game_id) do
       {:ok, facts} when facts != [] ->
         Settings.put("did_you_know_#{game_id}", Jason.encode!(facts))
 

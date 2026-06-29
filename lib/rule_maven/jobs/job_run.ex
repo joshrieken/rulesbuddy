@@ -20,6 +20,9 @@ defmodule RuleMaven.Jobs.JobRun do
     field :state, :string, default: "running"
     field :summary, :string
     field :oban_job_id, :integer
+    # Per-run LLM/embedding spend in USD, stamped at finish from this run's
+    # `llm_logs` window (see `RuleMaven.Jobs.finish_run/3`). nil for non-LLM runs.
+    field :cost_usd, :float
     field :started_at, :utc_datetime_usec
     field :finished_at, :utc_datetime_usec
 

@@ -59,7 +59,9 @@ defmodule RuleMaven.Games do
 
   @doc "Games currently under takedown, most recent first."
   def list_taken_down do
-    Repo.all(from g in Game, where: not is_nil(g.taken_down_at), order_by: [desc: g.taken_down_at])
+    Repo.all(
+      from g in Game, where: not is_nil(g.taken_down_at), order_by: [desc: g.taken_down_at]
+    )
   end
 
   def list_games_with_documents do
@@ -78,6 +80,22 @@ defmodule RuleMaven.Games do
       )
 
     Repo.all(from g in Game, where: g.id in ^base_ids)
+    |> Enum.sort_by(&String.downcase(&1.name))
+  end
+
+  @doc """
+  Base games that are fully **playable** — the new catalog "Playable" view.
+  Reads the denormalized `playable` flag (RAG-ready + reviewed, maintained by
+  `RuleMaven.Readiness`) so this stays a single indexed scan on a large catalog,
+  no per-row document join.
+  """
+  def list_playable_games do
+    Repo.all(
+      from g in Game,
+        where: g.playable == true,
+        where: is_nil(g.parent_game_id),
+        where: is_nil(g.taken_down_at)
+    )
     |> Enum.sort_by(&String.downcase(&1.name))
   end
 
@@ -1029,7 +1047,6 @@ defmodule RuleMaven.Games do
     updated
   end
 
-
   # Confidence at/below this → the extraction gate wasn't sure about the page;
   # surface it for human review. Picks up critic-residual pages (0.5) but not
   # blank/agreed pages (0.6+).
@@ -1161,8 +1178,7 @@ defmodule RuleMaven.Games do
   def recent_question_count(user_id, since) do
     Repo.aggregate(
       from(q in QuestionLog,
-        where:
-          q.user_id == ^user_id and q.inserted_at >= ^since and is_nil(q.pool_source_id)
+        where: q.user_id == ^user_id and q.inserted_at >= ^since and is_nil(q.pool_source_id)
       ),
       :count
     )
@@ -1715,7 +1731,6 @@ defmodule RuleMaven.Games do
 
     1.0 - sim
   end
-
 
   # Shared base for admin question listings — single source for ordering.
   defp base_question_query do

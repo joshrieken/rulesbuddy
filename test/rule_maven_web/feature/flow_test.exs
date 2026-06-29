@@ -75,6 +75,18 @@ defmodule RuleMavenWeb.Feature.FlowTest do
     assert_has(session, css(".alert-error"))
   end
 
+  feature "admin can open a game's Prepare (readiness) page", %{session: session} do
+    user = create_user("e2e_prepare_admin", "admin")
+    game = published_game_fixture(%{name: "Prep Test Game", bgg_id: 7777})
+
+    session
+    |> login(user.username)
+    |> visit("/games/#{game.id}/prepare")
+    |> assert_has(css("h1", text: "Prepare Prep Test Game"))
+    |> assert_has(css("button", text: "Prepare game"))
+    |> assert_has(css("h2", text: "Pipeline"))
+  end
+
   feature "login succeeds and shows game list", %{session: session} do
     user = create_user("e2e_flow_user", "admin")
     published_game_fixture(%{name: "E2E Test Game", bgg_id: 9999})

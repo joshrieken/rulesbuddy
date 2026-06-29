@@ -156,14 +156,16 @@ defmodule RuleMaven.LLM do
   large shrink is expected — it only reverts on a near-total wipe (likely a
   refusal), keeping anything above ~15% of the input.
   """
-  def cleanup_page(page_text, level \\ :light, page_number \\ nil) do
+  def cleanup_page(page_text, level \\ :light, page_number \\ nil, opts \\ []) do
     if String.trim(page_text) == "" do
       {:ok, page_text, :empty}
     else
       case chat(page_text, "cleanup_rulebook",
              system: cleanup_system(level) <> page_number_hint(page_number),
              max_tokens: 4096,
-             model: model(:cleanup)
+             model: model(:cleanup),
+             operation: "cleanup",
+             game_id: opts[:game_id]
            ) do
         {:ok, cleaned} ->
           trimmed = String.trim(cleaned)
@@ -199,7 +201,9 @@ defmodule RuleMaven.LLM do
     case chat(user, "cleanup_critic",
            system: RuleMaven.Prompts.template("cleanup_critic"),
            max_tokens: 1024,
-           model: opts[:model] || model(:cleanup)
+           model: opts[:model] || model(:cleanup),
+           operation: "cleanup",
+           game_id: opts[:game_id]
          ) do
       {:ok, text} -> {:ok, parse_defects(text)}
       {:error, reason} -> {:error, reason}
@@ -260,7 +264,7 @@ defmodule RuleMaven.LLM do
           messages: messages
         }
 
-        case do_request(body, 1, operation: "ocr_vision") do
+        case do_request(body, 1, operation: "ocr_vision", game_id: opts[:game_id]) do
           {:ok, %{answer: text}} -> {:ok, text}
           {:error, reason} -> {:error, reason}
         end
@@ -300,7 +304,7 @@ defmodule RuleMaven.LLM do
           messages: messages
         }
 
-        case do_request(body, 1, operation: "ocr_critic") do
+        case do_request(body, 1, operation: "ocr_critic", game_id: opts[:game_id]) do
           {:ok, %{answer: text}} -> {:ok, parse_defects(text)}
           {:error, reason} -> {:error, reason}
         end
@@ -366,7 +370,11 @@ defmodule RuleMaven.LLM do
       messages: messages
     }
 
-    case do_request(body, 1, operation: "chat_#{context}") do
+    case do_request(body, 1,
+           operation: opts[:operation] || "chat_#{context}",
+           game_id: opts[:game_id],
+           user_id: opts[:user_id]
+         ) do
       {:ok, %{answer: text}} -> {:ok, text}
       {:error, reason} -> {:error, reason}
     end
@@ -813,6 +821,84 @@ defmodule RuleMaven.LLM do
   end
 
   @doc """
+  Per-operation LLM cost (USD estimate) for a single game, highest spend first.
+  Each row is `%{operation, requests, prompt_tokens, completion_tokens, cost}`.
+  Pass `since` (a `DateTime`) to bound the window. Cost is summed per
+  `{operation, model}` so per-row model pricing stays accurate.
+  """
+  def cost_by_operation_for_game(game_id, since \\ nil) do
+    alias RuleMaven.Repo
+    alias RuleMaven.LLM.Pricing
+    import Ecto.Query
+
+    base = from(l in RuleMaven.LLM.Log, where: l.game_id == ^game_id)
+    base = if since, do: from(l in base, where: l.inserted_at >= ^since), else: base
+
+    Repo.all(
+      from l in base,
+        group_by: [l.operation, l.model],
+        select: {
+          l.operation,
+          l.model,
+          sum(l.prompt_tokens),
+          sum(l.completion_tokens),
+          count(l.id)
+        }
+    )
+    |> Enum.group_by(fn {op, _, _, _, _} -> op end)
+    |> Enum.map(fn {op, model_rows} ->
+      {cost, p_tok, c_tok, requests} =
+        Enum.reduce(model_rows, {0.0, 0, 0, 0}, fn {_op, model, p, c, n}, {cost, pt, ct, req} ->
+          {cost + Pricing.cost(model, p, c), pt + (p || 0), ct + (c || 0), req + n}
+        end)
+
+      %{
+        operation: op,
+        requests: requests,
+        prompt_tokens: p_tok,
+        completion_tokens: c_tok,
+        cost: cost
+      }
+    end)
+    |> Enum.sort_by(& &1.cost, :desc)
+  end
+
+  @doc """
+  Total LLM cost (USD estimate) for a single game across all operations. Pass
+  `since` (a `DateTime`) to bound the window.
+  """
+  def cost_for_game(game_id, since \\ nil) do
+    cost_by_operation_for_game(game_id, since)
+    |> Enum.reduce(0.0, fn %{cost: c}, acc -> acc + c end)
+  end
+
+  @doc """
+  Total LLM cost (USD) for one game over a time window, restricted to the given
+  `operations`. Used by `Jobs.finish_run/3` to stamp a single job run's spend
+  (a pipeline step runs in its own window for its own operation, so this cleanly
+  attributes per-run cost). Returns `0.0` when `operations` is empty.
+  """
+  def cost_in_window(_game_id, [], _from, _to), do: 0.0
+
+  def cost_in_window(game_id, operations, %DateTime{} = from, %DateTime{} = to) do
+    alias RuleMaven.Repo
+    alias RuleMaven.LLM.Pricing
+    import Ecto.Query
+
+    Repo.all(
+      from l in RuleMaven.LLM.Log,
+        where:
+          l.game_id == ^game_id and l.operation in ^operations and
+            l.inserted_at >= ^from and l.inserted_at <= ^to,
+        group_by: l.model,
+        select: {l.model, sum(l.prompt_tokens), sum(l.completion_tokens)}
+    )
+    |> Enum.reduce(0.0, fn {model, p, c}, acc -> acc + Pricing.cost(model, p, c) end)
+  end
+
+  def cost_in_window(_game_id, _operations, _from, _to), do: 0.0
+
+  @doc """
   Error rate over the last `hours` hours: %{requests, errors, rate} where rate
   is a 0.0–1.0 float (0.0 when no requests).
   """
@@ -892,7 +978,7 @@ defmodule RuleMaven.LLM do
   kind worth surfacing on the game's empty state. Returns `{:ok, [fact_string]}`
   or `{:error, reason}`.
   """
-  def generate_did_you_know(game_name, rulebook_text) do
+  def generate_did_you_know(game_name, rulebook_text, game_id \\ nil) do
     prompt =
       RuleMaven.Prompts.render("did_you_know", %{
         game_name: game_name,
@@ -902,6 +988,8 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know",
+           operation: "did_you_know",
+           game_id: game_id,
            system: RuleMaven.Prompts.template("did_you_know_system"),
            # Room for up to ~50 facts plus reasoning-model overhead; too low and
            # the cap is hit mid-thought, returning empty content with no bullets.
@@ -920,7 +1008,7 @@ defmodule RuleMaven.LLM do
           |> Enum.reject(&(String.length(&1) < 20))
           |> Enum.uniq()
 
-        {:ok, verify_did_you_know(game_name, rulebook_text, facts)}
+        {:ok, verify_did_you_know(game_name, rulebook_text, facts, game_id)}
 
       {:error, reason} ->
         {:error, reason}
@@ -931,9 +1019,9 @@ defmodule RuleMaven.LLM do
   # supported by the rulebook (catches misleading-by-omission paraphrases, e.g.
   # "X is removed" when X is removed then reused). Fail-open — a verify error or
   # unparseable reply keeps the original facts rather than nuking the whole list.
-  defp verify_did_you_know(_game_name, _text, []), do: []
+  defp verify_did_you_know(_game_name, _text, [], _game_id), do: []
 
-  defp verify_did_you_know(game_name, rulebook_text, facts) do
+  defp verify_did_you_know(game_name, rulebook_text, facts, game_id) do
     numbered =
       facts
       |> Enum.with_index(1)
@@ -949,6 +1037,8 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know_verify",
+           operation: "did_you_know",
+           game_id: game_id,
            system: RuleMaven.Prompts.template("did_you_know_verify_system"),
            max_tokens: 600
          ) do
@@ -1098,7 +1188,7 @@ defmodule RuleMaven.LLM do
   Generates topic categories for a game based on its rulebook text.
   Returns `{:ok, [%{name: string, description: string}]}` or `{:error, reason}`.
   """
-  def generate_categories(game_name, rulebook_text) do
+  def generate_categories(game_name, rulebook_text, game_id \\ nil) do
     # Sample: first 1500 + last 1500 + 3 random middle chunks of 500
     len = String.length(rulebook_text)
     front = String.slice(rulebook_text, 0, 1500)
@@ -1123,6 +1213,8 @@ defmodule RuleMaven.LLM do
       RuleMaven.Prompts.render("categories", %{game_name: game_name, rulebook: sample})
 
     case chat(full_prompt, "generate_categories",
+           operation: "categories",
+           game_id: game_id,
            system: RuleMaven.Prompts.template("categories_system"),
            max_tokens: 400
          ) do
@@ -1152,7 +1244,9 @@ defmodule RuleMaven.LLM do
   string keys `accent`/`bg`/`surface`/`text` (hex strings) — feed straight into
   `RuleMaven.ThemePalette.build/1`. `{:error, reason}` on fetch/LLM/parse failure.
   """
-  def generate_theme_palette(game_name, image_url) when is_binary(image_url) do
+  def generate_theme_palette(game_name, image_url, game_id \\ nil)
+
+  def generate_theme_palette(game_name, image_url, game_id) when is_binary(image_url) do
     with {:ok, data_url} <- fetch_image_data_url(image_url),
          prompt = RuleMaven.Prompts.render("theme_palette", %{game_name: game_name}),
          messages = [
@@ -1168,12 +1262,13 @@ defmodule RuleMaven.LLM do
          # Read :raw_response, not :answer — decode_answer/1 assumes the Q&A JSON
          # schema and would extract a nonexistent "answer" key from our palette
          # JSON, yielding "". raw_response is the unparsed model content.
-         {:ok, %{raw_response: text}} <- do_request(body, 1, operation: "theme_palette") do
+         {:ok, %{raw_response: text}} <-
+           do_request(body, 1, operation: "theme_palette", game_id: game_id) do
       parse_theme_anchors(text)
     end
   end
 
-  def generate_theme_palette(_game_name, _), do: {:error, :no_image}
+  def generate_theme_palette(_game_name, _, _game_id), do: {:error, :no_image}
 
   # Pull the cover bytes and inline them as a data URL (BGG URLs can be flaky /
   # hotlink-protected; inlining keeps the vision call self-contained + durable).

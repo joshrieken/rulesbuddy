@@ -219,8 +219,8 @@ defmodule RuleMaven.CheatSheet do
     else
       annotated = annotate_pages(full_text)
 
-      with {:ok, compressed} <- compress_text(game.name, annotated),
-           {:ok, content} <- generate_cheat_sheet_content(game.name, compressed, level) do
+      with {:ok, compressed} <- compress_text(game.name, annotated, game.id),
+           {:ok, content} <- generate_cheat_sheet_content(game.name, compressed, level, game.id) do
         {:ok, content}
       end
     end
@@ -251,25 +251,35 @@ defmodule RuleMaven.CheatSheet do
 
   # If text is under ~12k chars, no compression needed.
   # Otherwise, ask LLM to strip flavor/examples, keep only mechanical rules.
-  defp compress_text(game_name, full_text) do
+  defp compress_text(game_name, full_text, game_id) do
     if String.length(full_text) < 12_000 do
       {:ok, full_text}
     else
       system = RuleMaven.Prompts.template("cheat_compress_system")
       prompt = RuleMaven.Prompts.render("cheat_compress", %{rulebook: full_text})
 
-      case RuleMaven.LLM.chat(prompt, game_name, system: system, max_tokens: 2048) do
+      case RuleMaven.LLM.chat(prompt, game_name,
+             operation: "cheat_sheet",
+             game_id: game_id,
+             system: system,
+             max_tokens: 2048
+           ) do
         {:ok, compressed} -> {:ok, compressed}
         {:error, _} -> {:ok, String.slice(full_text, 0, 40_000)}
       end
     end
   end
 
-  defp generate_cheat_sheet_content(game_name, full_text, level) do
+  defp generate_cheat_sheet_content(game_name, full_text, level, game_id) do
     prompt = prompt_for_level(game_name, full_text, level)
     system = RuleMaven.Prompts.template("cheat_generate_system")
 
-    case RuleMaven.LLM.chat(prompt, game_name, system: system, max_tokens: 2048) do
+    case RuleMaven.LLM.chat(prompt, game_name,
+           operation: "cheat_sheet",
+           game_id: game_id,
+           system: system,
+           max_tokens: 2048
+         ) do
       {:ok, content} -> {:ok, content}
       {:error, reason} -> {:error, reason}
     end

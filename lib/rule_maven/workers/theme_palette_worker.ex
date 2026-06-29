@@ -90,8 +90,8 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
     result
   end
 
-  defp build_palette(%{name: name, image_url: url}) when is_binary(url) and url != "" do
-    with {:ok, anchors} <- LLM.generate_theme_palette(name, url),
+  defp build_palette(%{id: id, name: name, image_url: url}) when is_binary(url) and url != "" do
+    with {:ok, anchors} <- LLM.generate_theme_palette(name, url, id),
          {:ok, palette} <- ThemePalette.build(anchors) do
       {:ok, palette}
     end

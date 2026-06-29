@@ -158,7 +158,8 @@ defmodule RuleMaven.RulebookDownloader do
 
   # Shared post-save tail of both download and upload ingestion.
   defp ingest_saved_pdf(game, pdf_path, url, label, on_progress) do
-    with {:ok, raw_text, from_ocr, page_meta} <- extract_with_cleanup(pdf_path, on_progress) do
+    with {:ok, raw_text, from_ocr, page_meta} <-
+           extract_with_cleanup(pdf_path, on_progress, game.id) do
       on_progress.(:finalizing)
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them.
@@ -542,8 +543,8 @@ defmodule RuleMaven.RulebookDownloader do
 
   # Extract, but if extraction fails for good, remove the PDF we just saved —
   # no Document row will reference it, so it would otherwise linger on disk.
-  defp extract_with_cleanup(pdf_path, on_progress) do
-    case extract_text_with_source(pdf_path, on_progress) do
+  defp extract_with_cleanup(pdf_path, on_progress, game_id) do
+    case extract_text_with_source(pdf_path, on_progress, game_id) do
       {:ok, _text, _from_ocr, _meta} = ok ->
         ok
 
@@ -553,7 +554,7 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp extract_text_with_source(doc_path, on_progress) do
+  defp extract_text_with_source(doc_path, on_progress, game_id) do
     full_path = Application.app_dir(:rule_maven, "priv/static/#{doc_path}")
 
     cond do
@@ -561,10 +562,10 @@ defmodule RuleMaven.RulebookDownloader do
         native_extract(full_path, on_progress)
 
       image?(doc_path) ->
-        image_extract(full_path, on_progress)
+        image_extract(full_path, on_progress, game_id)
 
       true ->
-        pdf_extract(full_path, on_progress)
+        pdf_extract(full_path, on_progress, game_id)
     end
   rescue
     e ->
@@ -603,10 +604,10 @@ defmodule RuleMaven.RulebookDownloader do
   # A single uploaded image is one page with no text layer — run the same
   # per-page decision (local OCR vs vision, escalate on disagreement) the PDF
   # engine uses, with an empty layer.
-  defp image_extract(full_path, on_progress) do
+  defp image_extract(full_path, on_progress, game_id) do
     on_progress.(:ocr)
     log(on_progress, "Reading image — OCR + vision cross-check…")
-    r = decide_page(full_path, "")
+    r = decide_page(full_path, "", 0.0, game_id)
 
     if String.trim(r.text) == "" do
       {:error, "Image produced no readable text"}
@@ -616,21 +617,21 @@ defmodule RuleMaven.RulebookDownloader do
   end
 
   # PDF: accuracy-first cross-check (mode "vision") or the legacy OCR path.
-  defp pdf_extract(full_path, on_progress) do
+  defp pdf_extract(full_path, on_progress, game_id) do
     case extract_mode() do
       "vision" ->
-        case crosscheck_extract(full_path, on_progress) do
+        case crosscheck_extract(full_path, on_progress, game_id) do
           {:ok, _text, _from_ocr, _meta} = ok ->
             ok
 
           {:error, reason} ->
             require Logger
             Logger.info("Cross-check extraction unavailable (#{inspect(reason)}); using OCR path")
-            legacy_extract(full_path, on_progress)
+            legacy_extract(full_path, on_progress, game_id)
         end
 
       _ ->
-        legacy_extract(full_path, on_progress)
+        legacy_extract(full_path, on_progress, game_id)
     end
   end
 
@@ -651,7 +652,7 @@ defmodule RuleMaven.RulebookDownloader do
   # Original path: trust a non-empty text layer, else OCR. Fallback when the
   # cross-check engine can't run (no renderer), and the "ocr" mode itself. Returns
   # a 4-tuple with nil page_meta (no per-page provenance from this path).
-  defp legacy_extract(full_path, on_progress) do
+  defp legacy_extract(full_path, on_progress, game_id) do
     on_progress.(:extracting)
 
     case cmd("pdftotext", [full_path, "-"], @pdftotext_timeout) do
@@ -659,11 +660,11 @@ defmodule RuleMaven.RulebookDownloader do
         if String.trim(text) != "" do
           {:ok, text, false, nil}
         else
-          run_ocr(full_path, on_progress)
+          run_ocr(full_path, on_progress, game_id)
         end
 
       {:ok, _nonzero} ->
-        run_ocr(full_path, on_progress)
+        run_ocr(full_path, on_progress, game_id)
 
       {:error, :timeout} ->
         {:error, "PDF text extraction timed out — the file may be corrupt or too complex"}
@@ -678,7 +679,7 @@ defmodule RuleMaven.RulebookDownloader do
   # read and flags low confidence). Pages stay in physical order and join with
   # "\f", so the marker/paginate pipeline is untouched. Returns
   # {:ok, text, from_ocr, page_meta}.
-  defp crosscheck_extract(full_path, on_progress) do
+  defp crosscheck_extract(full_path, on_progress, game_id) do
     if System.find_executable("pdftoppm") do
       on_progress.(:extracting)
 
@@ -712,7 +713,7 @@ defmodule RuleMaven.RulebookDownloader do
             |> Enum.with_index()
             |> Task.async_stream(
               fn {img, i} ->
-                r = decide_page(img, Enum.at(layer_pages, i) || "", drift_rate)
+                r = decide_page(img, Enum.at(layer_pages, i) || "", drift_rate, game_id)
                 log(on_progress, page_line(i + 1, total, r), page_kind(r))
                 r
               end,
@@ -781,7 +782,7 @@ defmodule RuleMaven.RulebookDownloader do
   # cross-check the text layer (or local OCR when there's no layer) against a
   # cheap vision read; agreement keeps the richer text at the gate's confidence,
   # disagreement is the escalation point (Phase 3).
-  defp decide_page(image, layer, drift_rate \\ 0.0) do
+  defp decide_page(image, layer, drift_rate, game_id) do
     layer = String.trim(layer)
 
     if Gate.clean_text_layer?(layer) do
@@ -789,7 +790,7 @@ defmodule RuleMaven.RulebookDownloader do
       %{text: layer, confidence: 0.9, lane: "text_layer", source: "text_layer", escalated: false}
     else
       reader_a = if layer != "", do: layer, else: ocr_one(image)
-      reader_b = vision_one(image)
+      reader_b = vision_one(image, game_id)
       g = Gate.assess(reader_a, reader_b)
       text = richer(reader_a, reader_b)
       base_lane = if layer != "", do: "text_layer", else: "ocr"
@@ -799,16 +800,22 @@ defmodule RuleMaven.RulebookDownloader do
         # logs the outcome, to keep verifying that "agreement = ceiling" holds
         # (drift detection). The sampled page keeps the escalated result.
         g.agree? and Calibrate.should_sample?(drift_rate) ->
-          escalate_page(image, text, signals: g.signals, drift: true)
+          escalate_page(image, text, signals: g.signals, drift: true, game_id: game_id)
 
         g.agree? ->
           Map.merge(
-            %{text: text, confidence: g.confidence, lane: base_lane, source: "crosscheck", escalated: false},
+            %{
+              text: text,
+              confidence: g.confidence,
+              lane: base_lane,
+              source: "crosscheck",
+              escalated: false
+            },
             gate_detail(g.signals)
           )
 
         true ->
-          escalate_page(image, text, signals: g.signals, drift: false)
+          escalate_page(image, text, signals: g.signals, drift: false, game_id: game_id)
       end
     end
   end
@@ -826,7 +833,7 @@ defmodule RuleMaven.RulebookDownloader do
 
     cond do
       image?(doc_path) ->
-        {:ok, escalate_page(full, "", on_log: log)}
+        {:ok, escalate_page(full, "", on_log: log, game_id: opts[:game_id])}
 
       System.find_executable("pdftoppm") ->
         tmp = Application.app_dir(:rule_maven, "tmp/ocr")
@@ -861,7 +868,7 @@ defmodule RuleMaven.RulebookDownloader do
                 log.("Rendered #{label}.", "info")
                 # try/after so the temp image is removed even if escalate_page raises.
                 try do
-                  {:ok, escalate_page(path, "", on_log: log)}
+                  {:ok, escalate_page(path, "", on_log: log, game_id: opts[:game_id])}
                 after
                   File.rm(path)
                 end
@@ -893,7 +900,8 @@ defmodule RuleMaven.RulebookDownloader do
     strong =
       case RuleMaven.LLM.transcribe_page_image(image,
              model: RuleMaven.LLM.vision_model(:escalate),
-             max_tokens: 8192
+             max_tokens: 8192,
+             game_id: opts[:game_id]
            ) do
         {:ok, t} -> t
         {:error, _} -> ""
@@ -907,13 +915,17 @@ defmodule RuleMaven.RulebookDownloader do
 
     candidate = richer(strong, cheap_text)
     log.("Running the adversarial critic check…", "info")
-    v = Critic.verify(image, candidate)
+    v = Critic.verify(image, candidate, game_id: opts[:game_id])
 
     if v.verified? do
       log.("Critic passed (#{v.rounds} round#{if v.rounds == 1, do: "", else: "s"}).", "done")
     else
       n = length(v.residual_defects)
-      log.("Critic left #{n} residual defect#{if n == 1, do: "", else: "s"} — page flagged for review.", "warn")
+
+      log.(
+        "Critic left #{n} residual defect#{if n == 1, do: "", else: "s"} — page flagged for review.",
+        "warn"
+      )
     end
 
     log_calibration(strong, cheap_text, opts)
@@ -991,8 +1003,8 @@ defmodule RuleMaven.RulebookDownloader do
   end
 
   # One-page cheap vision read (reader B). "" on failure.
-  defp vision_one(image) do
-    case RuleMaven.LLM.transcribe_page_image(image) do
+  defp vision_one(image, game_id) do
+    case RuleMaven.LLM.transcribe_page_image(image, game_id: game_id) do
       {:ok, t} -> t
       {:error, _} -> ""
     end
@@ -1049,10 +1061,10 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp run_ocr(full_path, on_progress) do
+  defp run_ocr(full_path, on_progress, game_id) do
     on_progress.(:ocr)
 
-    case ocr_text(full_path) do
+    case ocr_text(full_path, game_id) do
       {:ok, text} -> {:ok, text, true, nil}
       {:error, reason} -> {:error, reason}
     end
@@ -1072,7 +1084,7 @@ defmodule RuleMaven.RulebookDownloader do
     end
   end
 
-  defp ocr_text(pdf_path) do
+  defp ocr_text(pdf_path, game_id) do
     if System.find_executable("tesseract") do
       case render_pages(pdf_path) do
         {:ok, []} ->
@@ -1113,7 +1125,7 @@ defmodule RuleMaven.RulebookDownloader do
             Enum.zip(images, ocr_pages)
             |> Task.async_stream(
               fn {img, ocr} ->
-                if ocr_junk?(ocr), do: vision_or_ocr(img, ocr), else: ocr
+                if ocr_junk?(ocr), do: vision_or_ocr(img, ocr, game_id), else: ocr
               end,
               max_concurrency: @vision_concurrency,
               ordered: true,
@@ -1145,8 +1157,8 @@ defmodule RuleMaven.RulebookDownloader do
   # Re-transcribe one page image with the vision model, falling back to the OCR
   # text if vision fails or comes back empty (never replace usable OCR with
   # nothing).
-  defp vision_or_ocr(image_path, ocr_text) do
-    case RuleMaven.LLM.transcribe_page_image(image_path) do
+  defp vision_or_ocr(image_path, ocr_text, game_id) do
+    case RuleMaven.LLM.transcribe_page_image(image_path, game_id: game_id) do
       {:ok, text} ->
         if String.trim(text) == "", do: ocr_text, else: text
 

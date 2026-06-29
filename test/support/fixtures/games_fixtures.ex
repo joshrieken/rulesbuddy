@@ -20,8 +20,9 @@ defmodule RuleMaven.GamesFixtures do
   end
 
   @doc """
-  Generate a game with a published rulebook document so it appears in the
-  default "playable" view (which only lists games that have documents).
+  Generate a game with a published rulebook document, flagged `playable` so it
+  appears in the default "playable" catalog view (which lists games whose
+  readiness pipeline is complete — see `RuleMaven.Readiness`).
   """
   def published_game_fixture(attrs \\ %{}) do
     game = game_fixture(attrs)
@@ -35,6 +36,14 @@ defmodule RuleMaven.GamesFixtures do
         status: "published"
       })
       |> RuleMaven.Repo.insert()
+
+    {:ok, game} =
+      game
+      |> Ecto.Changeset.change(
+        playable: true,
+        playable_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      )
+      |> RuleMaven.Repo.update()
 
     game
   end

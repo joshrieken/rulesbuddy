@@ -110,22 +110,82 @@ defmodule RuleMaven.Jobs do
   def finish_run(nil, _state, _summary), do: :ok
 
   def finish_run(%JobRun{} = run, state, summary) do
+    finished_at = DateTime.utc_now()
+
     run =
       run
       |> Ecto.Changeset.change(
         state: to_string(state),
         summary: summary && String.slice(to_string(summary), 0, 500),
-        finished_at: DateTime.utc_now()
+        finished_at: finished_at,
+        cost_usd: run_cost(run, finished_at)
       )
       |> Repo.update!()
 
     broadcast_run(run)
+    maybe_advance_readiness(run)
     :ok
   rescue
     e ->
       Logger.debug("job finish_run failed: #{inspect(e)}")
       :ok
   end
+
+  # --- Readiness integration -------------------------------------------------
+  #
+  # A run's LLM/embedding spend, stamped onto the row so the admin log and the
+  # Prepare page show per-step cost without recomputation. A pipeline step runs
+  # in its own window for its own operation(s), so game + operation + time-window
+  # attributes the spend cleanly. Unmapped kinds (no LLM, or untracked) → nil.
+  @kind_operations %{
+    "cleanup" => ["cleanup"],
+    "categories" => ["categories"],
+    "did_you_know" => ["did_you_know"],
+    "setup_checklist" => ["setup"],
+    "cheat_sheet" => ["cheat_sheet"],
+    "voice" => ["voice"],
+    "theme_palette" => ["theme_palette"],
+    "download" => ["ocr_vision", "ocr_critic"],
+    "reextract" => ["ocr_vision", "ocr_critic"],
+    "ask" => ["ask"]
+  }
+
+  # Kinds whose completion should walk the auto "Prepare game" pipeline forward.
+  @advance_kinds ~w(download cleanup embed)
+
+  defp run_cost(%JobRun{started_at: nil}, _finished_at), do: nil
+
+  defp run_cost(%JobRun{} = run, finished_at) do
+    with ops when ops != [] <- Map.get(@kind_operations, run.kind, []),
+         game_id when is_integer(game_id) <- run_game_id(run) do
+      RuleMaven.LLM.cost_in_window(game_id, ops, run.started_at, finished_at)
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp maybe_advance_readiness(%JobRun{kind: kind} = run) when kind in @advance_kinds do
+    case run_game_id(run) do
+      gid when is_integer(gid) -> RuleMaven.Readiness.advance(gid)
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp maybe_advance_readiness(_run), do: :ok
+
+  # Resolve the owning game id from a run's scope (game-scoped directly,
+  # document-scoped via the document's game).
+  defp run_game_id(%JobRun{scope_type: "game", scope_id: id}) when is_integer(id), do: id
+
+  defp run_game_id(%JobRun{scope_type: "document", scope_id: id}) when is_integer(id) do
+    Repo.one(from d in RuleMaven.Games.Document, where: d.id == ^id, select: d.game_id)
+  end
+
+  defp run_game_id(_run), do: nil
 
   defp broadcast_run(%JobRun{} = run) do
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, @admin_topic, {:job_run, run})
@@ -206,7 +266,10 @@ defmodule RuleMaven.Jobs do
     cutoff = DateTime.add(DateTime.utc_now(), -@stale_after_seconds, :second)
 
     last_event =
-      from(e in JobEvent, group_by: e.job_run_id, select: %{run_id: e.job_run_id, at: max(e.inserted_at)})
+      from(e in JobEvent,
+        group_by: e.job_run_id,
+        select: %{run_id: e.job_run_id, at: max(e.inserted_at)}
+      )
 
     stale =
       from(r in JobRun,
