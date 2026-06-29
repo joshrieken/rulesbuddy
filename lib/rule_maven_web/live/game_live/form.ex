@@ -1697,9 +1697,20 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_info({:bgg_enriched, game_id, :ok}, socket) do
     game = if socket.assigns.game, do: Games.get_game!(game_id), else: nil
 
+    # The cover image renders off @game_changeset.data, so rebuild the changeset
+    # on the fresh game (carrying any unsaved form edits) — otherwise the new
+    # image_url doesn't show until a manual page reload.
+    changeset =
+      if game do
+        prior = (socket.assigns[:game_changeset] && socket.assigns.game_changeset.changes) || %{}
+        Games.change_game(game, prior)
+      else
+        socket.assigns[:game_changeset]
+      end
+
     {:noreply,
      socket
-     |> assign(generating: false, game: game)
+     |> assign(generating: false, game: game, game_changeset: changeset)
      |> put_flash(:info, "Game info refreshed from BGG!")}
   end
 
