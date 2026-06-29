@@ -23,7 +23,7 @@ defmodule RuleMavenWeb.AdminLive.Requests do
       <.link navigate={~p"/admin"} class="back-link">&larr; Admin</.link>
       <h1 style="font-size:1.25rem;font-weight:700;margin:0.75rem 0 0.25rem 0">Support Requests</h1>
       <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1.25rem">
-        Games users have in their collection but aren't yet playable, ranked by demand.
+        Games users have in their collection but aren't yet ready, ranked by demand.
       </p>
 
       <%= if @requests == [] do %>

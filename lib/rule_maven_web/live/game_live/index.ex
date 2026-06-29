@@ -109,7 +109,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   # Views available to a user. "All Games" (full catalog) is admin only;
   # non-admin users are limited to playable games, their collection, and favorites.
   defp view_tabs(user) do
-    base = [{"playable", "Playable"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
+    base = [{"playable", "Ready"}, {"mine", "My Collection"}, {"favorites", "Favorites"}]
 
     if RuleMaven.Users.can?(user, :admin),
       do:
@@ -127,7 +127,7 @@ defmodule RuleMavenWeb.GameLive.Index do
   defp empty_state("playable"),
     do: %{
       icon: "🎲",
-      title: "No playable games yet",
+      title: "No ready games yet",
       body: "Games show up here once they have a rulebook. Import your collection to get going."
     }
 

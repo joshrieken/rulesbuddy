@@ -94,7 +94,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       {:noreply,
        socket
        |> load()
-       |> put_flash(:info, "Published — the game is now playable.")}
+       |> put_flash(:info, "Published — the game is now ready.")}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
@@ -107,7 +107,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       {:noreply,
        socket
        |> load()
-       |> put_flash(:info, "Unpublished — the game is no longer playable.")}
+       |> put_flash(:info, "Unpublished — the game is no longer ready.")}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
@@ -149,7 +149,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       <p style="font-size:0.85rem;font-weight:600;margin:0 0 1rem;color:var(--text-muted)">
         <%= cond do %>
           <% @playable? -> %>
-            <span style="color:var(--green)">✓ Published &amp; playable</span>
+            <span style="color:var(--green)">✓ Ready</span>
           <% @required_complete? -> %>
             <span style="color:var(--yellow)">● Ready to publish — awaiting your approval</span>
           <% true -> %>
@@ -160,7 +160,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:0.6rem;margin-bottom:1rem">
         <.stat label="Remaining est. cost" value={"$#{fmt_cost(@remaining_cost)}"} />
         <.stat label="Actual cost so far" value={"$#{fmt_cost(@total_actual)}"} />
-        <.stat label="Playable" value={if @playable?, do: "Yes", else: "No"} />
+        <.stat label="Ready" value={if @playable?, do: "Yes", else: "No"} />
       </div>
 
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem">
@@ -189,9 +189,9 @@ defmodule RuleMavenWeb.GameLive.Prepare do
         <button
           :if={@required_complete? && !@playable?}
           phx-click="approve_publish"
-          style="background:var(--green);color:#fff;border:none;padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:700;cursor:pointer"
+          style="background:var(--accent);color:var(--accent-text,#fff);border:none;padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:700;cursor:pointer"
         >
-          ✓ Mark playable
+          ✓ Mark Ready
         </button>
         <button
           :if={@playable?}
@@ -217,11 +217,6 @@ defmodule RuleMavenWeb.GameLive.Prepare do
             estimate={Map.get(@estimates, step.id, 0.0)}
             actual={Map.get(@actuals, step.id)}
           />
-          <%= if step.id == :embed do %>
-            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.9rem;background:color-mix(in srgb,var(--green) 8%,var(--bg-subtle));font-size:0.7rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--green)">
-              ▲ Playable
-            </div>
-          <% end %>
         <% end %>
       </div>
     </div>
