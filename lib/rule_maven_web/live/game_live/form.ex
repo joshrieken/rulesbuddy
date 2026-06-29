@@ -2340,6 +2340,10 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   # Detailed, durable extraction progress log for an incoming document. Rebuilt
   # from the DB, so it survives refresh and shows the full run after a restart.
+  # While running, force the panel open on mount (server `open` alone isn't
+  # reliably re-applied after the LiveView connects), so a refresh/load mid-run
+  # always shows live progress; the user can still collapse it.
+  attr :id, :string, required: true
   attr :log, :list, required: true
   attr :running, :boolean, default: false
 
@@ -2347,7 +2351,9 @@ defmodule RuleMavenWeb.GameLive.Form do
     ~H"""
     <details
       :if={@log != []}
+      id={@id}
       open={@running}
+      phx-mounted={@running && Phoenix.LiveView.JS.set_attribute({"open", ""})}
       style="margin-top:0.8rem;border:1px solid var(--border);border-radius:0.4rem;background:var(--bg-subtle)"
     >
       <summary style="cursor:pointer;padding:0.5rem 0.7rem;font-size:0.78rem;font-weight:600;color:var(--text-secondary)">
@@ -2892,7 +2898,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%= if @download_error do %>
             <p class="text-sm text-red-500 mt-2">{@download_error}</p>
           <% end %>
-          <.ingest_log_panel log={@ingest_log} running={@downloading} />
+          <.ingest_log_panel id="ingestlog-download" log={@ingest_log} running={@downloading} />
         </div>
 
         <.form
@@ -3232,6 +3238,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                     </style>
                   </div>
                   <.ingest_log_panel
+                    id={"reextlog-#{entry.id}"}
                     log={Map.get(@reextract_log, entry.source_id, [])}
                     running={regenerating?}
                   />
@@ -3440,6 +3447,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                             busy={regenerating?}
                           />
                           <.ingest_log_panel
+                            id={"reextlog-modal-#{reader.id}"}
                             log={Map.get(@reextract_log, reader.source_id, [])}
                             running={regenerating?}
                           />
