@@ -855,10 +855,13 @@ body {
    header while the game list scrolls underneath. `--header-height` is the live
    header height (kept current in app.js). The solid page-bg masks cards
    sliding under the bottom edge. */
-/* Cancel the .main-content top padding for this page so the search/controls
-   start flush under the header at rest — exactly where they pin when scrolling. */
-.game-list {
-  margin-top: -2rem;
+/* The search/controls are position:sticky and .main-content is the scroll
+   container, so sticky is measured from .main-content's PADDING box. Any top
+   padding there would push the stuck controls down (a blank band above the
+   search bar), so zero it for this page — the controls then pin flush under the
+   header, exactly where they sit at rest. */
+.main-content:has(.game-list) {
+  padding-top: 0;
 }
 
 .list-controls {
