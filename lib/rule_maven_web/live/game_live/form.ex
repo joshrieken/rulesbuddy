@@ -36,6 +36,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         confirm_delete_cheat: false,
         question_count: 0,
         generating: false,
+        bgg_gate_bypassed: false,
         cheat_error: nil,
         cheat_content: nil,
         cheat_status: nil,
@@ -456,6 +457,12 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
+  # Escape hatch from the pre-sync gate: BGG enrichment may never land (BGG
+  # down, no data for this id). Let the admin into the full editor anyway.
+  def handle_event("bypass_bgg_gate", _params, socket) do
+    {:noreply, assign(socket, bgg_gate_bypassed: true)}
+  end
+
   def handle_event("refresh_bgg", _params, socket) do
     # Durable + non-blocking: enqueue the BGG pull and let the result arrive over
     # PubSub (subscribed in mount) instead of blocking the LiveView process.
@@ -2476,7 +2483,59 @@ defmodule RuleMavenWeb.GameLive.Form do
         </div>
       <% end %>
 
-      <div :if={@game}>
+      <%!-- Edit mode, not yet synced with BGG: gate the whole editor behind a
+            sync prompt. A catalog game only has name/year/rank until BGG is
+            pulled (image, players, play time), and the rest of the editor
+            assumes that data exists. --%>
+      <div
+        :if={@game && not bgg_synced?(@game) && not @bgg_gate_bypassed}
+        style="text-align:center;max-width:34rem;margin:2rem auto;padding:2.5rem 2rem;border:1px dashed var(--border-strong);border-radius:0.75rem;background:var(--bg-surface)"
+      >
+        <div style="font-size:2.5rem;margin-bottom:0.5rem">🔗</div>
+        <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.5rem">
+          Pull from BoardGameGeek first
+        </h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);line-height:1.55;margin:0 auto 1.5rem;max-width:26rem">
+          This game only has its catalog basics so far. Pull its details from
+          BoardGameGeek — cover image, player count, play time — before adding
+          rulebooks or cheat sheets.
+        </p>
+        <%= if @game.bgg_id do %>
+          <button
+            type="button"
+            phx-click="refresh_bgg"
+            disabled={@generating}
+            style={"background:var(--accent);color:#fff;border:none;padding:0.6rem 1.5rem;border-radius:0.5rem;font-weight:700;font-size:0.9rem;cursor:#{if @generating, do: "default", else: "pointer"};opacity:#{if @generating, do: "0.6", else: "1"}"}
+          >
+            {if @generating, do: "⟳ Pulling from BGG…", else: "Pull from BGG"}
+          </button>
+          <p style="font-size:0.72rem;color:var(--text-muted);margin:0.85rem 0 0">
+            BGG ID {@game.bgg_id} · runs in the background; this page updates when it's done.
+          </p>
+        <% else %>
+          <p style="font-size:0.82rem;color:var(--red);margin:0">
+            This game has no BGG ID linked, so it can't be pulled. Set a BGG ID in
+            the database first.
+          </p>
+        <% end %>
+
+        <%!-- Escape hatch: BGG may be down or the game may have no usable data.
+              Let the admin into the editor anyway. --%>
+        <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+          <button
+            type="button"
+            phx-click="bypass_bgg_gate"
+            style="background:none;border:none;color:var(--text-muted);font-size:0.78rem;font-weight:600;text-decoration:underline;cursor:pointer"
+          >
+            Skip and edit anyway
+          </button>
+          <p style="font-size:0.7rem;color:var(--text-muted);margin:0.4rem 0 0">
+            Use this if the pull keeps failing. You can fill in details by hand.
+          </p>
+        </div>
+      </div>
+
+      <div :if={@game && (bgg_synced?(@game) or @bgg_gate_bypassed)}>
         <!-- BGG info bar (edit mode) -->
         <%= if @game_changeset && @game_changeset.data.bgg_id do %>
           <div class="flex gap-3 items-center mb-4 p-3 border rounded-lg bg-gray-50">
@@ -3882,6 +3941,16 @@ defmodule RuleMavenWeb.GameLive.Form do
     </div>
     """
   end
+
+  # A game is "BGG-synced" once the detail pull has populated the enriched
+  # fields. Catalog import only sets name/year/rank, so these stay nil until a
+  # BGG sync (refresh_bgg → BggEnrichWorker) runs.
+  defp bgg_synced?(%{} = game) do
+    not is_nil(game.image_url) or not is_nil(game.min_players) or
+      not is_nil(game.playing_time)
+  end
+
+  defp bgg_synced?(_), do: false
 
   def format_elapsed(seconds) do
     if seconds < 60 do
