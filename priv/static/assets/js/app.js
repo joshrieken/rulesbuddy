@@ -534,9 +534,10 @@ Hooks.ReaderKeys = {
       } else if (e.key === "ArrowRight" || e.key === "l") {
         e.preventDefault();
         this.pushEvent("source_page_step", {id, delta: "1"});
-      } else if (e.key === "f" && !isModal) {
+      } else if (e.key === "f") {
         e.preventDefault();
-        this.pushEvent("expand_source", {id});
+        if (isModal) this.pushEvent("close_source", {});
+        else this.pushEvent("expand_source", {id});
       }
     };
     window.addEventListener("keydown", this._handler);

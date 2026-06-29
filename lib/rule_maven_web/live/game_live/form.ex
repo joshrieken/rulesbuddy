@@ -3245,7 +3245,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                       phx-click="expand_source"
                       phx-value-id={entry.id}
                       disabled={String.trim(entry.text) == ""}
-                      title="Open the full-screen reader (press f while hovering this source)"
+                      title="Open the full-screen reader (press f to toggle; f again or Esc closes it)"
                       style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
                     >⤢ Expand reader (f)</button>
                     <%!-- No raw-PDF link: rulebooks may be copyrighted, so we
