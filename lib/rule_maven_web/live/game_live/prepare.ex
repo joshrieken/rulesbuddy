@@ -231,6 +231,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
             step={step}
             estimate={Map.get(@estimates, step.id, 0.0)}
             actual={Map.get(@actuals, step.id)}
+            action={step_action(step, @game)}
           />
         <% end %>
       </div>
@@ -241,6 +242,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   attr :step, :map, required: true
   attr :estimate, :float, required: true
   attr :actual, :any, required: true
+  attr :action, :any, default: nil
 
   defp step_row(assigns) do
     ~H"""
@@ -250,6 +252,13 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       </span>
       <span style="flex:1;font-size:0.85rem;font-weight:600;color:var(--text)">
         {@step.label}
+        <.link
+          :if={@action}
+          navigate={@action.href}
+          style="font-size:0.72rem;font-weight:600;color:var(--accent);margin-left:0.4rem;white-space:nowrap"
+        >
+          {@action.label} &rarr;
+        </.link>
       </span>
       <span style={"font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;#{tag_style(@step.category)}"}>
         {if @step.category == :required, do: "Required", else: "Enrichment"}
@@ -286,6 +295,14 @@ defmodule RuleMavenWeb.GameLive.Prepare do
     </div>
     """
   end
+
+  # Contextual jump to where a human-action step is handled (source upload and
+  # page review both live in the edit page's rulebook manager). Automated steps
+  # return nil — the Prepare button drives those.
+  defp step_action(%{state: :done}, _game), do: nil
+  defp step_action(%{id: :source}, game), do: %{href: ~p"/games/#{game.id}/edit", label: "Upload"}
+  defp step_action(%{id: :review}, game), do: %{href: ~p"/games/#{game.id}/edit", label: "Review"}
+  defp step_action(_step, _game), do: nil
 
   defp pause_message(%{pause_reason: "needs_source"} = assigns) do
     ~H"""
