@@ -2707,6 +2707,32 @@ defmodule RuleMavenWeb.GameLive.Show do
               {if @pending_count >= @max_concurrent, do: "Wait…", else: "Send"}
             </button>
           </form>
+          <%!-- Default answer voice: applies to every answer (and restyles the
+                open thread). Persisted in localStorage via the VoiceDefault hook. --%>
+          <% cur_default = Enum.find(@voices, &(&1.id == @default_voice)) || hd(@voices) %>
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.4rem;margin-top:0.45rem">
+            <span style="font-size:0.68rem;color:var(--text-muted);font-weight:600">Answer voice</span>
+            <details class="card-menu">
+              <summary style="font-size:0.68rem;color:var(--text);font-weight:600;border:1px solid var(--border);border-radius:999px;padding:0.15rem 0.55rem;background:var(--bg-surface);cursor:pointer;list-style:none">
+                <span aria-hidden="true">{cur_default.emoji}</span>
+                <span>{cur_default.label}</span>
+                <span style="opacity:0.6">▾</span>
+              </summary>
+              <div class="card-menu__pop card-menu__pop--up">
+                <button
+                  :for={v <- @voices}
+                  type="button"
+                  phx-click="set_default_voice"
+                  phx-value-voice={v.id}
+                  class="card-menu__item"
+                  style={if @default_voice == v.id, do: "background:var(--accent);color:var(--accent-text,#fff)"}
+                >
+                  <span aria-hidden="true">{v.emoji}</span>
+                  <span>{v.label}</span>
+                </button>
+              </div>
+            </details>
+          </div>
           <%= if @pending_count >= @max_concurrent do %>
             <div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin-top:0.3rem">
               {@pending_count} of {@max_concurrent} questions in progress — please wait for one to finish

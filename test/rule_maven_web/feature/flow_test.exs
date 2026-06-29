@@ -96,6 +96,17 @@ defmodule RuleMavenWeb.Feature.FlowTest do
     |> assert_has(css("[data-prepare-step='source'] a", text: "Manage on edit page"))
   end
 
+  feature "asking page shows an answer-voice selector", %{session: session} do
+    user = create_user("e2e_voice_admin", "admin")
+    game = published_game_fixture(%{name: "Voice Test Game"})
+
+    session
+    |> login(user.username)
+    |> visit("/games/#{RuleMaven.Hashid.encode(game.id)}")
+    |> assert_has(css("span", text: "Answer voice"))
+    |> assert_has(css("details.card-menu summary", minimum: 1))
+  end
+
   feature "login succeeds and shows game list", %{session: session} do
     user = create_user("e2e_flow_user", "admin")
     published_game_fixture(%{name: "E2E Test Game", bgg_id: 9999})
