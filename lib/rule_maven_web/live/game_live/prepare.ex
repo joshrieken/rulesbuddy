@@ -629,6 +629,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       |> assign(:link, step_link(assigns.step.id, assigns.game))
       |> assign(:regen?, assigns.step.id in @regen_steps)
       |> assign(:clear?, assigns.step.id in @clear_steps)
+      |> assign(:done?, assigns.step.state == :done)
 
     ~H"""
     <div
@@ -648,10 +649,14 @@ defmodule RuleMavenWeb.GameLive.Prepare do
         type="button"
         phx-click="regen_step"
         phx-value-step={@step.id}
-        data-confirm="Re-run this step? It spends LLM budget and replaces the current result."
+        data-confirm={
+          if @done?,
+            do: "Re-run this step? It spends LLM budget and replaces the current result.",
+            else: "Generate this step? It spends LLM budget."
+        }
         style="background:var(--accent);color:var(--accent-text,#fff);border:none;padding:0.3rem 0.7rem;border-radius:0.3rem;font-size:0.74rem;font-weight:600;cursor:pointer"
       >
-        Regenerate
+        {if @done?, do: "Regenerate", else: "Generate"}
       </button>
       <button
         :if={@clear? && !@running}
