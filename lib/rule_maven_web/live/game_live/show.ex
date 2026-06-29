@@ -607,6 +607,9 @@ defmodule RuleMavenWeb.GameLive.Show do
         {:noreply,
          put_flash(socket, :error, "This game has been removed and can't be asked about.")}
 
+      not socket.assigns.game.playable and not socket.assigns.is_admin ->
+        {:noreply, put_flash(socket, :error, "This game isn't ready yet — check back soon.")}
+
       RuleMaven.Settings.asks_disabled?() and not socket.assigns.is_admin ->
         {:noreply, put_flash(socket, :error, RuleMaven.Settings.asks_disabled_message())}
 
@@ -1387,6 +1390,24 @@ defmodule RuleMavenWeb.GameLive.Show do
   end
 
   @impl true
+  # Players hitting a not-yet-Ready game see only a "not ready" message — none of
+  # the Q&A UI. Admins fall through to the full page so they can test it.
+  def render(%{game: %{playable: false}, is_admin: false} = assigns) do
+    ~H"""
+    {RuleMavenWeb.GameLive.GameTheme.style_block(@game)}
+    <div style="max-width:34rem;margin:0 auto;padding:4rem 1.5rem;text-align:center">
+      <div style="font-size:2.5rem;margin-bottom:0.75rem">🔒</div>
+      <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 0.5rem;color:var(--text-heading,var(--text))">
+        {@game.name} isn’t ready yet
+      </h1>
+      <p style="font-size:0.9rem;color:var(--text-muted);margin:0 0 1.5rem">
+        We’re still preparing this game. Check back soon.
+      </p>
+      <.link navigate={~p"/"} class="back-link">&larr; Back to games</.link>
+    </div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     {RuleMavenWeb.GameLive.GameTheme.style_block(@game)}
@@ -2635,6 +2656,14 @@ defmodule RuleMavenWeb.GameLive.Show do
             ⏸️ {RuleMaven.Settings.asks_disabled_message()}{if @is_admin,
               do: " (You can still ask as an admin.)"}
           </div>
+          <%!-- Not-yet-Ready gate: users can't ask until the game is published;
+                admins can, to test it. --%>
+          <div
+            :if={not @game.playable}
+            style="margin-bottom:0.5rem;padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:0.5rem;background:color-mix(in srgb,var(--yellow) 10%,transparent);color:var(--text);font-size:0.78rem"
+          >
+            🧪 Not yet marked Ready — you're testing as admin.
+          </div>
           <form phx-submit="ask" class="flex gap-2" phx-hook="KeyboardSubmit" id="ask-form">
             <button
               type="button"
@@ -2643,7 +2672,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               data-target="ask-input"
               data-autosubmit="true"
               title="Ask by voice"
-              disabled={@pending_count >= @max_concurrent || @source_count == 0}
+              disabled={@pending_count >= @max_concurrent || @source_count == 0 || (not @game.playable and not @is_admin)}
               style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:2rem;padding:0.4rem 0.6rem;cursor:pointer;font-size:0.85rem;color:var(--text-muted)"
             >🎤</button>
             <input
@@ -2658,7 +2687,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               maxlength={600}
               class="flex-1 border rounded-full px-4 py-2.5 text-sm"
               style="background:var(--bg);color:var(--text);border-color:var(--border-strong)"
-              disabled={@pending_count >= @max_concurrent || @source_count == 0}
+              disabled={@pending_count >= @max_concurrent || @source_count == 0 || (not @game.playable and not @is_admin)}
               autocomplete="off"
               id="ask-input"
               phx-hook="FocusInput"
@@ -2666,7 +2695,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <input type="hidden" name="visibility" value={@visibility} />
             <button
               type="submit"
-              disabled={@pending_count >= @max_concurrent || @source_count == 0}
+              disabled={@pending_count >= @max_concurrent || @source_count == 0 || (not @game.playable and not @is_admin)}
               style="background:var(--accent);color:var(--accent-text,#fff);border:none;padding:0.5rem 1.25rem;border-radius:2rem;font-weight:600;font-size:0.85rem;cursor:pointer"
             >
               {if @pending_count >= @max_concurrent, do: "Wait…", else: "Send"}

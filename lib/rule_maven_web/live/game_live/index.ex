@@ -856,13 +856,16 @@ defmodule RuleMavenWeb.GameLive.Index do
                     phx-hook="ExternalLink"
                     style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.75rem;font-weight:600;cursor:pointer;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);line-height:1.2"
                   >BGG</a>
+                  <% askable =
+                    Map.get(@source_counts, game.id, 0) > 0 and
+                      (game.playable or RuleMaven.Users.can?(@current_user, :admin)) %>
                   <.link
-                    :if={Map.get(@source_counts, game.id, 0) > 0}
+                    :if={askable}
                     navigate={~p"/games/#{game.id}"}
                     style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
                   >Ask</.link>
                   <span
-                    :if={Map.get(@source_counts, game.id, 0) == 0}
+                    :if={not askable}
                     style="display:inline-block;visibility:hidden;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;line-height:1.2"
                   >Ask</span>
                   <% in_collection = MapSet.member?(@collection_ids, game.id) %>
