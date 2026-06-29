@@ -392,6 +392,8 @@ defmodule RuleMaven.Prompts do
   @voice_restyle """
   Rewrite the following answer in the voice of {{style}}
 
+  Commit fully to the bit — the funny comes from a sharp, specific point of view, not from stacking catchphrases, accents, or corny filler. Be witty and dry over loud and cheesy. One genuinely good line beats five clichés.
+
   Keep all facts and numbers identical. Do not add rules. Do not add a sign-off unless it is one short in-character phrase.
 
   ANSWER:
@@ -431,6 +433,9 @@ defmodule RuleMaven.Prompts do
     unchanged and only borrows the voice.
   - Make them distinct from each other and from the generic globals (plain,
     rules lawyer, pirate, robot, hype coach). Lean into THIS game's flavor.
+  - Aim for funny and specific, not cheesy. Give each persona a comic attitude
+    or point of view (an obsession, a grudge, a delusion of grandeur) — not just
+    a costume and a catchphrase. Dry and committed beats loud and corny.
 
   Rulebook excerpt (for theme only):
   {{rulebook}}
