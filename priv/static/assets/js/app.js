@@ -516,12 +516,22 @@ Hooks.VoiceDefault = {
 // the mouse or holding focus.
 Hooks.ReaderKeys = {
   mounted() {
+    const isModal = this.el.id === "reader-modal";
+
     // Opening the expanded reader should start at the top, not wherever the last
     // view left off. Done here (not a separate hook) so it rides the same hook
-    // the modal already uses — one less thing to keep in sync.
-    if (this.el.id === "reader-modal") {
+    // the modal already uses. Hammer it across a few frames + a tick so late
+    // layout (content/fonts settling) can't leave it scrolled down.
+    if (isModal) {
       const sc = this.el.querySelector("#reader-scroll");
-      if (sc) requestAnimationFrame(() => { sc.scrollTop = 0; });
+      if (sc) {
+        const top = () => { sc.scrollTop = 0; };
+        top();
+        requestAnimationFrame(top);
+        requestAnimationFrame(() => requestAnimationFrame(top));
+        setTimeout(top, 60);
+        setTimeout(top, 200);
+      }
     }
 
     this._handler = (e) => {
@@ -531,10 +541,25 @@ Hooks.ReaderKeys = {
                 t.tagName === "INPUT" ||
                 t.tagName === "TEXTAREA" ||
                 t.tagName === "SELECT")) return;
-      if (!this._active()) return;
 
-      const isModal = this.el.id === "reader-modal";
       const id = this.el.dataset.readerId;
+      const modalOpen = !!document.getElementById("reader-modal");
+
+      if (e.key === "f") {
+        e.preventDefault();
+        if (isModal) {
+          this.pushEvent("close_source", {});
+        } else if (!modalOpen && (this._active() || this._sole())) {
+          // f opens the reader for the hovered/focused source — or, when this is
+          // the only source on the page, with no hover needed.
+          this.pushEvent("expand_source", {id});
+        }
+        return;
+      }
+
+      // Paging keys still require the source to be the active one (hover/focus or
+      // the modal), so they don't hijack page scrolling from across the form.
+      if (!this._active()) return;
 
       if (e.key === "ArrowLeft" || e.key === "h") {
         e.preventDefault();
@@ -542,10 +567,6 @@ Hooks.ReaderKeys = {
       } else if (e.key === "ArrowRight" || e.key === "l") {
         e.preventDefault();
         this.pushEvent("source_page_step", {id, delta: "1"});
-      } else if (e.key === "f") {
-        e.preventDefault();
-        if (isModal) this.pushEvent("close_source", {});
-        else this.pushEvent("expand_source", {id});
       }
     };
     window.addEventListener("keydown", this._handler);
@@ -556,6 +577,13 @@ Hooks.ReaderKeys = {
     if (this.el.id === "reader-modal") return true;
     if (document.getElementById("reader-modal")) return false;
     return this.el.matches(":hover") || this.el.contains(document.activeElement);
+  },
+  // True when this inline source is the only one on the page — so f can open it
+  // without requiring the mouse to be over it.
+  _sole() {
+    const inline = Array.from(document.querySelectorAll("[data-reader-id]"))
+      .filter((el) => el.id !== "reader-modal");
+    return inline.length === 1 && inline[0] === this.el;
   },
   destroyed() {
     window.removeEventListener("keydown", this._handler);
