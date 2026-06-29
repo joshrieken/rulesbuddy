@@ -863,7 +863,10 @@ body {
 
 .list-controls {
   position: sticky;
-  top: var(--header-height, 3.125rem);
+  /* .main-content is the scroll container and starts directly under the (sibling)
+     header, so the controls pin at its top edge — not offset by header height,
+     which would leave a blank band above the search bar. */
+  top: 0;
   z-index: 50;
   background: var(--bg);
   padding-top: 0.5rem;
