@@ -26,6 +26,7 @@ defmodule RuleMaven.LLM.Savings do
   @min_same_game 3
 
   @kinds ~w(cache_hit prompt_cache cheap_route)
+  @headline_kinds ~w(cache_hit prompt_cache)
 
   schema "llm_savings" do
     field :kind, :string
@@ -71,6 +72,33 @@ defmodule RuleMaven.LLM.Savings do
     })
   rescue
     e -> Logger.warning("Savings.record_cache_hit raised: #{inspect(e)}"); :ok
+  end
+
+  @doc """
+  Savings roll-up for the last `days` days. `headline_*` count only real-
+  avoidance/real-discount kinds (cache_hit, prompt_cache); cheap_route is
+  reported in `by_kind` but excluded from the headline.
+  """
+  def summary(days \\ 30) do
+    since = DateTime.add(DateTime.utc_now(), -days, :day)
+
+    by_kind =
+      Repo.all(
+        from s in __MODULE__,
+          where: s.inserted_at >= ^since,
+          group_by: s.kind,
+          select: {s.kind, sum(s.estimated_tokens), sum(s.estimated_usd)}
+      )
+      |> Enum.map(fn {k, t, u} -> %{kind: k, tokens: t || 0, usd: (u || 0.0) * 1.0} end)
+
+    headline = Enum.filter(by_kind, &(&1.kind in @headline_kinds))
+
+    %{
+      days: days,
+      headline_usd: Enum.reduce(headline, 0.0, &(&1.usd + &2)),
+      headline_tokens: Enum.reduce(headline, 0, &(&1.tokens + &2)),
+      by_kind: by_kind
+    }
   end
 
   @doc """

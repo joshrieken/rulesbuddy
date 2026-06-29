@@ -111,4 +111,19 @@ defmodule RuleMaven.LLMSavingsTest do
       assert est.usd > 0.0
     end
   end
+
+  describe "summary/1" do
+    test "headline excludes cheap_route" do
+      Savings.record("cache_hit", %{operation: "ask", estimated_tokens: 100, estimated_usd: 0.10})
+      Savings.record("prompt_cache", %{operation: "ask", estimated_tokens: 50, estimated_usd: 0.05})
+      Savings.record("cheap_route", %{operation: "suggest_questions", estimated_tokens: 999, estimated_usd: 9.99})
+
+      s = Savings.summary(30)
+      assert_in_delta s.headline_usd, 0.15, 0.0001
+      assert s.headline_tokens == 150
+      kinds = Map.new(s.by_kind, &{&1.kind, &1})
+      assert kinds["cheap_route"].usd == 9.99
+      refute Map.has_key?(kinds, "cheap_route") and s.headline_usd > 0.15
+    end
+  end
 end
