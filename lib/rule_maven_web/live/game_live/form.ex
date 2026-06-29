@@ -686,10 +686,7 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   def handle_event("expand_source", %{"id" => id}, socket) do
-    {:noreply,
-     socket
-     |> assign(expanded_source_id: String.to_integer(id))
-     |> push_event("reader_scroll_top", %{})}
+    {:noreply, assign(socket, expanded_source_id: String.to_integer(id))}
   end
 
   def handle_event("close_source", _params, socket) do
@@ -727,11 +724,7 @@ defmodule RuleMavenWeb.GameLive.Form do
          i when is_integer(i) <- Enum.find_index(entries, &(&1.id == cur)),
          true <- length(entries) > 1 do
       next = Enum.at(entries, Integer.mod(i + d, length(entries)))
-
-      {:noreply,
-       socket
-       |> assign(expanded_source_id: next.id)
-       |> push_event("reader_scroll_top", %{})}
+      {:noreply, assign(socket, expanded_source_id: next.id)}
     else
       _ -> {:noreply, socket}
     end

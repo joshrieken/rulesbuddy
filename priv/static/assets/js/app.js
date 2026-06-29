@@ -517,6 +517,16 @@ Hooks.VoiceDefault = {
 Hooks.ReaderKeys = {
   mounted() {
     const isModal = this.el.id === "reader-modal";
+    this._isModal = isModal;
+
+    // Reset the reader's content area to the top when it opens. Keyed by source
+    // id in updated() so switching source (j/k) also resets, but paging within a
+    // source does not. Done from this hook (guaranteed to run) rather than a
+    // server push, which wasn't reliably moving the scroll.
+    if (isModal) {
+      this._lastReader = this.el.dataset.readerId;
+      this._scrollReaderTop();
+    }
 
     this._handler = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -570,6 +580,32 @@ Hooks.ReaderKeys = {
     };
     window.addEventListener("keydown", this._handler);
   },
+  updated() {
+    // Source switched (j/k) — reset to top. Page changes keep the same source id,
+    // so they don't trigger a reset.
+    if (this._isModal && this.el.dataset.readerId !== this._lastReader) {
+      this._lastReader = this.el.dataset.readerId;
+      this._scrollReaderTop();
+    }
+  },
+  // Scroll the reader's content area to the top. Uses scrollIntoView on the top
+  // child so it moves whatever element is actually scrollable, and never touches
+  // the textarea's own internal scroll. Retried against late layout.
+  _scrollReaderTop() {
+    const go = () => {
+      const sc = document.getElementById("reader-scroll");
+      if (!sc) return;
+      sc.scrollTop = 0;
+      const first = sc.firstElementChild;
+      if (first && first.scrollIntoView) {
+        first.scrollIntoView({block: "start", inline: "nearest"});
+      }
+    };
+    requestAnimationFrame(go);
+    requestAnimationFrame(() => requestAnimationFrame(go));
+    setTimeout(go, 90);
+    setTimeout(go, 300);
+  },
   // The modal owns the keys while open; otherwise the hovered/focused inline
   // source does. Stops every inline instance from paging at once.
   _active() {
@@ -616,20 +652,6 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
     reader_pages: localStorage.getItem("rm:reader:pages") || ""
   }),
   hooks: Hooks
-});
-
-// Scroll the expanded reader to the top after it opens or switches source.
-// Fired by the server (after the DOM patch). Pin it to the top on every frame
-// for a short window so late content/layout/focus settling can't leave it
-// scrolled partway down; after the window the user is free to scroll.
-window.addEventListener("phx:reader_scroll_top", () => {
-  const start = performance.now();
-  const tick = () => {
-    const sc = document.getElementById("reader-scroll");
-    if (sc) sc.scrollTop = 0;
-    if (performance.now() - start < 500) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
 });
 
 // Persist the cleanup strength choice.
