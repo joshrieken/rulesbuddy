@@ -2368,9 +2368,9 @@ defmodule RuleMavenWeb.GameLive.Form do
             type="button"
             phx-click="refresh_bgg"
             disabled={@generating}
-            style={"color:var(--accent);background:none;border:none;font-size:0.75rem;font-weight:600;margin-left:0.5rem;cursor:#{if @generating, do: "default", else: "pointer"};opacity:#{if @generating, do: "0.6", else: "1"}"}
+            style={"background:var(--accent);color:#fff;border:none;font-size:0.75rem;font-weight:600;margin-left:0.5rem;padding:0.35rem 0.85rem;border-radius:0.375rem;vertical-align:middle;cursor:#{if @generating, do: "default", else: "pointer"};opacity:#{if @generating, do: "0.6", else: "1"}"}
           >
-            {if @generating, do: "⟳ Refreshing…", else: "Refresh info"}
+            {if @generating, do: "⟳ Pulling…", else: "Pull from BGG"}
           </button>
         <% end %>
       </h1>
