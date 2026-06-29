@@ -94,12 +94,12 @@ defmodule RuleMavenWeb.AdminLive.JobPanel do
     {:noreply, assign(socket, runs: runs)}
   end
 
-  # A new progress line — append it to the open run's stream (newest rendered
-  # first at render time). Ignore lines for runs we're not viewing.
+  # A new progress line — prepend it so the stream stays newest-first (matching
+  # Jobs.events/2 ordering). Ignore lines for runs we're not viewing.
   def handle_info({:job_event, event}, socket) do
     if event.job_run_id == socket.assigns.selected_id do
       {:noreply,
-       assign(socket, events: Enum.take(socket.assigns.events ++ [event], -@max_events))}
+       assign(socket, events: Enum.take([event | socket.assigns.events], @max_events))}
     else
       {:noreply, socket}
     end

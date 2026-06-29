@@ -208,9 +208,10 @@ defmodule RuleMaven.GamesPagesTest do
       RuleMaven.Jobs.event(run, "page", "Page 1/2 — clean text layer ✓")
       RuleMaven.Jobs.finish_run(run, "done", "Done")
 
+      # Newest first.
       events = RuleMaven.Jobs.events(run.id)
-      assert Enum.map(events, & &1.message) == ["Starting…", "Page 1/2 — clean text layer ✓"]
-      assert Enum.map(events, & &1.level) == ["info", "page"]
+      assert Enum.map(events, & &1.message) == ["Page 1/2 — clean text layer ✓", "Starting…"]
+      assert Enum.map(events, & &1.level) == ["page", "info"]
 
       assert RuleMaven.Jobs.get_run(run.id).state == "done"
     end

@@ -232,9 +232,9 @@ defmodule RuleMaven.Jobs do
 
   def get_run(id), do: Repo.get(JobRun, id)
 
-  @doc "All event lines for a run in insertion order (capped at `limit`)."
+  @doc "Event lines for a run, newest first (capped at the newest `limit`)."
   def events(run_id, limit \\ 1000) do
-    from(e in JobEvent, where: e.job_run_id == ^run_id, order_by: [asc: e.id], limit: ^limit)
+    from(e in JobEvent, where: e.job_run_id == ^run_id, order_by: [desc: e.id], limit: ^limit)
     |> Repo.all()
   end
 
