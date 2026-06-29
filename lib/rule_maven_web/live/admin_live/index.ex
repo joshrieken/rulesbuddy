@@ -146,7 +146,7 @@ defmodule RuleMavenWeb.AdminLive.Index do
           navigate={~p"/admin/usage"}
           icon="📊"
           title="Usage & Cost"
-          desc="LLM token spend per user, with a daily budget cap."
+          desc="LLM token spend per user, daily budget cap, and estimated savings."
         />
         <.card
           navigate={~p"/admin/db"}
