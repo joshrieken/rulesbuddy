@@ -850,8 +850,7 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "suggest_questions",
-           system:
-             "You generate categorized board game rules questions. Group by topic. Be specific.",
+           system: RuleMaven.Prompts.template("suggest_questions_system"),
            max_tokens: 512
          ) do
       {:ok, text} ->
@@ -903,8 +902,7 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know",
-           system:
-             "You surface interesting, accurate board game rule facts. Never invent rules; only use the provided text.",
+           system: RuleMaven.Prompts.template("did_you_know_system"),
            # Room for up to ~50 facts plus reasoning-model overhead; too low and
            # the cap is hit mid-thought, returning empty content with no bullets.
            max_tokens: 8000
@@ -951,8 +949,7 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know_verify",
-           system:
-             "You are a strict board-game rulebook fact-checker. Pass only fully, accurately supported facts; reject anything misleading or unconfirmed.",
+           system: RuleMaven.Prompts.template("did_you_know_verify_system"),
            max_tokens: 600
          ) do
       {:ok, text} ->
@@ -1055,8 +1052,7 @@ defmodule RuleMaven.LLM do
       RuleMaven.Prompts.render("categories", %{game_name: game_name, rulebook: sample})
 
     case chat(full_prompt, "generate_categories",
-           system:
-             "You generate topic categories for board game rulebooks. Be concise and specific.",
+           system: RuleMaven.Prompts.template("categories_system"),
            max_tokens: 400
          ) do
       {:ok, text} ->

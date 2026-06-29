@@ -108,17 +108,8 @@ defmodule RuleMaven.Voices do
   defp generate(voice, canonical, game_name) do
     %{style: style} = get_def(voice)
 
-    system =
-      "You are a tone restyler. You rewrite a board-game rules answer in a different VOICE while keeping every fact, number, name, and rule EXACTLY the same. You must not add, remove, or change any rule or fact. You must not add new information or invent rules. Keep it roughly the same length. Preserve markdown (**bold**, lists). Output ONLY the rewritten answer, no preamble."
-
-    prompt = """
-    Rewrite the following answer in the voice of #{style}
-
-    Keep all facts and numbers identical. Do not add rules. Do not add a sign-off unless it is one short in-character phrase.
-
-    ANSWER:
-    #{canonical}
-    """
+    system = RuleMaven.Prompts.template("voice_restyle_system")
+    prompt = RuleMaven.Prompts.render("voice_restyle", %{style: style, answer: canonical})
 
     LLM.chat(prompt, "voice_#{voice}_#{game_name}", system: system, max_tokens: 700)
   end

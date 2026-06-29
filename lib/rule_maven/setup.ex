@@ -61,22 +61,13 @@ defmodule RuleMaven.Setup do
       # hit the HTTP timeout, and adds little since setup is front-loaded.
       source = String.slice(text, 0, 16_000)
 
-      system = "You extract board game setup instructions from rulebook text."
+      system = RuleMaven.Prompts.template("setup_generate_system")
 
       # Plain-text bullets, NOT JSON, and deliberately loosely specified. A strict
       # "output only JSON" instruction — or an over-structured spec — makes our
       # reasoning model (deepseek-v4-flash) spend its whole budget "thinking" and
       # return empty content. A simple labelled-bullet ask generates reliably.
-      prompt = """
-      From this rulebook for "#{game.name}", list the setup using only the rulebook.
-      First a "COMPONENTS:" section — one item to gather per line, prefixed "- ".
-      Then a "STEPS:" section — one ordered setup step per line, prefixed "- ",
-      each a short imperative optionally followed by " — " and a brief clarifying
-      sentence.
-
-      RULEBOOK:
-      #{source}
-      """
+      prompt = RuleMaven.Prompts.render("setup_generate", %{game_name: game.name, rulebook: source})
 
       # Generous budget for the reasoning-model overhead (see Did-you-know).
       case LLM.chat(prompt, "setup_#{game.name}", system: system, max_tokens: 8000) do

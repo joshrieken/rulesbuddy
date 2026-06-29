@@ -328,6 +328,198 @@ defmodule RuleMaven.Prompts do
   {{rulebook}}
   """
 
+  # ── System primers (the `system:` role string paired with the user prompts
+  # above). Short steering strings; kept as their own editable templates. ──
+  @suggest_questions_system "You generate categorized board game rules questions. Group by topic. Be specific."
+  @did_you_know_system "You surface interesting, accurate board game rule facts. Never invent rules; only use the provided text."
+  @did_you_know_verify_system "You are a strict board-game rulebook fact-checker. Pass only fully, accurately supported facts; reject anything misleading or unconfirmed."
+  @categories_system "You generate topic categories for board game rulebooks. Be concise and specific."
+
+  # ── Setup checklist generation (the verify step is registered separately). ──
+  @setup_generate_system "You extract board game setup instructions from rulebook text."
+
+  # Vars: game_name, rulebook
+  @setup_generate """
+  From this rulebook for "{{game_name}}", list the setup using only the rulebook.
+  First a "COMPONENTS:" section — one item to gather per line, prefixed "- ".
+  Then a "STEPS:" section — one ordered setup step per line, prefixed "- ",
+  each a short imperative optionally followed by " — " and a brief clarifying
+  sentence.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  # ── Voice (persona) restyle. ──
+  @voice_restyle_system "You are a tone restyler. You rewrite a board-game rules answer in a different VOICE while keeping every fact, number, name, and rule EXACTLY the same. You must not add, remove, or change any rule or fact. You must not add new information or invent rules. Keep it roughly the same length. Preserve markdown (**bold**, lists). Output ONLY the rewritten answer, no preamble."
+
+  # Vars: style, answer
+  @voice_restyle """
+  Rewrite the following answer in the voice of {{style}}
+
+  Keep all facts and numbers identical. Do not add rules. Do not add a sign-off unless it is one short in-character phrase.
+
+  ANSWER:
+  {{answer}}
+  """
+
+  # ── Cheat sheet: pre-compressor, generator system, and one prompt per level. ──
+  @cheat_compress_system "You are a rulebook compressor. Extract only mechanical rules. Strip ALL flavor, examples, setup narrative, component descriptions. Keep only the rules themselves."
+
+  # Vars: rulebook
+  @cheat_compress """
+  Compress this rulebook. Remove: flavor text, lore, examples, component flavor, setup narrative, credits, table of contents, index. Keep: every mechanical rule, number, procedure, turn order, phase structure, scoring, win condition. Output raw rules only, no commentary.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  @cheat_generate_system "You are a board game reference writer. Follow the instructions exactly."
+
+  # Vars: game_name, rulebook
+  @cheat_ultra """
+  Create an ultra-compact cheat sheet for "{{game_name}}".
+  Max 800 characters. This must fit on one phone screen.
+
+  ## One section: Essentials
+  - Every critical number in **bold** (players, hand size, round count, points)
+  - Turn flow as one compact line: e.g. "1) Draw 2) Play 3) Discard down to 7"
+  - 3-5 easily-forgotten rules and edge cases
+  - Setup: one line. Scoring: one line.
+  - No section headers. No page citations. No fluff.
+  - Use `> ` blockquote for the one most-forgotten rule.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  # Vars: game_name, rulebook
+  @cheat_full """
+  Create a complete cheat sheet for "{{game_name}}".
+  Output clean markdown with ## and ### headers. Use `> ` blockquote for
+  critical rules and easily-forgotten edge cases.
+
+  ## Sections:
+  ### Essentials & Easy to Forget
+  Rules players most often miss. One line each. Numbers in **bold**. [p.N]
+
+  ### Numbers at a Glance
+  Table: every number in the game. [p.N]
+
+  ### Turn Structure
+  Each phase in order. [p.N]
+
+  ### Setup
+  Components, starting state, first player. [p.N]
+
+  ### Key Rules
+  All remaining important rules. [p.N]
+
+  ### Scoring
+  Win condition, triggers, tiebreakers. [p.N]
+
+  **Rules:**
+  - Every line gets [p.N] citation.
+  - Be thorough. Include everything.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  # Vars: game_name, rulebook
+  @cheat_detailed """
+  Create a detailed cheat sheet for "{{game_name}}".
+  Aim for ~4000 characters. Output clean markdown with ## and ### headers.
+  Use `> ` blockquote for standout rules and important edge cases.
+
+  ## Sections:
+  ### Essentials
+  Rules players most often miss. One line each. Bold numbers.
+
+  ### Numbers
+  Table: key numbers in the game.
+
+  ### Turn Structure
+  Each phase in order. Brief detail per phase.
+
+  ### Setup
+  Components, starting state, first player.
+
+  ### Key Rules
+  Important rules with brief explanations.
+
+  ### Scoring
+  Win condition, triggers, tiebreakers.
+
+  **Rules:**
+  - Include explanations where helpful, not just one-liners.
+  - Use [p.N] for important rules.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  # Vars: game_name, rulebook
+  @cheat_standard """
+  Create a standard cheat sheet for "{{game_name}}".
+  Aim for ~2500 characters. Output clean markdown with ## and ### headers.
+  Use `> ` blockquote for the most easily-forgotten or critical rules.
+
+  ## Sections:
+  ### Essentials
+  Rules players most often miss. Brief. Bold numbers.
+
+  ### Numbers
+  Table: key numbers.
+
+  ### Turn Structure
+  Each phase in order.
+
+  ### Setup + Scoring
+  Combined: starting state, first player, win condition.
+
+  ### Key Rules
+  Remaining important rules, concise.
+
+  **Rules:**
+  - More detail than compact, less than full.
+  - Use [p.N] where helpful.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
+  # Vars: game_name, rulebook
+  @cheat_compact """
+  Create a dense, single-column cheat sheet for "{{game_name}}".
+  Aim for ~1500 characters max. This is a phone-sized reference card.
+  Output clean markdown with proper ## and ### headers.
+
+  ## Section order:
+
+  ### Essentials
+  Every critical number, limit, and easily-forgotten rule. Combine related
+  rules into single bullets. Group by topic (setup, turns, scoring) rather
+  than separate sections. Bold numbers. No page citations unless the rule
+  is non-obvious. Use `> ` blockquote for standout forgotten rules.
+
+  ### Numbers
+  Compact table: player count, hand size, round count, point thresholds,
+  costs — only the numbers players actually need to reference.
+
+  ### Turn Flow
+  One line per phase. No fluff.
+
+  **Rules:**
+  - Be as dense as you can without losing clarity.
+  - Combine related rules. Don't give each rule its own bullet.
+  - Omit obvious rules.
+  - No introductions, no flavor, no examples.
+
+  RULEBOOK:
+  {{rulebook}}
+  """
+
   @specs [
     %{
       key: "answer",
@@ -437,6 +629,134 @@ defmodule RuleMaven.Prompts do
       description: "Designs a per-game color theme from the BGG cover art (vision).",
       vars: ~w(game_name),
       default: @theme_palette
+    },
+    %{
+      key: "suggest_questions_system",
+      group: "Content generation",
+      label: "Suggested questions — system",
+      description: "System primer paired with the Suggested questions prompt.",
+      vars: [],
+      default: @suggest_questions_system
+    },
+    %{
+      key: "did_you_know_system",
+      group: "Content generation",
+      label: "Did you know? — system",
+      description: "System primer paired with the Did-you-know facts prompt.",
+      vars: [],
+      default: @did_you_know_system
+    },
+    %{
+      key: "did_you_know_verify_system",
+      group: "Content generation",
+      label: "Did you know? fact-check — system",
+      description: "System primer paired with the Did-you-know fact-check prompt.",
+      vars: [],
+      default: @did_you_know_verify_system
+    },
+    %{
+      key: "categories_system",
+      group: "Content generation",
+      label: "Topic categories — system",
+      description: "System primer paired with the Topic categories prompt.",
+      vars: [],
+      default: @categories_system
+    },
+    %{
+      key: "setup_generate_system",
+      group: "Setup checklist",
+      label: "Setup checklist — system",
+      description: "System primer for the setup-checklist generator.",
+      vars: [],
+      default: @setup_generate_system
+    },
+    %{
+      key: "setup_generate",
+      group: "Setup checklist",
+      label: "Setup checklist — generate",
+      description: "Extracts the components + ordered setup steps from the rulebook.",
+      vars: ~w(game_name rulebook),
+      default: @setup_generate
+    },
+    %{
+      key: "voice_restyle_system",
+      group: "Voice",
+      label: "Voice restyle — system",
+      description: "System primer for the persona voice restyler.",
+      vars: [],
+      default: @voice_restyle_system
+    },
+    %{
+      key: "voice_restyle",
+      group: "Voice",
+      label: "Voice restyle — prompt",
+      description: "Rewrites an answer in a persona's voice, keeping every fact identical.",
+      vars: ~w(style answer),
+      default: @voice_restyle
+    },
+    %{
+      key: "cheat_compress_system",
+      group: "Cheat sheet",
+      label: "Cheat sheet — compressor system",
+      description: "System primer for the pre-compression pass on long rulebooks.",
+      vars: [],
+      default: @cheat_compress_system
+    },
+    %{
+      key: "cheat_compress",
+      group: "Cheat sheet",
+      label: "Cheat sheet — compressor",
+      description: "Strips flavor to raw rules before generating a cheat sheet (long rulebooks only).",
+      vars: ~w(rulebook),
+      default: @cheat_compress
+    },
+    %{
+      key: "cheat_generate_system",
+      group: "Cheat sheet",
+      label: "Cheat sheet — generator system",
+      description: "System primer paired with every cheat-sheet level prompt.",
+      vars: [],
+      default: @cheat_generate_system
+    },
+    %{
+      key: "cheat_ultra",
+      group: "Cheat sheet",
+      label: "Cheat sheet — Ultra",
+      description: "Ultra-compact (≤800 chars) one-screen cheat sheet.",
+      vars: ~w(game_name rulebook),
+      default: @cheat_ultra
+    },
+    %{
+      key: "cheat_full",
+      group: "Cheat sheet",
+      label: "Cheat sheet — Full",
+      description: "Complete, thorough cheat sheet with page citations.",
+      vars: ~w(game_name rulebook),
+      default: @cheat_full
+    },
+    %{
+      key: "cheat_detailed",
+      group: "Cheat sheet",
+      label: "Cheat sheet — Detailed",
+      description: "~4000-char cheat sheet with brief explanations.",
+      vars: ~w(game_name rulebook),
+      default: @cheat_detailed
+    },
+    %{
+      key: "cheat_standard",
+      group: "Cheat sheet",
+      label: "Cheat sheet — Standard",
+      description: "~2500-char balanced cheat sheet.",
+      vars: ~w(game_name rulebook),
+      default: @cheat_standard
+    },
+    %{
+      key: "cheat_compact",
+      group: "Cheat sheet",
+      label: "Cheat sheet — Compact",
+      description: "Dense ~1500-char phone reference card (the default level).",
+      vars: ~w(game_name rulebook),
+      default: @cheat_compact
     }
   ]
 

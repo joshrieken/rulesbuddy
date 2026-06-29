@@ -1146,7 +1146,11 @@ defmodule RuleMavenWeb.SettingsLive do
                 built-in default. Editing the Q&amp;A answer prompt's JSON schema can break answering.
               </p>
 
-              <%= for %{key: key, label: label, description: desc, vars: vars} <- RuleMaven.Prompts.specs() do %>
+              <%= for group <- RuleMaven.Prompts.groups() do %>
+                <h2 style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--text-muted);margin:0.5rem 0 -0.25rem 0;border-bottom:1px solid var(--border);padding-bottom:0.35rem">
+                  {group}
+                </h2>
+                <%= for %{key: key, label: label, description: desc, vars: vars} <- Enum.filter(RuleMaven.Prompts.specs(), &(&1.group == group)) do %>
                 <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.25rem;background:var(--bg-surface)">
                   <div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap">
                     <h2 style="font-size:0.9rem;font-weight:700;margin:0">{label}</h2>
@@ -1170,6 +1174,7 @@ defmodule RuleMavenWeb.SettingsLive do
                     style="width:100%;margin-top:0.5rem;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.6rem;font-size:0.78rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:var(--bg);color:var(--text);resize:vertical"
                   >{@prompt_values[key]}</textarea>
                 </section>
+                <% end %>
               <% end %>
             </div>
 

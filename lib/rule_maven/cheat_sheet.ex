@@ -255,15 +255,8 @@ defmodule RuleMaven.CheatSheet do
     if String.length(full_text) < 12_000 do
       {:ok, full_text}
     else
-      system =
-        "You are a rulebook compressor. Extract only mechanical rules. Strip ALL flavor, examples, setup narrative, component descriptions. Keep only the rules themselves."
-
-      prompt = """
-      Compress this rulebook. Remove: flavor text, lore, examples, component flavor, setup narrative, credits, table of contents, index. Keep: every mechanical rule, number, procedure, turn order, phase structure, scoring, win condition. Output raw rules only, no commentary.
-
-      RULEBOOK:
-      #{full_text}
-      """
+      system = RuleMaven.Prompts.template("cheat_compress_system")
+      prompt = RuleMaven.Prompts.render("cheat_compress", %{rulebook: full_text})
 
       case RuleMaven.LLM.chat(prompt, game_name, system: system, max_tokens: 2048) do
         {:ok, compressed} -> {:ok, compressed}
@@ -274,7 +267,7 @@ defmodule RuleMaven.CheatSheet do
 
   defp generate_cheat_sheet_content(game_name, full_text, level) do
     prompt = prompt_for_level(game_name, full_text, level)
-    system = "You are a board game reference writer. Follow the instructions exactly."
+    system = RuleMaven.Prompts.template("cheat_generate_system")
 
     case RuleMaven.LLM.chat(prompt, game_name, system: system, max_tokens: 2048) do
       {:ok, content} -> {:ok, content}
@@ -282,153 +275,19 @@ defmodule RuleMaven.CheatSheet do
     end
   end
 
-  defp prompt_for_level(game_name, full_text, "ultra") do
-    """
-    Create an ultra-compact cheat sheet for "#{game_name}".
-    Max 800 characters. This must fit on one phone screen.
+  # Each level maps to its own editable prompt template; an unknown level falls
+  # back to the compact reference card (the default).
+  defp prompt_for_level(game_name, full_text, level) do
+    key =
+      case level do
+        "ultra" -> "cheat_ultra"
+        "full" -> "cheat_full"
+        "detailed" -> "cheat_detailed"
+        "standard" -> "cheat_standard"
+        _ -> "cheat_compact"
+      end
 
-    ## One section: Essentials
-    - Every critical number in **bold** (players, hand size, round count, points)
-    - Turn flow as one compact line: e.g. "1) Draw 2) Play 3) Discard down to 7"
-    - 3-5 easily-forgotten rules and edge cases
-    - Setup: one line. Scoring: one line.
-    - No section headers. No page citations. No fluff.
-    - Use `> ` blockquote for the one most-forgotten rule.
-
-    RULEBOOK:
-    #{full_text}
-    """
-  end
-
-  defp prompt_for_level(game_name, full_text, "full") do
-    """
-    Create a complete cheat sheet for "#{game_name}".
-    Output clean markdown with ## and ### headers. Use `> ` blockquote for
-    critical rules and easily-forgotten edge cases.
-
-    ## Sections:
-    ### Essentials & Easy to Forget
-    Rules players most often miss. One line each. Numbers in **bold**. [p.N]
-
-    ### Numbers at a Glance
-    Table: every number in the game. [p.N]
-
-    ### Turn Structure
-    Each phase in order. [p.N]
-
-    ### Setup
-    Components, starting state, first player. [p.N]
-
-    ### Key Rules
-    All remaining important rules. [p.N]
-
-    ### Scoring
-    Win condition, triggers, tiebreakers. [p.N]
-
-    **Rules:**
-    - Every line gets [p.N] citation.
-    - Be thorough. Include everything.
-
-    RULEBOOK:
-    #{full_text}
-    """
-  end
-
-  defp prompt_for_level(game_name, full_text, "detailed") do
-    """
-    Create a detailed cheat sheet for "#{game_name}".
-    Aim for ~4000 characters. Output clean markdown with ## and ### headers.
-    Use `> ` blockquote for standout rules and important edge cases.
-
-    ## Sections:
-    ### Essentials
-    Rules players most often miss. One line each. Bold numbers.
-
-    ### Numbers
-    Table: key numbers in the game.
-
-    ### Turn Structure
-    Each phase in order. Brief detail per phase.
-
-    ### Setup
-    Components, starting state, first player.
-
-    ### Key Rules
-    Important rules with brief explanations.
-
-    ### Scoring
-    Win condition, triggers, tiebreakers.
-
-    **Rules:**
-    - Include explanations where helpful, not just one-liners.
-    - Use [p.N] for important rules.
-
-    RULEBOOK:
-    #{full_text}
-    """
-  end
-
-  defp prompt_for_level(game_name, full_text, "standard") do
-    """
-    Create a standard cheat sheet for "#{game_name}".
-    Aim for ~2500 characters. Output clean markdown with ## and ### headers.
-    Use `> ` blockquote for the most easily-forgotten or critical rules.
-
-    ## Sections:
-    ### Essentials
-    Rules players most often miss. Brief. Bold numbers.
-
-    ### Numbers
-    Table: key numbers.
-
-    ### Turn Structure
-    Each phase in order.
-
-    ### Setup + Scoring
-    Combined: starting state, first player, win condition.
-
-    ### Key Rules
-    Remaining important rules, concise.
-
-    **Rules:**
-    - More detail than compact, less than full.
-    - Use [p.N] where helpful.
-
-    RULEBOOK:
-    #{full_text}
-    """
-  end
-
-  defp prompt_for_level(game_name, full_text, _level) do
-    """
-    Create a dense, single-column cheat sheet for "#{game_name}".
-    Aim for ~1500 characters max. This is a phone-sized reference card.
-    Output clean markdown with proper ## and ### headers.
-
-    ## Section order:
-
-    ### Essentials
-    Every critical number, limit, and easily-forgotten rule. Combine related
-    rules into single bullets. Group by topic (setup, turns, scoring) rather
-    than separate sections. Bold numbers. No page citations unless the rule
-    is non-obvious. Use `> ` blockquote for standout forgotten rules.
-
-    ### Numbers
-    Compact table: player count, hand size, round count, point thresholds,
-    costs — only the numbers players actually need to reference.
-
-    ### Turn Flow
-    One line per phase. No fluff.
-
-    **Rules:**
-    - Be as dense as you can without losing clarity.
-    - Combine related rules. Don't give each rule its own bullet.
-    - Omit obvious rules.
-    - No introductions, no flavor, no examples.
-
-    RULEBOOK:
-    #{full_text}
-    """
+    RuleMaven.Prompts.render(key, %{game_name: game_name, rulebook: full_text})
   end
 
   defp wrap_html(game_name, content) do
