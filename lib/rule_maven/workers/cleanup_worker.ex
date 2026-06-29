@@ -64,7 +64,9 @@ defmodule RuleMaven.Workers.CleanupWorker do
     # above), so the counter increments without races. Each step persists the
     # page, advances the durable counter, and broadcasts {done, total} — the
     # single source of truth for the UI, realtime and after a refresh.
-    cleaned_count =
+    init = %{done: start_done, removed: 0, kept_raw: 0, unchanged: 0, cleaned: 0, failed: 0}
+
+    stats =
       todo
       |> Task.async_stream(
         fn page -> {page.index, clean_one(page, level, mode)} end,
@@ -74,12 +76,12 @@ defmodule RuleMaven.Workers.CleanupWorker do
         on_timeout: :kill_task,
         zip_input_on_exit: true
       )
-      |> Enum.reduce(start_done, fn
-        {:ok, {index, {:ok, cleaned}}}, done ->
-          done = min(done + 1, total)
+      |> Enum.reduce(init, fn
+        {:ok, {index, {:ok, cleaned, meta}}}, acc ->
+          done = min(acc.done + 1, total)
           Games.set_page_cleaned(doc_id, index, cleaned)
           Games.set_cleaning_done(doc_id, done)
-          Jobs.event(run, "info", "Cleaned page #{index + 1} — #{done}/#{total} done")
+          Jobs.event(run, event_level(meta.status), page_event_msg(index, meta, done, total))
 
           Phoenix.PubSub.broadcast(
             RuleMaven.PubSub,
@@ -87,31 +89,34 @@ defmodule RuleMaven.Workers.CleanupWorker do
             {:page_cleaned, doc_id, index, cleaned, done, total}
           )
 
-          done
+          acc
+          |> Map.put(:done, done)
+          |> Map.update!(:removed, &(&1 + max(meta.in - meta.out, 0)))
+          |> Map.update(meta.status, 1, &(&1 + 1))
 
         # LLM failed for this page: leave `cleaned` nil rather than baking the raw
         # text in. Retrieval/display already fall back to `text` (effective text =
         # cleaned||text), and the page stays eligible for a later re-clean instead
         # of looking permanently "cleaned" after a transient blip. Don't advance
         # the counter — it reflects pages actually persisted.
-        {:ok, {index, :failed}}, done ->
+        {:ok, {index, :failed}}, acc ->
           Jobs.event(
             run,
             "warn",
             "Page #{index + 1} failed to clean — left as-is, will retry on re-clean"
           )
 
-          done
+          Map.update!(acc, :failed, &(&1 + 1))
 
         # A killed/exited task: same — leave it nil so a re-run retries it.
-        {:exit, {page, _reason}}, done ->
+        {:exit, {page, _reason}}, acc ->
           Jobs.event(
             run,
             "warn",
             "Page #{page.index + 1} timed out/crashed — left as-is, will retry on re-clean"
           )
 
-          done
+          Map.update!(acc, :failed, &(&1 + 1))
       end)
 
     # Re-chunk once now that every page's effective text is final (per-page
@@ -129,20 +134,16 @@ defmodule RuleMaven.Workers.CleanupWorker do
     # Clear the durable counter now the run is finished (idle = nil).
     Games.set_cleaning_done(doc_id, nil)
 
-    summary =
-      if cleaned_count >= total,
-        do: "Cleaned + re-chunked #{total} pages.",
-        else:
-          "Cleaned #{cleaned_count}/#{total} pages (#{total - cleaned_count} left as-is) + re-chunked."
-
-    Jobs.finish_run(run, "done", summary)
+    Jobs.finish_run(run, "done", finish_summary(stats, total))
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:cleanup_done, doc_id})
     :ok
   end
 
-  # Never let one page crash the job. Returns {:ok, cleaned} on success or
+  # Never let one page crash the job. Returns {:ok, cleaned, meta} on success or
   # :failed on any error — the caller leaves failed pages' `cleaned` nil so they
-  # can be retried, instead of persisting raw text as if it were cleaned.
+  # can be retried, instead of persisting raw text as if it were cleaned. `meta`
+  # carries the in/out char counts and a status (:cleaned | :unchanged |
+  # :kept_raw | :empty) so the job log can report what actually happened.
   defp clean_one(page, level, mode) do
     # "again" re-cleans the current cleaned copy; "raw" cleans the original.
     body = if mode == "again", do: Games.effective_page_text(page), else: page.text || ""
@@ -152,7 +153,7 @@ defmodule RuleMaven.Workers.CleanupWorker do
 
     try do
       case RuleMaven.LLM.cleanup_page(body, level, page.printed) do
-        {:ok, text} -> {:ok, text}
+        {:ok, text, status} -> {:ok, text, clean_meta(status, body, text)}
         {:error, _} -> :failed
       end
     rescue
@@ -160,6 +161,63 @@ defmodule RuleMaven.Workers.CleanupWorker do
     catch
       _, _ -> :failed
     end
+  end
+
+  # Per-page result detail for the job log. A model that returned its input
+  # essentially unchanged is reported as :unchanged (distinct from :kept_raw,
+  # where the drop guard *rejected* a too-short output).
+  defp clean_meta(status, body, text) do
+    in_len = String.length(body)
+    out_len = String.length(text)
+
+    status =
+      cond do
+        status in [:kept_raw, :empty] -> status
+        String.trim(text) == String.trim(body) -> :unchanged
+        true -> :cleaned
+      end
+
+    %{status: status, in: in_len, out: out_len}
+  end
+
+  defp event_level(:kept_raw), do: "warn"
+  defp event_level(_), do: "info"
+
+  defp page_event_msg(index, %{status: :cleaned} = m, done, total),
+    do: "Cleaned page #{index + 1} — #{m.in}→#{m.out} chars (#{pct(m)}) · #{done}/#{total} done"
+
+  defp page_event_msg(index, %{status: :unchanged}, done, total),
+    do: "Page #{index + 1} — no changes · #{done}/#{total} done"
+
+  defp page_event_msg(index, %{status: :kept_raw}, done, total),
+    do: "Page #{index + 1} — cleaner output too short, kept raw · #{done}/#{total} done"
+
+  defp page_event_msg(index, %{status: :empty}, done, total),
+    do: "Page #{index + 1} — blank, nothing to clean · #{done}/#{total} done"
+
+  # Signed percent change in length, e.g. "−7%" / "+2%" / "0%".
+  defp pct(%{in: 0}), do: "—"
+
+  defp pct(%{in: i, out: o}) do
+    p = round((o - i) / i * 100)
+    sign = if p > 0, do: "+", else: if(p < 0, do: "−", else: "")
+    "#{sign}#{abs(p)}%"
+  end
+
+  defp finish_summary(stats, total) do
+    cleaned = Map.get(stats, :cleaned, 0)
+
+    notes =
+      [
+        stats.removed > 0 && "removed #{stats.removed} chars",
+        Map.get(stats, :unchanged, 0) > 0 && "#{stats.unchanged} unchanged",
+        Map.get(stats, :kept_raw, 0) > 0 && "#{stats.kept_raw} kept raw",
+        Map.get(stats, :failed, 0) > 0 && "#{stats.failed} failed"
+      ]
+      |> Enum.filter(& &1)
+
+    base = "Cleaned #{cleaned}/#{total} pages + re-chunked"
+    if notes == [], do: base <> ".", else: base <> " (" <> Enum.join(notes, ", ") <> ")."
   end
 
   defp parse_level(level) when level in @valid_levels, do: String.to_existing_atom(level)

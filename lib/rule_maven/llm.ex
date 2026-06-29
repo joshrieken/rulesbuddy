@@ -142,7 +142,9 @@ defmodule RuleMaven.LLM do
   @doc """
   Cleans a single page of extracted rulebook text via the LLM, fixing
   OCR/extraction artifacts while preserving the wording verbatim (so the Q&A
-  flow can still quote it). Returns `{:ok, cleaned}` or `{:error, reason}`.
+  flow can still quote it). Returns `{:ok, text, status}` or `{:error, reason}`,
+  where `status` is `:cleaned` (model output kept), `:kept_raw` (output rejected
+  by the drop guard, raw page returned), or `:empty` (blank input).
 
   Empty/whitespace input is returned unchanged. If the model returns an empty
   result or drops more characters than the level allows (a likely
@@ -156,7 +158,7 @@ defmodule RuleMaven.LLM do
   """
   def cleanup_page(page_text, level \\ :light, page_number \\ nil) do
     if String.trim(page_text) == "" do
-      {:ok, page_text}
+      {:ok, page_text, :empty}
     else
       case chat(page_text, "cleanup_rulebook",
              system: cleanup_system(level) <> page_number_hint(page_number),
@@ -167,10 +169,14 @@ defmodule RuleMaven.LLM do
           trimmed = String.trim(cleaned)
           min_keep = round(String.length(page_text) * min_kept_ratio(level))
 
+          # Output collapsed below the length floor → treat as a truncation/refusal
+          # and keep the raw page. Report `:kept_raw` so the caller can surface
+          # that the cleaner was rejected (otherwise it looks identical to a real
+          # clean — the page is silently left as its raw extraction).
           if trimmed == "" or String.length(trimmed) < min_keep do
-            {:ok, page_text}
+            {:ok, page_text, :kept_raw}
           else
-            {:ok, cleaned}
+            {:ok, cleaned, :cleaned}
           end
 
         {:error, reason} ->
@@ -1096,7 +1102,11 @@ defmodule RuleMaven.LLM do
           |> String.split(";")
           |> List.first()
 
-        mime = if mime in ["image/jpeg", "image/png", "image/webp", "image/gif"], do: mime, else: guess_mime(url)
+        mime =
+          if mime in ["image/jpeg", "image/png", "image/webp", "image/gif"],
+            do: mime,
+            else: guess_mime(url)
+
         {:ok, "data:#{mime};base64," <> Base.encode64(bin)}
 
       {:ok, %{status: status}} ->
