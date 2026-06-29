@@ -29,14 +29,19 @@ defmodule RuleMaven.Workers.CleanupWorker do
   @valid_levels ~w(light standard aggressive)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{id: oban_id, args: %{"document_id" => doc_id, "game_id" => game_id} = args}) do
+  def perform(%Oban.Job{
+        id: oban_id,
+        args: %{"document_id" => doc_id, "game_id" => game_id} = args
+      }) do
     doc = Games.get_document!(doc_id)
     topic = "game_cleanup:#{game_id}"
     level = parse_level(Map.get(args, "level"))
     mode = Map.get(args, "mode", "raw")
 
     run =
-      Jobs.start_run("cleanup", {"document", doc_id}, "Clean up — #{doc.label}", oban_job_id: oban_id)
+      Jobs.start_run("cleanup", {"document", doc_id}, "Clean up — #{doc.label}",
+        oban_job_id: oban_id
+      )
 
     # Which pages to (re)clean and what text to feed the cleaner:
     #   "raw"   — a fresh clean from the original extraction. enqueue_cleanup/3
@@ -59,41 +64,55 @@ defmodule RuleMaven.Workers.CleanupWorker do
     # above), so the counter increments without races. Each step persists the
     # page, advances the durable counter, and broadcasts {done, total} — the
     # single source of truth for the UI, realtime and after a refresh.
-    todo
-    |> Task.async_stream(
-      fn page -> {page.index, clean_one(page, level, mode)} end,
-      max_concurrency: @max_concurrency,
-      ordered: false,
-      timeout: :infinity,
-      on_timeout: :kill_task,
-      zip_input_on_exit: true
-    )
-    |> Enum.reduce(start_done, fn
-      {:ok, {index, {:ok, cleaned}}}, done ->
-        done = min(done + 1, total)
-        Games.set_page_cleaned(doc_id, index, cleaned)
-        Games.set_cleaning_done(doc_id, done)
+    cleaned_count =
+      todo
+      |> Task.async_stream(
+        fn page -> {page.index, clean_one(page, level, mode)} end,
+        max_concurrency: @max_concurrency,
+        ordered: false,
+        timeout: :infinity,
+        on_timeout: :kill_task,
+        zip_input_on_exit: true
+      )
+      |> Enum.reduce(start_done, fn
+        {:ok, {index, {:ok, cleaned}}}, done ->
+          done = min(done + 1, total)
+          Games.set_page_cleaned(doc_id, index, cleaned)
+          Games.set_cleaning_done(doc_id, done)
+          Jobs.event(run, "info", "Cleaned page #{index + 1} — #{done}/#{total} done")
 
-        Phoenix.PubSub.broadcast(
-          RuleMaven.PubSub,
-          topic,
-          {:page_cleaned, doc_id, index, cleaned, done, total}
-        )
+          Phoenix.PubSub.broadcast(
+            RuleMaven.PubSub,
+            topic,
+            {:page_cleaned, doc_id, index, cleaned, done, total}
+          )
 
-        done
+          done
 
-      # LLM failed for this page: leave `cleaned` nil rather than baking the raw
-      # text in. Retrieval/display already fall back to `text` (effective text =
-      # cleaned||text), and the page stays eligible for a later re-clean instead
-      # of looking permanently "cleaned" after a transient blip. Don't advance
-      # the counter — it reflects pages actually persisted.
-      {:ok, {_index, :failed}}, done ->
-        done
+        # LLM failed for this page: leave `cleaned` nil rather than baking the raw
+        # text in. Retrieval/display already fall back to `text` (effective text =
+        # cleaned||text), and the page stays eligible for a later re-clean instead
+        # of looking permanently "cleaned" after a transient blip. Don't advance
+        # the counter — it reflects pages actually persisted.
+        {:ok, {index, :failed}}, done ->
+          Jobs.event(
+            run,
+            "warn",
+            "Page #{index + 1} failed to clean — left as-is, will retry on re-clean"
+          )
 
-      # A killed/exited task: same — leave it nil so a re-run retries it.
-      {:exit, {_page, _reason}}, done ->
-        done
-    end)
+          done
+
+        # A killed/exited task: same — leave it nil so a re-run retries it.
+        {:exit, {page, _reason}}, done ->
+          Jobs.event(
+            run,
+            "warn",
+            "Page #{page.index + 1} timed out/crashed — left as-is, will retry on re-clean"
+          )
+
+          done
+      end)
 
     # Re-chunk once now that every page's effective text is final (per-page
     # writes skip chunking to avoid 21x re-embeds). Cleaned text now feeds
@@ -109,7 +128,14 @@ defmodule RuleMaven.Workers.CleanupWorker do
 
     # Clear the durable counter now the run is finished (idle = nil).
     Games.set_cleaning_done(doc_id, nil)
-    Jobs.finish_run(run, "done", "Cleaned + re-chunked #{total} pages.")
+
+    summary =
+      if cleaned_count >= total,
+        do: "Cleaned + re-chunked #{total} pages.",
+        else:
+          "Cleaned #{cleaned_count}/#{total} pages (#{total - cleaned_count} left as-is) + re-chunked."
+
+    Jobs.finish_run(run, "done", summary)
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:cleanup_done, doc_id})
     :ok
   end
