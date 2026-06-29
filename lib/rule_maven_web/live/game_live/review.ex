@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.GameLive.Review do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    game = Games.get_game!(id)
+    game = Games.get_game_by_token!(id)
     is_admin = RuleMaven.Users.can?(socket.assigns.current_user, :admin)
 
     if !is_admin do
@@ -65,7 +65,7 @@ defmodule RuleMavenWeb.GameLive.Review do
   def render(assigns) do
     ~H"""
     <div style="max-width:48rem;margin:0 auto;padding:1.5rem 1rem">
-      <.link navigate={~p"/games/#{@game.id}"} class="back-link" style="margin-bottom:0">
+      <.link navigate={~p"/games/#{@game}"} class="back-link" style="margin-bottom:0">
         &larr; Back to {String.slice(@game.name, 0, 20)}
       </.link>
 

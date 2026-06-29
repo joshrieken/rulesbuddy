@@ -21,7 +21,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     if Users.can?(socket.assigns.current_user, :admin) do
-      game = Games.get_game!(id)
+      game = Games.get_game_by_token!(id)
       Readiness.recompute(game)
 
       if connected?(socket) do
@@ -140,7 +140,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   def render(assigns) do
     ~H"""
     <div style="max-width:52rem;margin:0 auto;padding:1.25rem 1.5rem">
-      <.link navigate={~p"/games/#{@game.id}/edit"} class="back-link">
+      <.link navigate={~p"/games/#{@game}/edit"} class="back-link">
         &larr; Back to {String.slice(@game.name, 0, 30)}
       </.link>
 
@@ -300,14 +300,14 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   # page review both live in the edit page's rulebook manager). Automated steps
   # return nil — the Prepare button drives those.
   defp step_action(%{state: :done}, _game), do: nil
-  defp step_action(%{id: :source}, game), do: %{href: ~p"/games/#{game.id}/edit", label: "Upload"}
-  defp step_action(%{id: :review}, game), do: %{href: ~p"/games/#{game.id}/edit", label: "Review"}
+  defp step_action(%{id: :source}, game), do: %{href: ~p"/games/#{game}/edit", label: "Upload"}
+  defp step_action(%{id: :review}, game), do: %{href: ~p"/games/#{game}/edit", label: "Review"}
   defp step_action(_step, _game), do: nil
 
   defp pause_message(%{pause_reason: "needs_source"} = assigns) do
     ~H"""
     Upload a rulebook source first — <.link
-      navigate={~p"/games/#{@game.id}/edit"}
+      navigate={~p"/games/#{@game}/edit"}
       style="color:var(--accent);font-weight:600"
     >
       go to the edit page
@@ -324,7 +324,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   defp pause_message(%{pause_reason: "needs_review"} = assigns) do
     ~H"""
     {fmt_int(@review_pages)} low-confidence {ngettext("page needs", "pages need", @review_pages)} review — <.link
-      navigate={~p"/games/#{@game.id}/edit"}
+      navigate={~p"/games/#{@game}/edit"}
       style="color:var(--accent);font-weight:600"
     >
       review them on the edit page

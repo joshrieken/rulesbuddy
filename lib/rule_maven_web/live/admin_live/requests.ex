@@ -52,7 +52,7 @@ defmodule RuleMavenWeb.AdminLive.Requests do
                 style="background:var(--bg-subtle);color:#ea580c;text-decoration:none;font-size:0.72rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border)"
               >BGG</.link>
               <.link
-                navigate={~p"/games/#{r.game.id}/edit"}
+                navigate={~p"/games/#{r.game}/edit"}
                 style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.72rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem"
               >Add support</.link>
             </div>

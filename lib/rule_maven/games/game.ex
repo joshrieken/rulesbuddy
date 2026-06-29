@@ -61,3 +61,8 @@ defmodule RuleMaven.Games.Game do
     |> validate_required([:name])
   end
 end
+
+# URLs reference games by an opaque token, never the raw integer id.
+defimpl Phoenix.Param, for: RuleMaven.Games.Game do
+  def to_param(%{id: id}), do: RuleMaven.Hashid.encode(id)
+end

@@ -9,12 +9,12 @@ defmodule RuleMavenWeb.CheatSheetController do
   plug :require_login
 
   def show(conn, %{"id" => id}) do
-    game = Games.get_game!(id)
+    game = Games.get_game_by_token!(id)
     serve_active_cheatsheet(conn, game)
   end
 
   def show_version(conn, %{"id" => id, "version_id" => version_id}) do
-    game = Games.get_game!(id)
+    game = Games.get_game_by_token!(id)
     version = CheatSheet.get_version!(version_id)
     serve_content(conn, game.name, version.content)
   end
@@ -44,7 +44,7 @@ defmodule RuleMavenWeb.CheatSheetController do
     else
       conn
       |> put_flash(:error, "No cheatsheet yet. Generate one from the Edit page.")
-      |> redirect(to: ~p"/games/#{game.id}")
+      |> redirect(to: ~p"/games/#{game}")
     end
   end
 

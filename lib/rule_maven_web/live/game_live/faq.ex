@@ -5,7 +5,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    game = Games.get_game!(id)
+    game = Games.get_game_by_token!(id)
     is_admin = RuleMaven.Users.can?(socket.assigns.current_user, :admin)
     categories = Games.list_game_categories(game)
     community_questions = Games.faq_questions(game)
@@ -106,12 +106,12 @@ defmodule RuleMavenWeb.GameLive.Faq do
     <RuleMavenWeb.GameLive.GameTheme.blur_background image_url={@game.image_url} />
     <div style="max-width:52rem;margin:0 auto;padding:1.5rem 1rem;position:relative;z-index:1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-        <.link navigate={~p"/games/#{@game.id}"} class="back-link" style="margin-bottom:0">
+        <.link navigate={~p"/games/#{@game}"} class="back-link" style="margin-bottom:0">
           &larr; Back to {@game.name}
         </.link>
         <.link
           :if={@is_admin}
-          navigate={~p"/games/#{@game.id}/review"}
+          navigate={~p"/games/#{@game}/review"}
           class="back-link"
           style="margin-bottom:0"
         >
@@ -256,7 +256,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem">
         <div style="flex:1;min-width:0">
           <.link
-            navigate={~p"/games/#{@game.id}?t=#{@q.id}"}
+            navigate={~p"/games/#{@game}?t=#{@q.id}"}
             style="font-size:0.82rem;font-weight:600;color:var(--text);text-decoration:none;word-break:break-word;display:block;margin-bottom:0.35rem"
           >
             {@q.canonical_question || @q.question}

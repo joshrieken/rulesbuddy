@@ -70,7 +70,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   @impl true
   def handle_params(params, _uri, socket) do
     id = params["id"]
-    game = Games.get_game!(id)
+    game = Games.get_game_by_token!(id)
 
     # DMCA takedown: non-admins can't reach a taken-down game at all. Admins can
     # still open it (to review / restore) and see a banner instead of content.
@@ -586,7 +586,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(active_thread_id: id, sidebar_open: false)
-     |> push_patch(to: ~p"/games/#{socket.assigns.game.id}?t=#{id}")}
+     |> push_patch(to: ~p"/games/#{socket.assigns.game}?t=#{id}")}
   end
 
   @impl true
@@ -719,7 +719,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                          community_questions:
                            Games.community_questions(game, socket.assigns.current_user.id)
                        )
-                       |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")
+                       |> push_patch(to: ~p"/games/#{game}?t=#{question_log.id}")
                        |> push_event("scroll_bottom", %{})}
 
                     {:error, _} ->
@@ -782,7 +782,7 @@ defmodule RuleMavenWeb.GameLive.Show do
          pending_count: pending_count,
          confirm_delete_id: nil
        )
-       |> push_patch(to: ~p"/games/#{game.id}")}
+       |> push_patch(to: ~p"/games/#{game}")}
     else
       conversation = build_conversation_for_thread(grouped, socket.assigns.active_thread_id)
 
@@ -1097,7 +1097,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                  community_questions:
                    Games.community_questions(game, socket.assigns.current_user.id)
                )
-               |> push_patch(to: ~p"/games/#{game.id}?t=#{question_log.id}")}
+               |> push_patch(to: ~p"/games/#{game}?t=#{question_log.id}")}
 
             {:error, _} ->
               {:noreply, put_flash(socket, :error, "Failed to retry question")}
@@ -1445,7 +1445,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               &larr;
             </.link>
             <h1 class="text-sm font-bold truncate" style="max-width:300px">{@game.name}</h1>
-            <.link patch={~p"/games/#{@game.id}?start=1"} class="pill-link pill-link-accent">
+            <.link patch={~p"/games/#{@game}?start=1"} class="pill-link pill-link-accent">
               Overview
             </.link>
             <%= if @game.bgg_id && RuleMaven.Games.Category.bgg_relevant?(@game.category) do %>
@@ -1510,7 +1510,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%!-- Community --%>
             <%= if @community_count > 0 do %>
               <.link
-                navigate={~p"/games/#{@game.id}/faq"}
+                navigate={~p"/games/#{@game}/faq"}
                 style="display:inline-flex;align-items:center;gap:0.25rem;background:var(--accent);color:var(--accent-text,#fff);border:1px solid var(--accent);text-decoration:none;font-size:0.72rem;font-weight:700;padding:0.25rem 0.6rem;border-radius:0.35rem;flex-shrink:0;box-shadow:0 1px 4px color-mix(in srgb,var(--accent) 40%,transparent)"
               >
                 <span aria-hidden="true">💬</span> FAQ ({@community_count})
@@ -1519,7 +1519,7 @@ defmodule RuleMavenWeb.GameLive.Show do
             <%!-- Cheat Sheet --%>
             <%= if Enum.any?(@sources, &(CheatSheet.active_version(&1.id) != nil)) do %>
               <.link
-                href={~p"/games/#{@game.id}/cheatsheet"}
+                href={~p"/games/#{@game}/cheatsheet"}
                 target="_blank"
                 style="background:var(--bg-subtle);color:var(--text-secondary);border:1px solid var(--border);text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:0.3rem;flex-shrink:0"
               >
@@ -1539,15 +1539,15 @@ defmodule RuleMavenWeb.GameLive.Show do
                 Admin <span style="font-size:0.6rem;opacity:0.6">▾</span>
               </summary>
               <div class="card-menu__pop card-menu__pop--right">
-                <.link navigate={~p"/games/#{@game.id}/edit"} class="card-menu__item">
+                <.link navigate={~p"/games/#{@game}/edit"} class="card-menu__item">
                   ✏️ Edit
                 </.link>
-                <.link navigate={~p"/games/#{@game.id}/review"} class="card-menu__item">
+                <.link navigate={~p"/games/#{@game}/review"} class="card-menu__item">
                   🔍 Review
                 </.link>
                 <.link
                   :if={RuleMaven.Games.bgg_synced?(@game)}
-                  href={~p"/games/#{@game.id}/prepare"}
+                  href={~p"/games/#{@game}/prepare"}
                   class="card-menu__item"
                 >
                   🚀 Prepare
@@ -1768,7 +1768,7 @@ defmodule RuleMavenWeb.GameLive.Show do
               <p class="text-sm">No rulebook sources yet.</p>
               <.link
                 :if={RuleMaven.Users.can?(@current_user, :admin)}
-                navigate={~p"/games/#{@game.id}/edit"}
+                navigate={~p"/games/#{@game}/edit"}
                 style="background:var(--accent);color:var(--accent-text,#fff);text-decoration:none;font-size:0.8rem;font-weight:600;padding:0.3rem 0.75rem;border-radius:0.3rem"
               >
                 Add rulebook text or PDF
@@ -1815,7 +1815,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                 Ask any rules question in plain English — answers cite the exact rulebook passage.
                 <%= if @community_count > 0 do %>
                   <.link
-                    navigate={~p"/games/#{@game.id}/faq"}
+                    navigate={~p"/games/#{@game}/faq"}
                     style="color:var(--accent-ink,var(--accent));font-weight:600;white-space:nowrap"
                   >Or browse {@community_count} community answers →</.link>
                 <% end %>
@@ -2370,7 +2370,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     </span>
                     <.link
                       :for={cat <- msg_cats}
-                      navigate={~p"/games/#{@game.id}/faq?category=#{cat.id}"}
+                      navigate={~p"/games/#{@game}/faq?category=#{cat.id}"}
                       style="font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:1rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-muted);text-decoration:none"
                     >
                       {cat.name}

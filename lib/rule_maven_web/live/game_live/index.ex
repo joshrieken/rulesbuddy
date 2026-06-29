@@ -303,11 +303,12 @@ defmodule RuleMavenWeb.GameLive.Index do
   def handle_event("go_to_game", %{"id" => id_str}, socket) do
     {id, _} = Integer.parse(id_str)
     source_count = Map.get(socket.assigns.source_counts, id, 0)
+    token = RuleMaven.Hashid.encode(id)
 
     dest =
       if source_count == 0 and RuleMaven.Users.can?(socket.assigns.current_user, :admin),
-        do: ~p"/games/#{id}/edit",
-        else: ~p"/games/#{id}"
+        do: ~p"/games/#{token}/edit",
+        else: ~p"/games/#{token}"
 
     {:noreply, push_navigate(socket, to: dest)}
   end
@@ -341,8 +342,8 @@ defmodule RuleMavenWeb.GameLive.Index do
 
           dest =
             if source_count == 0 and RuleMaven.Users.can?(socket.assigns.current_user, :admin),
-              do: ~p"/games/#{game.id}/edit",
-              else: ~p"/games/#{game.id}"
+              do: ~p"/games/#{game}/edit",
+              else: ~p"/games/#{game}"
 
           {:noreply, push_navigate(socket, to: dest)}
         else
@@ -355,7 +356,7 @@ defmodule RuleMavenWeb.GameLive.Index do
 
           if idx >= 0 && idx < length(visible) do
             game = Enum.at(visible, idx)
-            {:noreply, push_navigate(socket, to: ~p"/games/#{game.id}/edit")}
+            {:noreply, push_navigate(socket, to: ~p"/games/#{game}/edit")}
           else
             {:noreply, socket}
           end
@@ -768,7 +769,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                       has_source and RuleMaven.Games.bgg_synced?(game) and
                         RuleMaven.Users.can?(@current_user, :admin)
                     }
-                    href={~p"/games/#{game.id}/prepare"}
+                    href={~p"/games/#{game}/prepare"}
                     style="font-size:0.6rem;font-weight:700;vertical-align:middle;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0.05rem 0.4rem;margin-left:0.4rem;pointer-events:auto"
                   >
                     {if game.playable, do: "Readiness →", else: "Prepare →"}
@@ -861,7 +862,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                       (game.playable or RuleMaven.Users.can?(@current_user, :admin)) %>
                   <.link
                     :if={askable}
-                    navigate={~p"/games/#{game.id}"}
+                    navigate={~p"/games/#{game}"}
                     style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.75rem;font-weight:600;padding:0.2rem 0.55rem;border-radius:0.3rem;line-height:1.2"
                   >Ask</.link>
                   <span
@@ -890,7 +891,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                   >{if favorited, do: "♥", else: "♡"}</button>
                   <.link
                     :if={RuleMaven.Users.can?(@current_user, :admin)}
-                    navigate={~p"/games/#{game.id}/edit"}
+                    navigate={~p"/games/#{game}/edit"}
                     class="action-link"
                   >Edit</.link>
                   <%= if RuleMaven.Users.can?(@current_user, :admin) do %>
@@ -982,7 +983,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     >BGG</a>
                     <.link
                       :if={Map.get(@source_counts, exp.id, 0) > 0}
-                      navigate={~p"/games/#{exp.id}"}
+                      navigate={~p"/games/#{exp}"}
                       style="background:var(--accent);color:#fff;text-decoration:none;font-size:0.7rem;font-weight:600;padding:0.15rem 0.45rem;border-radius:0.3rem;line-height:1.2"
                     >Ask</.link>
                     <span
@@ -991,7 +992,7 @@ defmodule RuleMavenWeb.GameLive.Index do
                     >Ask</span>
                     <.link
                       :if={RuleMaven.Users.can?(@current_user, :admin)}
-                      navigate={~p"/games/#{exp.id}/edit"}
+                      navigate={~p"/games/#{exp}/edit"}
                       class="action-link"
                     >Edit</.link>
                     <%= if RuleMaven.Users.can?(@current_user, :admin) do %>

@@ -124,7 +124,7 @@ defmodule RuleMavenWeb.GameLive.Form do
     socket =
       case params do
         %{"id" => id} ->
-          game = Games.get_game!(id)
+          game = Games.get_game_by_token!(id)
 
           sources =
             game
@@ -2236,7 +2236,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Game created!")
-         |> push_navigate(to: ~p"/games/#{game.id}/edit")}
+         |> push_navigate(to: ~p"/games/#{game}/edit")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, game_changeset: changeset)}
@@ -2270,7 +2270,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Game updated!")
-         |> push_navigate(to: ~p"/games/#{game.id}/edit")}
+         |> push_navigate(to: ~p"/games/#{game}/edit")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, game_changeset: changeset)}
@@ -2642,7 +2642,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         <div style="display:flex;align-items:center;gap:1rem">
           <.link
             :if={@game && bgg_synced?(@game)}
-            href={~p"/games/#{@game.id}/prepare"}
+            href={~p"/games/#{@game}/prepare"}
             class="back-link"
             style="margin-bottom:0"
           >
@@ -2650,7 +2650,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           </.link>
           <.link
             :if={@game}
-            navigate={~p"/games/#{@game.id}"}
+            navigate={~p"/games/#{@game}"}
             class="back-link"
             style="margin-bottom:0"
           >
@@ -3011,7 +3011,7 @@ defmodule RuleMavenWeb.GameLive.Form do
             <p class="text-sm mt-2" style="color:var(--green)">
               Downloaded!
               <.link href={"/#{@download_ok}"} target="_blank" class="underline font-semibold">View PDF</.link>
-              or go to <.link navigate={~p"/games/#{@game.id}"} class="underline font-semibold">Ask page</.link>.
+              or go to <.link navigate={~p"/games/#{@game}"} class="underline font-semibold">Ask page</.link>.
             </p>
           <% end %>
           <%= if @download_error do %>
@@ -3143,7 +3143,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <%= for exp <- @expansions do %>
                     <div class="flex items-center justify-between border rounded px-3 py-1.5 text-sm">
                       <.link
-                        navigate={~p"/games/#{exp.id}/edit"}
+                        navigate={~p"/games/#{exp}/edit"}
                         class="text-blue-600 hover:underline"
                       >{exp.name}</.link>
                       <button
@@ -3712,7 +3712,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                         </summary>
                         <%= for q <- cat.questions do %>
                           <.link
-                            navigate={~p"/games/#{@game.id}"}
+                            navigate={~p"/games/#{@game}"}
                             style="display:block;padding:0.3rem 0.6rem;font-size:0.72rem;color:var(--blue);text-decoration:none;border-top:1px solid var(--border-subtle);line-height:1.4"
                             class="hover:bg-blue-50"
                           >{q}</.link>
