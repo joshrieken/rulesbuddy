@@ -122,8 +122,9 @@ defmodule RuleMaven.LLMSavingsTest do
       assert_in_delta s.headline_usd, 0.15, 0.0001
       assert s.headline_tokens == 150
       kinds = Map.new(s.by_kind, &{&1.kind, &1})
+      # cheap_route is reported in by_kind but excluded from the headline total
       assert kinds["cheap_route"].usd == 9.99
-      refute Map.has_key?(kinds, "cheap_route") and s.headline_usd > 0.15
+      assert s.headline_usd < 1.0
     end
   end
 end
