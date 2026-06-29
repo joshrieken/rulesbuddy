@@ -1916,16 +1916,10 @@ defmodule RuleMavenWeb.GameLive.Form do
     Games.clear_reextract_log(sid)
     Games.log_reextract(sid, queued, "info")
 
-    socket
-    |> assign(
+    assign(socket,
       reextracting: Map.put(socket.assigns.reextracting, sid, n),
       reextract_log: Map.put(socket.assigns.reextract_log, sid, Games.reextract_log(sid))
     )
-    # The inline panel is always in the DOM, so its phx-mounted (which only fires
-    # once) won't re-open it on this live trigger — open it explicitly. The modal
-    # id is a no-op when the modal isn't open.
-    |> push_event("open_log", %{id: "reextlog-#{sid}"})
-    |> push_event("open_log", %{id: "reextlog-modal-#{sid}"})
   end
 
   # Honest re-extract feedback: the strong re-read can fail, or succeed but still
@@ -2346,9 +2340,11 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   # Detailed, durable extraction progress log for an incoming document. Rebuilt
   # from the DB, so it survives refresh and shows the full run after a restart.
-  # While running, force the panel open on mount (server `open` alone isn't
-  # reliably re-applied after the LiveView connects), so a refresh/load mid-run
-  # always shows live progress; the user can still collapse it.
+  # The OpenWhileRunning hook keeps the panel open whenever `running` is true —
+  # on mount and on every update — so a live trigger, a refresh, or a connect
+  # mid-run all show progress (the server `open` attribute alone isn't reliably
+  # re-applied after the LiveView patches the DOM). The user can collapse it
+  # once the run finishes.
   attr :id, :string, required: true
   attr :log, :list, required: true
   attr :running, :boolean, default: false
@@ -2359,7 +2355,8 @@ defmodule RuleMavenWeb.GameLive.Form do
       :if={@log != []}
       id={@id}
       open={@running}
-      phx-mounted={@running && Phoenix.LiveView.JS.set_attribute({"open", ""})}
+      phx-hook="OpenWhileRunning"
+      data-running={to_string(@running)}
       style="margin-top:0.8rem;border:1px solid var(--border);border-radius:0.4rem;background:var(--bg-subtle)"
     >
       <summary style="cursor:pointer;padding:0.5rem 0.7rem;font-size:0.78rem;font-weight:600;color:var(--text-secondary)">

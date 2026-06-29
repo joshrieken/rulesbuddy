@@ -554,6 +554,18 @@ Hooks.ReaderKeys = {
   }
 };
 
+// Keep a <details> log panel open while its work is running. Fires on mount and
+// every LiveView update, so a live trigger, a refresh, or a connect mid-run all
+// leave it open (the always-in-DOM inline panel can't rely on phx-mounted, and
+// the server `open` attribute isn't reliably re-applied across DOM patches).
+Hooks.OpenWhileRunning = {
+  mounted() { this.sync(); },
+  updated() { this.sync(); },
+  sync() {
+    if (this.el.dataset.running === "true") this.el.open = true;
+  }
+};
+
 Hooks.InfiniteScroll = {
   mounted() {
     this.observer = new IntersectionObserver(([entry]) => {
@@ -581,13 +593,6 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
     reader_pages: localStorage.getItem("rm:reader:pages") || ""
   }),
   hooks: Hooks
-});
-
-// Force a <details> log panel open when a re-extraction starts (the inline panel
-// is always in the DOM, so its phx-mounted won't re-fire on the live trigger).
-window.addEventListener("phx:open_log", (e) => {
-  const el = document.getElementById(e.detail.id);
-  if (el) el.open = true;
 });
 
 // Persist the cleanup strength choice.
