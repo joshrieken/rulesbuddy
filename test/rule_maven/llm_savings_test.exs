@@ -55,6 +55,11 @@ defmodule RuleMaven.LLMSavingsTest do
       assert :ok = LLM.record_call_savings("google/gemini-2.5-flash", [operation: "ask"], usage)
       assert Repo.one(from s in Savings, where: s.kind == "prompt_cache") == nil
     end
+
+    test "nil usage writes no prompt_cache row and returns :ok" do
+      assert :ok = RuleMaven.LLM.record_call_savings("google/gemini-2.5-flash", [operation: "ask"], nil)
+      assert Repo.one(from s in Savings, where: s.kind == "prompt_cache") == nil
+    end
   end
 
   describe "estimate_avoided/2" do

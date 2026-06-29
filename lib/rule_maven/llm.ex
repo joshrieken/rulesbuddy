@@ -503,15 +503,22 @@ defmodule RuleMaven.LLM do
   # prompt-cache discount (and cheap-route, added in a later task). Best-effort.
   def record_call_savings(actual_model, opts, usage)
 
-  def record_call_savings(actual_model, opts, %{cached: cached} = _usage) when is_integer(cached) and cached > 0 do
-    RuleMaven.LLM.Savings.record("prompt_cache", %{
-      operation: opts[:operation] || "unknown",
-      estimated_tokens: cached,
-      estimated_usd: RuleMaven.LLM.Pricing.cached_savings(actual_model, cached),
-      model: actual_model,
-      game_id: opts[:game_id],
-      user_id: opts[:user_id]
-    })
+  def record_call_savings(actual_model, opts, %{cached: cached} = _usage)
+      when is_integer(cached) and cached > 0 do
+    require Logger
+
+    try do
+      RuleMaven.LLM.Savings.record("prompt_cache", %{
+        operation: opts[:operation] || "unknown",
+        estimated_tokens: cached,
+        estimated_usd: RuleMaven.LLM.Pricing.cached_savings(actual_model, cached),
+        model: actual_model,
+        game_id: opts[:game_id],
+        user_id: opts[:user_id]
+      })
+    rescue
+      e -> Logger.warning("record_call_savings failed: #{inspect(e)}")
+    end
 
     :ok
   end
