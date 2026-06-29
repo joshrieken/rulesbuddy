@@ -15,7 +15,7 @@ defmodule RuleMavenWeb.CheatSheetController do
 
   def show_version(conn, %{"id" => id, "version_id" => version_id}) do
     game = Games.get_game_by_token!(id)
-    version = CheatSheet.get_version!(version_id)
+    version = CheatSheet.get_version!(RuleMaven.Hashid.decode!(version_id))
     serve_content(conn, game.name, version.content)
   end
 

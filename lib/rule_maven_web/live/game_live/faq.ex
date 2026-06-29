@@ -27,9 +27,9 @@ defmodule RuleMavenWeb.GameLive.Faq do
 
   @impl true
   def handle_params(%{"category" => cat_id}, _uri, socket) do
-    case Integer.parse(cat_id) do
-      {id, ""} -> {:noreply, assign(socket, filter_category: id)}
-      _ -> {:noreply, assign(socket, filter_category: nil)}
+    case RuleMaven.Hashid.decode(cat_id) do
+      {:ok, id} -> {:noreply, assign(socket, filter_category: id)}
+      :error -> {:noreply, assign(socket, filter_category: nil)}
     end
   end
 
@@ -256,7 +256,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem">
         <div style="flex:1;min-width:0">
           <.link
-            navigate={~p"/games/#{@game}?t=#{@q.id}"}
+            navigate={~p"/games/#{@game}?t=#{RuleMaven.Hashid.encode(@q.id)}"}
             style="font-size:0.82rem;font-weight:600;color:var(--text);text-decoration:none;word-break:break-word;display:block;margin-bottom:0.35rem"
           >
             {@q.canonical_question || @q.question}

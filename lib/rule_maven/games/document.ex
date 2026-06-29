@@ -124,3 +124,8 @@ defmodule RuleMaven.Games.Document do
     |> validate_required([:label, :full_text, :game_id])
   end
 end
+
+# Rulebook URLs reference documents by opaque token, never the raw id.
+defimpl Phoenix.Param, for: RuleMaven.Games.Document do
+  def to_param(%{id: id}), do: RuleMaven.Hashid.encode(id)
+end

@@ -14,8 +14,9 @@ defmodule RuleMavenWeb.RulebookController do
     user = conn.assigns[:current_user]
 
     with true <- user && Users.can?(user, :admin),
+         {:ok, doc_id} <- RuleMaven.Hashid.decode(id),
          %Games.Document{html_path: html_path} when is_binary(html_path) <-
-           Games.get_document(id),
+           Games.get_document(doc_id),
          full_path = Application.app_dir(:rule_maven, "priv/static/#{html_path}"),
          true <- File.exists?(full_path) do
       conn

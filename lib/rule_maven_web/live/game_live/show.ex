@@ -111,11 +111,11 @@ defmodule RuleMavenWeb.GameLive.Show do
           nil
 
         t = params["t"] ->
-          case Integer.parse(t) do
-            {tid, ""} when is_integer(tid) ->
+          case RuleMaven.Hashid.decode(t) do
+            {:ok, tid} ->
               if Enum.any?(threads, &(&1.id == tid)), do: tid, else: select_active_thread(threads)
 
-            _ ->
+            :error ->
               select_active_thread(threads)
           end
 
@@ -586,7 +586,7 @@ defmodule RuleMavenWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(active_thread_id: id, sidebar_open: false)
-     |> push_patch(to: ~p"/games/#{socket.assigns.game}?t=#{id}")}
+     |> push_patch(to: ~p"/games/#{socket.assigns.game}?t=#{RuleMaven.Hashid.encode(id)}")}
   end
 
   @impl true
@@ -719,7 +719,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                          community_questions:
                            Games.community_questions(game, socket.assigns.current_user.id)
                        )
-                       |> push_patch(to: ~p"/games/#{game}?t=#{question_log.id}")
+                       |> push_patch(to: ~p"/games/#{game}?t=#{RuleMaven.Hashid.encode(question_log.id)}")
                        |> push_event("scroll_bottom", %{})}
 
                     {:error, _} ->
@@ -1097,7 +1097,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                  community_questions:
                    Games.community_questions(game, socket.assigns.current_user.id)
                )
-               |> push_patch(to: ~p"/games/#{game}?t=#{question_log.id}")}
+               |> push_patch(to: ~p"/games/#{game}?t=#{RuleMaven.Hashid.encode(question_log.id)}")}
 
             {:error, _} ->
               {:noreply, put_flash(socket, :error, "Failed to retry question")}
@@ -1491,7 +1491,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                             get the extracted-text HTML view. --%>
                     <div :if={@is_admin and src.html_path} style="display:flex;gap:0.5rem">
                       <.link
-                        href={~p"/rulebooks/#{src.id}/html"}
+                        href={~p"/rulebooks/#{src}/html"}
                         target="_blank"
                         style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
                       >🔗 HTML</.link>
@@ -2370,7 +2370,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     </span>
                     <.link
                       :for={cat <- msg_cats}
-                      navigate={~p"/games/#{@game}/faq?category=#{cat.id}"}
+                      navigate={~p"/games/#{@game}/faq?category=#{RuleMaven.Hashid.encode(cat.id)}"}
                       style="font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:1rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-muted);text-decoration:none"
                     >
                       {cat.name}

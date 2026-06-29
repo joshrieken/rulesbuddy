@@ -3476,7 +3476,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                           our extracted text (admin view only). --%>
                     <%= if entry[:source_id] && entry[:html_path] do %>
                       <.link
-                        href={~p"/rulebooks/#{entry.source_id}/html"}
+                        href={~p"/rulebooks/#{RuleMaven.Hashid.encode(entry.source_id)}/html"}
                         target="_blank"
                         class="action-link"
                       >View as HTML</.link>
@@ -4327,7 +4327,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                       </span>
                       <span style="display:flex;align-items:center;gap:0;flex-shrink:0;margin-left:auto">
                         <.link
-                          href={"/games/#{@game.id}/cheatsheet/#{v.id}"}
+                          href={~p"/games/#{@game}/cheatsheet/#{RuleMaven.Hashid.encode(v.id)}"}
                           target="_blank"
                           style="color:var(--blue);font-weight:600;text-decoration:none;font-size:0.7rem"
                         >view</.link>
