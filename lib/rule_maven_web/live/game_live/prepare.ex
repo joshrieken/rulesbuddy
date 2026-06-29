@@ -59,6 +59,8 @@ defmodule RuleMavenWeb.GameLive.Prepare do
     assign(socket,
       steps: steps,
       playable?: Readiness.playable?(game),
+      required_complete?: Readiness.required_complete?(game),
+      publish_approved?: Readiness.publish_approved?(game.id),
       auto?: Readiness.auto?(game.id),
       pause_reason: Readiness.pause_reason(game.id),
       remaining_cost: Estimator.remaining_cost(game),
@@ -80,6 +82,32 @@ defmodule RuleMavenWeb.GameLive.Prepare do
        socket
        |> load()
        |> put_flash(:info, "Preparing — running the pipeline…")}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
+  end
+
+  def handle_event("approve_publish", _params, socket) do
+    if Users.can?(socket.assigns.current_user, :admin) do
+      Readiness.approve_publish(socket.assigns.game, socket.assigns.current_user)
+
+      {:noreply,
+       socket
+       |> load()
+       |> put_flash(:info, "Published — the game is now playable.")}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
+  end
+
+  def handle_event("revoke_publish", _params, socket) do
+    if Users.can?(socket.assigns.current_user, :admin) do
+      Readiness.revoke_publish(socket.assigns.game, socket.assigns.current_user)
+
+      {:noreply,
+       socket
+       |> load()
+       |> put_flash(:info, "Unpublished — the game is no longer playable.")}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
@@ -119,10 +147,13 @@ defmodule RuleMavenWeb.GameLive.Prepare do
         <h1 style="font-size:1.5rem;font-weight:700">Prepare {@game.name}</h1>
       </div>
       <p style="font-size:0.85rem;font-weight:600;margin:0 0 1rem;color:var(--text-muted)">
-        <%= if @playable? do %>
-          <span style="color:var(--green)">✓ Ready to play</span>
-        <% else %>
-          Setting up… {@required_done}/{@required_total} required steps
+        <%= cond do %>
+          <% @playable? -> %>
+            <span style="color:var(--green)">✓ Published &amp; playable</span>
+          <% @required_complete? -> %>
+            <span style="color:var(--yellow)">● Ready to publish — awaiting your approval</span>
+          <% true -> %>
+            Setting up… {@required_done}/{@required_total} required steps
         <% end %>
       </p>
 
@@ -152,6 +183,24 @@ defmodule RuleMavenWeb.GameLive.Prepare do
             Prepare game · est. ${fmt_cost(@remaining_cost)}
           </button>
         <% end %>
+
+        <%!-- Manual publish gate: a fully-prepared game stays unpublished until
+              an admin approves it here. --%>
+        <button
+          :if={@required_complete? && !@playable?}
+          phx-click="approve_publish"
+          style="background:var(--green);color:#fff;border:none;padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:700;cursor:pointer"
+        >
+          ✓ Mark playable
+        </button>
+        <button
+          :if={@playable?}
+          phx-click="revoke_publish"
+          data-confirm="Unpublish this game? Users won't be able to ask questions until you re-publish."
+          style="background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:600;cursor:pointer"
+        >
+          Unpublish
+        </button>
       </div>
 
       <%= if @pause_reason && @pause_reason != "" do %>

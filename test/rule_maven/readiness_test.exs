@@ -117,27 +117,38 @@ defmodule RuleMaven.ReadinessTest do
   end
 
   describe "recompute/1" do
-    test "flips playable only when every required step is done" do
+    test "stays unplayable until required steps are done" do
       game = game_fixture()
       doc_fixture(game, pages: [{0.9, true}], status: "cleaned", embed: :pending)
 
       refute Readiness.recompute(game)
       assert Repo.reload(game).playable == false
-
-      # Now satisfy embed.
-      game2 = game_fixture(name: "ready", bgg_id: 102)
-      doc_fixture(game2, pages: [{0.9, true}], status: "cleaned", embed: :done)
-
-      assert Readiness.recompute(game2)
-      reloaded = Repo.reload(game2)
-      assert reloaded.playable == true
-      assert reloaded.playable_at != nil
     end
 
-    test "playable game appears in list_playable_games/0" do
+    test "required-complete is not enough without publish approval (manual gate)" do
+      game = game_fixture(name: "ready", bgg_id: 102)
+      doc_fixture(game, pages: [{0.9, true}], status: "cleaned", embed: :done)
+
+      assert Readiness.required_complete?(game)
+      # The gate holds playable false even though every required step is done.
+      refute Readiness.recompute(game)
+      assert Repo.reload(game).playable == false
+
+      # Approving publishes it.
+      assert Readiness.approve_publish(game)
+      reloaded = Repo.reload(game)
+      assert reloaded.playable == true
+      assert reloaded.playable_at != nil
+
+      # Revoking pulls it back out of playable immediately.
+      refute Readiness.revoke_publish(reloaded)
+      assert Repo.reload(game).playable == false
+    end
+
+    test "approved playable game appears in list_playable_games/0" do
       game = game_fixture(name: "ready2")
       doc_fixture(game, pages: [{0.9, true}], status: "cleaned", embed: :done)
-      Readiness.recompute(game)
+      Readiness.approve_publish(game)
 
       ids = Enum.map(Games.list_playable_games(), & &1.id)
       assert game.id in ids

@@ -99,11 +99,14 @@ defmodule RuleMaven.Readiness do
     steps
   end
 
-  @doc "True when every required step is complete."
-  def playable?(%Game{} = game) do
+  @doc "True when every required step is complete (ignores the publish gate)."
+  def required_complete?(%Game{} = game) do
     docs = Games.list_documents(game)
     Enum.all?(@required, &step_complete?(&1, game, docs))
   end
+
+  @doc "True when the game is live: required steps complete AND publish approved."
+  def playable?(%Game{} = game), do: required_complete?(game) and publish_approved?(game.id)
 
   @doc """
   Recompute the playable invariant and persist it onto the game (only writing
@@ -112,7 +115,10 @@ defmodule RuleMaven.Readiness do
   """
   def recompute(%Game{} = game) do
     docs = Games.list_documents(game)
-    now = Enum.all?(@required, &step_complete?(&1, game, docs))
+    # A game goes playable only when every required step is complete AND an admin
+    # has manually approved publishing it — the gate keeps a fully-prepared game
+    # from auto-going-live before someone is ready.
+    now = Enum.all?(@required, &step_complete?(&1, game, docs)) and publish_approved?(game.id)
 
     if now != game.playable do
       game
@@ -199,6 +205,26 @@ defmodule RuleMaven.Readiness do
 
   defp auto_key(game_id), do: "readiness_auto_#{game_id}"
   defp pause_key(game_id), do: "readiness_pause_#{game_id}"
+  defp publish_key(game_id), do: "readiness_publish_#{game_id}"
+
+  ## Manual publish gate -----------------------------------------------------
+
+  @doc "True when an admin has approved publishing this game (the playable gate)."
+  def publish_approved?(game_id), do: Settings.get(publish_key(game_id)) == "on"
+
+  @doc "Approve publishing, then recompute so the game goes playable if ready. Audited."
+  def approve_publish(%Game{} = game, actor \\ nil) do
+    Settings.put(publish_key(game.id), "on")
+    Audit.log(actor, "readiness.publish_approve", metadata: %{game_id: game.id})
+    recompute(game)
+  end
+
+  @doc "Revoke publish approval; the game immediately drops out of playable. Audited."
+  def revoke_publish(%Game{} = game, actor \\ nil) do
+    Settings.put(publish_key(game.id), "off")
+    Audit.log(actor, "readiness.publish_revoke", metadata: %{game_id: game.id})
+    recompute(game)
+  end
 
   @doc "True when one-click prepare is armed for this game."
   def auto?(game_id), do: Settings.get(auto_key(game_id)) == "on"
