@@ -516,6 +516,14 @@ Hooks.VoiceDefault = {
 // the mouse or holding focus.
 Hooks.ReaderKeys = {
   mounted() {
+    // Opening the expanded reader should start at the top, not wherever the last
+    // view left off. Done here (not a separate hook) so it rides the same hook
+    // the modal already uses — one less thing to keep in sync.
+    if (this.el.id === "reader-modal") {
+      const sc = this.el.querySelector("#reader-scroll");
+      if (sc) requestAnimationFrame(() => { sc.scrollTop = 0; });
+    }
+
     this._handler = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
@@ -552,13 +560,6 @@ Hooks.ReaderKeys = {
   destroyed() {
     window.removeEventListener("keydown", this._handler);
   }
-};
-
-// Scroll the element to the top when it's first added to the DOM — used by the
-// expanded reader so opening it always starts at the top, not wherever the last
-// view left off.
-Hooks.ScrollTopOnMount = {
-  mounted() { this.el.scrollTop = 0; }
 };
 
 Hooks.InfiniteScroll = {
