@@ -185,7 +185,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
 
   defp step_row(assigns) do
     ~H"""
-    <div style={"display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.9rem;border-top:1px solid var(--border-subtle);#{if @step.state == :blocked, do: "opacity:0.5", else: ""}"}>
+    <div style={"display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.9rem;border-top:1px solid var(--border-subtle);#{if @step.state == :blocked, do: "opacity:0.62", else: ""}"}>
       <span style={"font-size:0.7rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:1rem;white-space:nowrap;#{chip_style(@step.state)}"}>
         {chip_label(@step.state)}
       </span>
