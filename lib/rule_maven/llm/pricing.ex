@@ -35,6 +35,23 @@ defmodule RuleMaven.LLM.Pricing do
     p + c
   end
 
+  # Fraction of the full input rate that cached input tokens are billed at.
+  # Gemini implicit caching bills cached input at ~25% of the input rate; this
+  # is an estimate for the savings dashboard, refine per provider as needed.
+  @cached_rate_fraction 0.25
+
+  @doc """
+  USD saved by `cached_tokens` input tokens being billed at the cached rate
+  instead of the full input rate, for `model`.
+  """
+  def cached_savings(_model, cached_tokens) when cached_tokens in [nil, 0], do: 0.0
+
+  def cached_savings(model, cached_tokens) do
+    {in_rate, _out} = rate(model)
+    full = cached_tokens / 1_000_000 * in_rate
+    full * (1.0 - @cached_rate_fraction)
+  end
+
   @doc "Returns the {input, output} per-1M-token rate for a model (with fallback)."
   def rate(nil), do: @default_rate
 

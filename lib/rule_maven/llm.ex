@@ -60,6 +60,7 @@ defmodule RuleMaven.LLM do
     cond do
       pool_hit ->
         {row, tier} = pool_hit
+        RuleMaven.LLM.Savings.record_cache_hit("ask", game.id, opts[:user_id])
 
         # Serve answer text only — never the source row's question wording or
         # author. tier is :trusted | :provisional (unverified single source).
@@ -182,7 +183,7 @@ defmodule RuleMaven.LLM do
     case chat(user, "normalize_question",
            system: RuleMaven.Prompts.template("normalize_question_system"),
            max_tokens: 64,
-           model: model(:cleanup),
+           model: model(:cheap),
            operation: "normalize",
            game_id: game.id
          ) do
@@ -497,6 +498,65 @@ defmodule RuleMaven.LLM do
     end
   end
 
+  @doc false
+  # Records non-call-avoidance savings from a completed LLM call:
+  #   * prompt_cache — real provider discount on cached input tokens
+  #   * cheap_route  — counterfactual: ran on the cheap model, not the answer model
+  # Best-effort; both may fire for one call.
+  def record_call_savings(actual_model, opts, usage) do
+    maybe_record_prompt_cache(actual_model, opts, usage)
+    maybe_record_cheap_route(actual_model, opts, usage)
+    :ok
+  end
+
+  defp maybe_record_prompt_cache(actual_model, opts, %{cached: cached}) when is_integer(cached) and cached > 0 do
+    require Logger
+
+    try do
+      RuleMaven.LLM.Savings.record("prompt_cache", %{
+        operation: opts[:operation] || "unknown",
+        estimated_tokens: cached,
+        estimated_usd: RuleMaven.LLM.Pricing.cached_savings(actual_model, cached),
+        model: actual_model,
+        game_id: opts[:game_id],
+        user_id: opts[:user_id]
+      })
+    rescue
+      e -> Logger.warning("maybe_record_prompt_cache failed: #{inspect(e)}")
+    end
+
+    :ok
+  end
+
+  defp maybe_record_prompt_cache(_m, _o, _u), do: :ok
+
+  defp maybe_record_cheap_route(actual_model, opts, %{prompt: p, completion: c}) do
+    require Logger
+
+    try do
+      default = model(:default)
+
+      if actual_model == model(:cheap) and actual_model != default do
+        saved = RuleMaven.LLM.Pricing.cost(default, p, c) - RuleMaven.LLM.Pricing.cost(actual_model, p, c)
+
+        RuleMaven.LLM.Savings.record("cheap_route", %{
+          operation: opts[:operation] || "unknown",
+          estimated_tokens: (p || 0) + (c || 0),
+          estimated_usd: max(saved, 0.0),
+          model: actual_model,
+          game_id: opts[:game_id],
+          user_id: opts[:user_id]
+        })
+      end
+    rescue
+      e -> Logger.warning("maybe_record_cheap_route failed: #{inspect(e)}")
+    end
+
+    :ok
+  end
+
+  defp maybe_record_cheap_route(_m, _o, _u), do: :ok
+
   defp do_request(_body, attempt, _opts) when attempt > 4 do
     {:error, "Rate limited after #{attempt - 1} attempts"}
   end
@@ -536,7 +596,9 @@ defmodule RuleMaven.LLM do
         {:ok, %{status: 200, body: response_body}} ->
           duration = System.monotonic_time(:millisecond) - start
           usage = extract_usage(response_body)
-          log_llm(provider_name, model_name, opts, usage, duration, true, nil)
+          actual_model = body[:model] || model_name
+          log_llm(provider_name, actual_model, opts, usage, duration, true, nil)
+          record_call_savings(actual_model, opts, usage)
           parse_response(response_body)
 
         {:ok, %{status: 429}} ->
@@ -572,13 +634,19 @@ defmodule RuleMaven.LLM do
 
   defp extract_usage(body) do
     case body do
-      %{"usage" => %{"prompt_tokens" => p, "completion_tokens" => c, "total_tokens" => t}} ->
-        %{prompt: p, completion: c, total: t}
+      %{"usage" => %{"prompt_tokens" => p, "completion_tokens" => c, "total_tokens" => t} = u} ->
+        %{prompt: p, completion: c, total: t, cached: cached_tokens(u)}
 
       _ ->
         nil
     end
   end
+
+  # Provider-reported cached prompt tokens, OpenAI-compatible shape OpenRouter
+  # forwards. Tolerates the field being absent (other providers) → 0.
+  defp cached_tokens(%{"prompt_tokens_details" => %{"cached_tokens" => n}}) when is_integer(n), do: n
+  defp cached_tokens(%{"cached_tokens" => n}) when is_integer(n), do: n
+  defp cached_tokens(_), do: 0
 
   defp log_llm(provider, model, opts, usage, duration_ms, success, error) do
     alias RuleMaven.Repo
@@ -753,6 +821,13 @@ defmodule RuleMaven.LLM do
     case RuleMaven.Settings.get("llm_cleanup_model_#{provider()}") do
       m when is_binary(m) and m != "" -> m
       _ -> model(:default)
+    end
+  end
+
+  def model(:cheap) do
+    case RuleMaven.Settings.get("llm_cheap_model_#{provider()}") do
+      m when is_binary(m) and m != "" -> m
+      _ -> model(:cleanup)
     end
   end
 
@@ -1052,6 +1127,8 @@ defmodule RuleMaven.LLM do
 
     case chat(prompt, "suggest_questions",
            system: RuleMaven.Prompts.template("suggest_questions_system"),
+           model: model(:cheap),
+           operation: "suggest_questions",
            max_tokens: 512
          ) do
       {:ok, text} ->
@@ -1103,6 +1180,7 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know",
+           model: model(:cheap),
            operation: "did_you_know",
            game_id: game_id,
            system: RuleMaven.Prompts.template("did_you_know_system"),
@@ -1152,7 +1230,8 @@ defmodule RuleMaven.LLM do
       })
 
     case chat(prompt, "did_you_know_verify",
-           operation: "did_you_know",
+           model: model(:cheap),
+           operation: "did_you_know_verify",
            game_id: game_id,
            system: RuleMaven.Prompts.template("did_you_know_verify_system"),
            max_tokens: 600
