@@ -421,7 +421,7 @@ defmodule RuleMaven.Prompts do
       "label": "Short Display Name",
       "emoji": "🙂",
       "style": "a one-sentence description of how this persona talks, in the same form as 'a swashbuckling pirate who uses nautical slang.'",
-      "loading_phrases": ["Hoisting the sails…", "Counting the doubloons…", "Sighing at landlubbers…"]
+      "loading_phrases": ["Hoisting the sails…", "Counting the doubloons…", "Sighing at landlubbers…", "Polishing the anchor…"]
     }
   ]
 
