@@ -62,6 +62,30 @@ defmodule RuleMaven.LLMSavingsTest do
     end
   end
 
+  describe "record_call_savings/3 (cheap_route)" do
+    alias RuleMaven.{LLM, Settings, Repo}
+
+    test "records cheap_route when the call ran on the cheap model" do
+      Settings.put("llm_cheap_model_openrouter", "google/gemini-2.0-flash")
+      cheap = LLM.model(:cheap)
+      refute cheap == LLM.model(:default)
+
+      usage = %{prompt: 10_000, completion: 500, total: 10_500, cached: 0}
+      assert :ok = LLM.record_call_savings(cheap, [operation: "suggest_questions"], usage)
+
+      row = Repo.one(from s in Savings, where: s.kind == "cheap_route")
+      assert row.operation == "suggest_questions"
+      # default (gemini-2.5-flash) costs more than cheap (gemini-2.0-flash):
+      assert row.estimated_usd > 0.0
+    end
+
+    test "no cheap_route when the call ran on the default model" do
+      usage = %{prompt: 10_000, completion: 500, total: 10_500, cached: 0}
+      assert :ok = LLM.record_call_savings(LLM.model(:default), [operation: "ask"], usage)
+      assert Repo.one(from s in Savings, where: s.kind == "cheap_route") == nil
+    end
+  end
+
   describe "estimate_avoided/2" do
     alias RuleMaven.LLM
     alias RuleMaven.Repo
