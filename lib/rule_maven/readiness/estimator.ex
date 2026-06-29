@@ -22,6 +22,15 @@ defmodule RuleMaven.Readiness.Estimator do
   # Per-page vision extraction: image input + transcription output (tokens).
   @extract_in_per_page 1100
   @extract_out_per_page 700
+  # Extraction also runs an accuracy critic / escalation pass on a fraction of
+  # pages (two-reader cross-check). Observed ≈20-25% on top of the raw vision
+  # spend; fold it in so the estimate isn't blind to ocr_critic.
+  @extract_critic_factor 1.25
+
+  # Cleanup rewrites each page into clean markdown; the formatted output runs
+  # larger than the raw input (headings, lists, restored structure). Observed
+  # output ≈2× the raw text tokens.
+  @cleanup_out_factor 2.0
 
   # System-prompt overhead per chat call (tokens).
   @system_overhead 400
@@ -75,14 +84,15 @@ defmodule RuleMaven.Readiness.Estimator do
 
   defp do_step_cost(:extract, _game, docs) do
     pages = Enum.sum(Enum.map(docs, &page_count/1))
-    price(LLM.model(), pages * @extract_in_per_page, pages * @extract_out_per_page)
+    base = price(LLM.model(), pages * @extract_in_per_page, pages * @extract_out_per_page)
+    base * @extract_critic_factor
   end
 
   defp do_step_cost(:cleanup, _game, docs) do
     in_toks = chars(docs) |> div(@chars_per_token)
     pages = max(Enum.sum(Enum.map(docs, &page_count/1)), 1)
-    # Output ≈ input; system overhead applies per page.
-    price(LLM.model(:cleanup), in_toks + pages * @system_overhead, in_toks)
+    out_toks = round(in_toks * @cleanup_out_factor)
+    price(LLM.model(:cleanup), in_toks + pages * @system_overhead, out_toks)
   end
 
   defp do_step_cost(:embed, _game, docs) do
