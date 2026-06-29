@@ -25,7 +25,8 @@ defmodule RuleMavenWeb.AdminLive.Usage do
     assign(socket,
       stats: LLM.stats(days),
       by_user: by_user,
-      total_cost: Enum.reduce(by_user, 0.0, &(&1.cost + &2))
+      total_cost: Enum.reduce(by_user, 0.0, &(&1.cost + &2)),
+      savings: RuleMaven.LLM.Savings.summary(days)
     )
   end
 
@@ -73,6 +74,22 @@ defmodule RuleMavenWeb.AdminLive.Usage do
         <.stat label="Tokens" value={fmt_int(@stats.total_tokens)} />
         <.stat label="Errors" value={@stats.error_count} />
         <.stat label="Avg latency" value={"#{@stats.avg_duration_ms || 0} ms"} />
+      </div>
+
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem 1rem;margin-bottom:1.25rem">
+        <h2 style="font-size:1rem;font-weight:700;margin-bottom:0.5rem">Estimated savings</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:0.6rem">
+          <.stat label="Saved (est.)" value={"$#{fmt_cost(@savings.headline_usd)}"} />
+          <.stat label="Saved tokens" value={fmt_int(@savings.headline_tokens)} />
+          <%= for k <- @savings.by_kind, k.kind in ["cache_hit", "prompt_cache"] do %>
+            <.stat label={savings_label(k.kind)} value={"$#{fmt_cost(k.usd)}"} />
+          <% end %>
+        </div>
+        <%= for k <- @savings.by_kind, k.kind == "cheap_route" do %>
+          <p style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-muted)">
+            Cheap-model routing (counterfactual, not in total): ${fmt_cost(k.usd)} vs running on the answer model.
+          </p>
+        <% end %>
       </div>
 
       <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem 1rem;margin-bottom:1.25rem">
@@ -149,6 +166,10 @@ defmodule RuleMavenWeb.AdminLive.Usage do
     </div>
     """
   end
+
+  defp savings_label("cache_hit"), do: "Cache hits (est.)"
+  defp savings_label("prompt_cache"), do: "Prompt cache"
+  defp savings_label(other), do: other
 
   defp fmt_cost(n), do: :erlang.float_to_binary(n * 1.0, decimals: 2)
 
