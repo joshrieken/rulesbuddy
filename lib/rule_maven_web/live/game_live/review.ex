@@ -2,6 +2,7 @@ defmodule RuleMavenWeb.GameLive.Review do
   use RuleMavenWeb, :live_view
 
   alias RuleMaven.Games
+  alias RuleMaven.Games.QuestionLog
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -120,7 +121,7 @@ defmodule RuleMavenWeb.GameLive.Review do
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1" style="min-width:0">
                 <div class="font-semibold text-sm" style="word-break:break-word">
-                  {q.canonical_question || q.question}
+                  {QuestionLog.display_question(q)}
                 </div>
                 <div
                   class="text-xs mt-1"

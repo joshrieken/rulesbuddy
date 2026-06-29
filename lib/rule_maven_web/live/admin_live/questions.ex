@@ -202,7 +202,7 @@ defmodule RuleMavenWeb.AdminLive.Questions do
         {:noreply,
          assign(socket,
            editing_canonical_id: id,
-           canon_q: q.canonical_question || q.question,
+           canon_q: q.canonical_question || q.cleaned_question || q.question,
            canon_a: q.canonical_answer || q.answer || ""
          )}
     end

@@ -1,7 +1,8 @@
 defmodule RuleMaven.Workers.EmbedQuestionWorker do
   @moduledoc """
-  Re-embeds a QuestionLog's canonical_question (or falls back to question)
-  and stores the vector in question_embedding.
+  Re-embeds a QuestionLog's canonical_question (falling back to the normalized
+  cleaned_question, then the raw question) and stores the vector in
+  question_embedding.
   Enqueued whenever admin sets canonical_question on a QuestionLog.
   """
 
@@ -13,7 +14,7 @@ defmodule RuleMaven.Workers.EmbedQuestionWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"question_log_id" => id}}) do
     q = Repo.get!(QuestionLog, id)
-    text = q.canonical_question || q.question
+    text = q.canonical_question || q.cleaned_question || q.question
 
     case RuleMaven.Embed.embed(text) do
       {:ok, vector} ->

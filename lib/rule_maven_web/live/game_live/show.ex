@@ -2,6 +2,7 @@ defmodule RuleMavenWeb.GameLive.Show do
   use RuleMavenWeb, :live_view
 
   alias RuleMaven.{Games, CheatSheet}
+  alias RuleMaven.Games.QuestionLog
   alias Oban
 
   @max_concurrent 5
@@ -249,7 +250,7 @@ defmodule RuleMavenWeb.GameLive.Show do
 
       %{
         id: g.primary.id,
-        question: g.primary.question,
+        question: QuestionLog.display_question(g.primary),
         answer: g.primary.answer,
         pending: pending?,
         refused: g.primary.refused,
@@ -276,7 +277,7 @@ defmodule RuleMavenWeb.GameLive.Show do
       user_msg = %{
         id: g.primary.id,
         role: :user,
-        content: g.primary.question,
+        content: QuestionLog.display_question(g.primary),
         cleaned_question: g.primary.cleaned_question,
         refused: g.primary.refused,
         timestamp: g.primary.inserted_at
@@ -1128,13 +1129,11 @@ defmodule RuleMavenWeb.GameLive.Show do
   # acted on through this game-scoped LiveView (cross-game IDOR).
   defp find_question_log(game, id) do
     import Ecto.Query
-    alias RuleMaven.Games.QuestionLog
     RuleMaven.Repo.one(from q in QuestionLog, where: q.id == ^id and q.game_id == ^game.id)
   end
 
   defp get_question_log_by_id(id) do
     import Ecto.Query
-    alias RuleMaven.Games.QuestionLog
     RuleMaven.Repo.one(from q in QuestionLog, where: q.id == ^id)
   end
 
@@ -1177,7 +1176,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                   t
                   | pending: false,
                     refused: ql.refused,
-                    question: ql.question,
+                    question: QuestionLog.display_question(ql),
                     answer: ql.answer
                 }
 
@@ -1196,7 +1195,7 @@ defmodule RuleMavenWeb.GameLive.Show do
           Enum.map(socket.assigns.conversation, fn
             %{id: ^question_log_id, role: :user} = msg ->
               msg
-              |> Map.put(:content, ql.question)
+              |> Map.put(:content, QuestionLog.display_question(ql))
               |> Map.put(:cleaned_question, ql.cleaned_question)
 
             %{id: ^question_log_id, role: :assistant} = msg ->
@@ -1650,7 +1649,7 @@ defmodule RuleMavenWeb.GameLive.Show do
                     <%= if MapSet.member?(@favorited_answer_ids, q.id) do %>
                       <span style="color:#e05c2a;font-size:0.55rem">♥</span>
                     <% end %>
-                    {q.canonical_question || q.question}
+                    {QuestionLog.display_question(q)}
                   </span>
                 </button>
               <% end %>

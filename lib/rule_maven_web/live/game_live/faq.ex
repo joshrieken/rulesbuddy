@@ -2,6 +2,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
   use RuleMavenWeb, :live_view
 
   alias RuleMaven.Games
+  alias RuleMaven.Games.QuestionLog
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -269,7 +270,7 @@ defmodule RuleMavenWeb.GameLive.Faq do
             navigate={~p"/games/#{@game}?t=#{RuleMaven.Hashid.encode(@q.id)}"}
             style="font-size:0.82rem;font-weight:600;color:var(--text);text-decoration:none;word-break:break-word;display:block;margin-bottom:0.35rem"
           >
-            {@q.canonical_question || @q.question}
+            {QuestionLog.display_question(@q)}
           </.link>
           <% preview = strip_markdown(@q.canonical_answer || @q.answer || "") %>
           <div style="font-size:0.72rem;color:var(--text-secondary);line-height:1.45;word-break:break-word">

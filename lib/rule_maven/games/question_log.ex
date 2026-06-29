@@ -39,6 +39,14 @@ defmodule RuleMaven.Games.QuestionLog do
     timestamps(type: :utc_datetime)
   end
 
+  @doc """
+  User-facing question text. Prefers the admin-curated `canonical_question`,
+  then the machine-normalized `cleaned_question`, falling back to the raw
+  `question` as typed. The raw text is always preserved on the row.
+  """
+  def display_question(%__MODULE__{} = q),
+    do: q.canonical_question || q.cleaned_question || q.question
+
   @doc false
   def changeset(question_log, attrs) do
     question_log

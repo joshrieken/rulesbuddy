@@ -138,7 +138,9 @@ defmodule RuleMaven.Workers.AskWorker do
 
             update_attrs = %{
               answer: answer,
-              question: if(cleaned != "", do: cleaned, else: question),
+              # Preserve the raw question as typed; the normalized form is stored
+              # separately in cleaned_question and is what gets displayed.
+              question: question,
               cited_passage: passage,
               cited_page: cited_page,
               citation_valid: citation_valid,
@@ -146,7 +148,7 @@ defmodule RuleMaven.Workers.AskWorker do
               verdict: if(refused?, do: "silent", else: llm_result[:verdict]),
               followups: if(refused?, do: [], else: llm_result[:followups] || []),
               also_asked: if(refused?, do: [], else: llm_result[:also_asked] || []),
-              cleaned_question: llm_result[:cleaned_question],
+              cleaned_question: if(cleaned != "", do: cleaned, else: nil),
               raw_response: llm_result[:raw_response],
               llm_provider: llm_result[:provider],
               llm_model: llm_result[:model],
