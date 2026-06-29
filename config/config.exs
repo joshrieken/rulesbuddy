@@ -52,7 +52,9 @@ config :rule_maven, Oban,
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(10)},
     {Oban.Plugins.Cron,
      crontab: [
-       {"*/15 * * * *", RuleMaven.Workers.DirectPromotionWorker}
+       {"*/15 * * * *", RuleMaven.Workers.DirectPromotionWorker},
+       # Daily: prune job-log events past the 6-month window + reconcile stale runs.
+       {"0 4 * * *", RuleMaven.Workers.JobLogPruneWorker}
      ]}
   ],
   # `reextract` is intentionally serial (concurrency 1): a "re-extract all

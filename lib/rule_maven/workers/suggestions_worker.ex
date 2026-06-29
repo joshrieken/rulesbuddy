@@ -12,7 +12,7 @@ defmodule RuleMaven.Workers.SuggestionsWorker do
     max_attempts: 3,
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
-  alias RuleMaven.{Games, Settings}
+  alias RuleMaven.{Games, Jobs, Settings}
 
   def topic(game_id), do: "suggestions:#{game_id}"
 
@@ -26,9 +26,14 @@ defmodule RuleMaven.Workers.SuggestionsWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
     text = Games.document_full_text(game)
+
+    run =
+      Jobs.start_run("suggestions", {"game", game_id}, "Suggested questions — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     already_asked =
       game
@@ -39,10 +44,12 @@ defmodule RuleMaven.Workers.SuggestionsWorker do
     case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
       {:ok, qs} ->
         Settings.put("suggestions_#{game_id}", Jason.encode!(qs))
+        Jobs.finish_run(run, "done", "#{length(qs)} suggestions.")
         Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:suggestions_ready, qs})
         :ok
 
       {:error, reason} ->
+        Jobs.finish_run(run, "failed", reason)
         {:error, reason}
     end
   end

@@ -19,7 +19,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
     ]
 
   import Ecto.Query
-  alias RuleMaven.{Games, Settings, RulebookDownloader}
+  alias RuleMaven.{Games, Jobs, Settings, RulebookDownloader}
 
   @worker "RuleMaven.Workers.DownloadWorker"
   @active_states ~w(available scheduled executing retryable suspended)
@@ -102,21 +102,21 @@ defmodule RuleMaven.Workers.DownloadWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id} = args}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id} = args}) do
     game = Games.get_game!(game_id)
     label = Map.get(args, "label", "")
 
-    # Fresh log per run — an Oban restart re-runs perform from the top, so the
-    # log starts clean and reflects the actual (re)attempt.
-    Games.clear_ingest_log(game_id)
-    log_line(game_id, "Starting…", "info")
+    # One run per attempt — an Oban restart re-runs perform from the top and
+    # opens a fresh run, so the panel reflects the actual (re)attempt.
+    run = Jobs.start_run("download", {"game", game_id}, game.name, oban_job_id: oban_id)
+    Jobs.event(run, "info", "Starting…")
 
     on_progress = fn
       # Detailed per-page / per-step line for the progress log.
       {:log, text, kind} ->
-        log_line(game_id, text, to_string(kind))
+        Jobs.event(run, to_string(kind), text)
 
-      # Coarse stage → drives the banner, and also a log line.
+      # Coarse stage → drives the banner spinner, and also a log line.
       stage ->
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
@@ -124,7 +124,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
           {:download_progress, game_id, stage_label(stage)}
         )
 
-        log_line(game_id, stage_label(stage), "info")
+        Jobs.event(run, "info", stage_label(stage))
     end
 
     result =
@@ -143,7 +143,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
 
     case result do
       {:ok, source} ->
-        log_line(game_id, "Done — saved “#{source.label}”.", "done")
+        Jobs.finish_run(run, "done", "Saved “#{source.label}”.")
 
         Phoenix.PubSub.broadcast(
           RuleMaven.PubSub,
@@ -154,7 +154,7 @@ defmodule RuleMaven.Workers.DownloadWorker do
         :ok
 
       {:error, reason} ->
-        log_line(game_id, "Failed — #{reason}", "error")
+        Jobs.finish_run(run, "failed", "Failed — #{reason}")
         Settings.put("download_error_#{game_id}", reason)
 
         Phoenix.PubSub.broadcast(
@@ -165,13 +165,6 @@ defmodule RuleMaven.Workers.DownloadWorker do
 
         :ok
     end
-  end
-
-  # Persist one log line and ping the form to reload the log from the DB (the
-  # reload keeps refresh/restart and the live view consistent from one source).
-  defp log_line(game_id, text, kind) do
-    Games.log_ingest(game_id, text, kind)
-    Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:ingest_log, game_id})
   end
 
   # Extract a batch of uploaded PDFs in one job. Succeeds if at least one file

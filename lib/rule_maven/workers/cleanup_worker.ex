@@ -20,7 +20,7 @@ defmodule RuleMaven.Workers.CleanupWorker do
       states: [:available, :scheduled, :executing, :retryable, :suspended]
     ]
 
-  alias RuleMaven.Games
+  alias RuleMaven.{Games, Jobs}
 
   # LLM fan-out within a single job process; the writes back to the document are
   # funneled through Enum.each below, so they stay serialized (no embeds race).
@@ -29,11 +29,14 @@ defmodule RuleMaven.Workers.CleanupWorker do
   @valid_levels ~w(light standard aggressive)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"document_id" => doc_id, "game_id" => game_id} = args}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"document_id" => doc_id, "game_id" => game_id} = args}) do
     doc = Games.get_document!(doc_id)
     topic = "game_cleanup:#{game_id}"
     level = parse_level(Map.get(args, "level"))
     mode = Map.get(args, "mode", "raw")
+
+    run =
+      Jobs.start_run("cleanup", {"document", doc_id}, "Clean up — #{doc.label}", oban_job_id: oban_id)
 
     # Which pages to (re)clean and what text to feed the cleaner:
     #   "raw"   — a fresh clean from the original extraction. enqueue_cleanup/3
@@ -49,6 +52,8 @@ defmodule RuleMaven.Workers.CleanupWorker do
     # Resume from the durable counter so a restart continues the count instead of
     # restarting it (capped at total for "again", which reprocesses every page).
     start_done = doc.cleaning_done || 0
+
+    Jobs.event(run, "info", "Cleaning #{length(todo)} of #{total} pages (#{mode}, #{level})…")
 
     # Progress is funneled through this serial Enum.reduce (the async fan-out is
     # above), so the counter increments without races. Each step persists the
@@ -104,6 +109,7 @@ defmodule RuleMaven.Workers.CleanupWorker do
 
     # Clear the durable counter now the run is finished (idle = nil).
     Games.set_cleaning_done(doc_id, nil)
+    Jobs.finish_run(run, "done", "Cleaned + re-chunked #{total} pages.")
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:cleanup_done, doc_id})
     :ok
   end

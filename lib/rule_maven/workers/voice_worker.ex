@@ -15,15 +15,20 @@ defmodule RuleMaven.Workers.VoiceWorker do
       states: [:available, :scheduled, :executing, :retryable, :suspended]
     ]
 
-  alias RuleMaven.{Games, Voices}
+  alias RuleMaven.{Games, Jobs, Voices}
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"question_log_id" => ql_id, "voice" => voice, "game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"question_log_id" => ql_id, "voice" => voice, "game_id" => game_id}}) do
     ql = Games.get_question_log(ql_id)
 
     if ql do
       game = Games.get_game!(game_id)
       canonical = ql.canonical_answer || ql.answer
+
+      run =
+        Jobs.start_run("voice", {"question", ql_id}, "Voice “#{voice}” — #{game.name}",
+          oban_job_id: oban_id
+        )
 
       case Voices.restyle(ql_id, voice, canonical, game.name) do
         {:ok, content} ->
@@ -33,6 +38,7 @@ defmodule RuleMaven.Workers.VoiceWorker do
             {:voice_ready, ql_id, voice, content}
           )
 
+          Jobs.finish_run(run, "done", "Restyled as “#{voice}”.")
           :ok
 
         {:error, reason} ->
@@ -42,6 +48,7 @@ defmodule RuleMaven.Workers.VoiceWorker do
             {:voice_failed, ql_id, voice}
           )
 
+          Jobs.finish_run(run, "failed", inspect(reason))
           {:error, reason}
       end
     else

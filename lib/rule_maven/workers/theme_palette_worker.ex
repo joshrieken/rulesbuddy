@@ -16,7 +16,7 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
   import Ecto.Query
-  alias RuleMaven.{Games, LLM, ThemePalette}
+  alias RuleMaven.{Games, Jobs, LLM, ThemePalette}
 
   @worker "RuleMaven.Workers.ThemePaletteWorker"
   @active_states ~w(available scheduled executing retryable)
@@ -34,8 +34,13 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
+
+    run =
+      Jobs.start_run("theme_palette", {"game", game_id}, "Theme palette — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     status =
       case build_palette(game) do
@@ -46,17 +51,27 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
           end
 
         :skip ->
-          :ok
+          :skip
 
         {:error, reason} ->
           {:error, reason}
       end
 
-    Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:theme_palette, game_id, status})
+    case status do
+      :ok -> Jobs.finish_run(run, "done", "Palette generated.")
+      :skip -> Jobs.finish_run(run, "done", "Skipped — no cover image.")
+      {:error, reason} -> Jobs.finish_run(run, "failed", inspect(reason))
+    end
+
+    Phoenix.PubSub.broadcast(
+      RuleMaven.PubSub,
+      topic(game_id),
+      {:theme_palette, game_id, if(status == :skip, do: :ok, else: status)}
+    )
 
     case status do
-      :ok -> :ok
       {:error, reason} -> {:error, reason}
+      _ -> :ok
     end
   end
 

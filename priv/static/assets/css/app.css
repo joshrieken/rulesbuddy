@@ -2690,3 +2690,109 @@ body:has([data-phx-main].phx-connected)::after {
   .header-title { font-size: 0.95rem; }
   .header { padding: 0 0.75rem; }
 }
+
+/* ── Admin background-job panel (DevTools-style docked) ───────────────────── */
+.jobpanel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+  font-size: 0.78rem;
+  background: var(--bg-subtle, #f6f6f8);
+  border-top: 1px solid var(--border, #ddd);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+}
+.jobpanel-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-secondary, #555);
+  font: inherit;
+  font-weight: 600;
+}
+.jobpanel-bar:hover { background: var(--bg-hover, rgba(0, 0, 0, 0.03)); }
+.jobpanel-bar-title { flex: 0 0 auto; }
+.jobpanel-badge {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.45rem;
+  border-radius: 0.7rem;
+  background: var(--accent, #4a6cf7);
+  color: var(--accent-text, #fff);
+}
+.jobpanel-bar-toggle { margin-left: auto; color: var(--text-muted, #999); }
+
+.jobpanel-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 32%) 1fr;
+  height: 16rem;
+  border-top: 1px solid var(--border, #ddd);
+}
+.jobpanel-list {
+  overflow: auto;
+  border-right: 1px solid var(--border, #ddd);
+  background: var(--bg, #fff);
+}
+.jobpanel-run {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.7rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.05));
+  cursor: pointer;
+  color: var(--text, #222);
+  font: inherit;
+}
+.jobpanel-run:hover { background: var(--bg-hover, rgba(0, 0, 0, 0.03)); }
+.jobpanel-run.is-selected { background: var(--bg-active, rgba(74, 108, 247, 0.1)); }
+.jobpanel-dot {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--text-muted, #999);
+}
+.jobpanel-dot.is-running { background: var(--amber-text, #d4a017); animation: jobpanel-pulse 1.2s ease-in-out infinite; }
+.jobpanel-dot.is-done { background: var(--green, #2e7d32); }
+.jobpanel-dot.is-failed { background: var(--red, #c0392b); }
+@keyframes jobpanel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.jobpanel-run-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.jobpanel-run-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jobpanel-run-meta { font-size: 0.68rem; color: var(--text-muted, #999); }
+.jobpanel-state {
+  flex: 0 0 auto;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted, #999);
+}
+.jobpanel-state.is-running { color: var(--amber-text, #d4a017); }
+.jobpanel-state.is-done { color: var(--green, #2e7d32); }
+.jobpanel-state.is-failed { color: var(--red, #c0392b); }
+
+.jobpanel-detail { overflow: auto; background: var(--bg, #fff); }
+.jobpanel-events {
+  padding: 0.4rem 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.jobpanel-event { display: flex; gap: 0.5rem; }
+.jobpanel-event-time { flex: 0 0 auto; color: var(--text-muted, #999); }
+.jobpanel-empty { padding: 0.9rem; color: var(--text-muted, #999); }

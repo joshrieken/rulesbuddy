@@ -9,7 +9,7 @@ defmodule RuleMaven.Workers.CategoriesWorker do
     max_attempts: 3,
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
-  alias RuleMaven.{Games, Settings}
+  alias RuleMaven.{Games, Jobs, Settings}
 
   def topic(game_id), do: "categories:#{game_id}"
 
@@ -23,9 +23,14 @@ defmodule RuleMaven.Workers.CategoriesWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
     text = Games.document_full_text(game)
+
+    run =
+      Jobs.start_run("categories", {"game", game_id}, "Categories — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     case RuleMaven.LLM.generate_categories(game.name, text) do
       {:ok, cats} ->
@@ -43,8 +48,11 @@ defmodule RuleMaven.Workers.CategoriesWorker do
           broadcast(game_id, {:categories_ready, cats})
         end
 
-      {:error, _} ->
+        Jobs.finish_run(run, "done", "#{length(cats)} categories suggested.")
+
+      {:error, reason} ->
         broadcast(game_id, {:categories_ready, []})
+        Jobs.finish_run(run, "failed", inspect(reason))
     end
 
     :ok

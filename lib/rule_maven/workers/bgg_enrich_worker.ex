@@ -12,7 +12,7 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
   import Ecto.Query
-  alias RuleMaven.Games
+  alias RuleMaven.{Games, Jobs}
 
   def topic(game_id), do: "bgg:#{game_id}"
 
@@ -32,8 +32,13 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
+
+    run =
+      Jobs.start_run("bgg_enrich", {"game", game_id}, "BGG enrich — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     status =
       case RuleMaven.BGG.enrich_game(game, force: true) do
@@ -45,6 +50,11 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
         {:error, reason} ->
           {:error, reason}
       end
+
+    case status do
+      :ok -> Jobs.finish_run(run, "done", "Enriched from BGG.")
+      {:error, reason} -> Jobs.finish_run(run, "failed", inspect(reason))
+    end
 
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:bgg_enriched, game_id, status})
 

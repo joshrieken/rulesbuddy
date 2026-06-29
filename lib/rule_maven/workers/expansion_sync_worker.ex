@@ -13,7 +13,7 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
     max_attempts: 3,
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
-  alias RuleMaven.{Games, Settings}
+  alias RuleMaven.{Games, Jobs, Settings}
 
   def topic(game_id), do: "expansion_sync:#{game_id}"
   def key(game_id), do: "exp_sync:#{game_id}"
@@ -28,8 +28,13 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
+
+    run =
+      Jobs.start_run("expansion_sync", {"game", game_id}, "Expansion sync — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     # Discover + link this game's expansions from BGG first, so freshly-linked
     # catalog rows are included in the detail refresh below. Use the cached BGG
@@ -45,6 +50,7 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
     total = length(expansions)
     counter = :counters.new(1, [:atomics])
 
+    Jobs.event(run, "info", "Re-syncing #{total} expansions from BGG…")
     Settings.put(key(game_id), "0/#{total}")
 
     expansions
@@ -66,6 +72,7 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
     |> Stream.run()
 
     Settings.delete(key(game_id))
+    Jobs.finish_run(run, "done", "Synced #{total} expansions.")
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:expansion_sync_done, game_id})
     :ok
   end

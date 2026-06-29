@@ -17,8 +17,6 @@ defmodule RuleMaven.Games do
   alias RuleMaven.Games.UserCollection
   alias RuleMaven.Games.UserFavorite
   alias RuleMaven.Games.SupportRequest
-  alias RuleMaven.Games.IngestLog
-  alias RuleMaven.Games.ReextractLog
   alias Oban
 
   NimbleCSV.define(RuleMaven.Games.RankCSV, separator: ",", escape: "\"")
@@ -1030,69 +1028,6 @@ defmodule RuleMaven.Games do
     updated
   end
 
-  @doc """
-  Appends one line to a game's ingest progress log. Best-effort — a logging
-  failure must never break extraction. `kind` ∈ "info" | "page" | "warn" |
-  "done" | "error".
-  """
-  def log_ingest(game_id, text, kind \\ "info") do
-    %IngestLog{}
-    |> Ecto.Changeset.change(game_id: game_id, text: text, kind: kind)
-    |> Repo.insert()
-
-    :ok
-  rescue
-    e ->
-      require Logger
-      Logger.debug("ingest log write failed (game #{game_id}): #{inspect(e)}")
-      :ok
-  end
-
-  @doc "All ingest-log lines for a game in insertion order (capped at `limit`)."
-  def ingest_log(game_id, limit \\ 500) do
-    from(l in IngestLog, where: l.game_id == ^game_id, order_by: [asc: l.id], limit: ^limit)
-    |> Repo.all()
-  end
-
-  @doc "Clears a game's ingest log (called at the start of each ingest run)."
-  def clear_ingest_log(game_id) do
-    from(l in IngestLog, where: l.game_id == ^game_id) |> Repo.delete_all()
-    :ok
-  end
-
-  @doc """
-  Appends one line to a source document's re-extraction log. Best-effort — a
-  logging failure must never break the re-extraction. `kind` ∈ "info" | "warn" |
-  "done" | "error".
-  """
-  def log_reextract(document_id, text, kind \\ "info") do
-    %ReextractLog{}
-    |> Ecto.Changeset.change(document_id: document_id, text: text, kind: kind)
-    |> Repo.insert()
-
-    :ok
-  rescue
-    e ->
-      require Logger
-      Logger.debug("reextract log write failed (doc #{document_id}): #{inspect(e)}")
-      :ok
-  end
-
-  @doc "All re-extraction log lines for a source document in insertion order."
-  def reextract_log(document_id, limit \\ 500) do
-    from(l in ReextractLog,
-      where: l.document_id == ^document_id,
-      order_by: [asc: l.id],
-      limit: ^limit
-    )
-    |> Repo.all()
-  end
-
-  @doc "Clears a document's re-extraction log (called at the start of each run)."
-  def clear_reextract_log(document_id) do
-    from(l in ReextractLog, where: l.document_id == ^document_id) |> Repo.delete_all()
-    :ok
-  end
 
   # Confidence at/below this → the extraction gate wasn't sure about the page;
   # surface it for human review. Picks up critic-residual pages (0.5) but not

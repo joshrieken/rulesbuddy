@@ -14,7 +14,7 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
   import Ecto.Query
-  alias RuleMaven.{Games, Settings}
+  alias RuleMaven.{Games, Jobs, Settings}
 
   @worker "RuleMaven.Workers.DidYouKnowWorker"
   @active_states ~w(available scheduled executing retryable suspended)
@@ -41,9 +41,14 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id}}) do
     game = Games.get_game!(game_id)
     text = Games.document_full_text(game)
+
+    run =
+      Jobs.start_run("did_you_know", {"game", game_id}, "Did-you-know facts — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     case RuleMaven.LLM.generate_did_you_know(game.name, text) do
       {:ok, facts} when facts != [] ->
@@ -55,13 +60,16 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
           {:did_you_know_ready, facts}
         )
 
+        Jobs.finish_run(run, "done", "#{length(facts)} facts.")
         :ok
 
       {:ok, []} ->
         # Nothing worth surfacing (thin rulebook); leave the chunk fallback in place.
+        Jobs.finish_run(run, "done", "No facts worth surfacing.")
         :ok
 
       {:error, reason} ->
+        Jobs.finish_run(run, "failed", inspect(reason))
         {:error, reason}
     end
   end

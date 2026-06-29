@@ -508,6 +508,33 @@ Hooks.VoiceDefault = {
   }
 };
 
+// Admin background-job panel: persist the open/closed state across refreshes.
+// Restores it on connect (pushes "restore"); the toggle is server-side, so we
+// mirror the resulting data-open attribute back into localStorage on update.
+Hooks.JobPanel = {
+  key: "rm:jobpanel_open",
+  mounted() {
+    let open = false;
+    try {
+      open = localStorage.getItem(this.key) === "1";
+    } catch (_e) {
+      open = false;
+    }
+    if (open) {
+      this.pushEvent("restore", { open: true });
+    }
+  },
+  updated() {
+    try {
+      if (this.el.dataset.open === "true") {
+        localStorage.setItem(this.key, "1");
+      } else {
+        localStorage.removeItem(this.key);
+      }
+    } catch (_e) {}
+  }
+};
+
 // Keyboard paging for the rulebook reader, shared by the inline source editors
 // and the expanded modal. ← / h previous page, → / l next, f opens the expanded
 // reader (inline only). Ignored while typing in a field so editing isn't

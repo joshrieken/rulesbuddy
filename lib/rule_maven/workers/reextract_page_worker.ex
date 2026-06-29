@@ -19,7 +19,7 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
 
   import Ecto.Query
   require Logger
-  alias RuleMaven.{Games, RulebookDownloader}
+  alias RuleMaven.{Games, Jobs, RulebookDownloader}
 
   @worker "RuleMaven.Workers.ReextractPageWorker"
   @active_states ~w(available scheduled executing retryable suspended)
@@ -65,18 +65,18 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
   end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"document_id" => doc_id, "page_index" => index}}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"document_id" => doc_id, "page_index" => index}}) do
     doc = Games.get_document!(doc_id)
     topic = "game_cleanup:#{doc.game_id}"
 
-    # Durable progress log (mirrors the upload log): persist each stage line to
-    # the DB so it survives a refresh/restart, then broadcast a refresh signal so
-    # the form reloads it. The batch's first job clears the doc's log at the UI
-    # trigger, not here — clearing per job would wipe earlier pages' lines.
-    log = fn text, kind ->
-      Games.log_reextract(doc_id, text, kind)
-      Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic, {:reextract_log, doc_id})
-    end
+    # One run per page (each page is its own Oban job), so the panel lists them
+    # separately. Durable, so a refresh/restart keeps the lines.
+    run =
+      Jobs.start_run("reextract", {"document", doc_id}, "#{doc.label} — page #{index}",
+        oban_job_id: oban_id
+      )
+
+    log = fn text, kind -> Jobs.event(run, kind, text) end
 
     # Always broadcast the outcome (success, failure, or raise) once the topic is
     # known, so the UI never gets stuck on "Re-extracting…" and can tell the user
@@ -117,6 +117,11 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
           log.("Failed — internal error.", "error")
           {:error, "internal error"}
       end
+
+    case outcome do
+      {:error, reason} -> Jobs.finish_run(run, "failed", "Page #{index}: #{reason}")
+      _ -> Jobs.finish_run(run, "done", "Page #{index} re-extracted.")
+    end
 
     Phoenix.PubSub.broadcast(
       RuleMaven.PubSub,

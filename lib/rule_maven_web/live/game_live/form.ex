@@ -17,10 +17,6 @@ defmodule RuleMavenWeb.GameLive.Form do
         # Source ids with a single-page re-extraction job in flight (=> true), so
         # the review badge can show a busy state until {:reextract_done} arrives.
         reextracting: %{},
-        # Transient per-source re-extraction progress log (sid => [%{inserted_at,
-        # kind, text}]), streamed from the worker. Like the upload log, but kept in
-        # memory since a re-extract is short — the busy flag itself is durable.
-        reextract_log: %{},
         game_changeset: nil,
         download_url: "",
         download_label: "",
@@ -28,8 +24,6 @@ defmodule RuleMavenWeb.GameLive.Form do
         download_stage: nil,
         download_error: nil,
         download_ok: false,
-        # Durable, detailed extraction progress log (rebuilt from the DB on mount).
-        ingest_log: [],
         confirm_delete_source_id: nil,
         searching: false,
         bgg_results: [],
@@ -246,18 +240,14 @@ defmodule RuleMavenWeb.GameLive.Form do
           socket =
             assign(socket,
               cleaning: seed_cleaning(entries),
-              reextracting: seed_reextracting(entries),
-              reextract_log: seed_reextract_log(entries)
+              reextracting: seed_reextracting(entries)
             )
 
           # Follow an in-flight download (durable Oban job) across a remount.
           socket =
             assign(socket,
               downloading: RuleMaven.Workers.DownloadWorker.running?(game.id),
-              download_error: Settings.get("download_error_#{game.id}"),
-              # Rebuild the detailed extraction log from the DB so it survives a
-              # refresh and shows in full after a server restart re-runs the job.
-              ingest_log: Games.ingest_log(game.id)
+              download_error: Settings.get("download_error_#{game.id}")
             )
 
           # Tab restore: an explicit ?tab= wins (in-app navigation), else the
@@ -1509,16 +1499,6 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
   end
 
-  # A new extraction log line was persisted — reload the log from the DB so the
-  # panel stays consistent across refresh/restart (single source of truth).
-  def handle_info({:ingest_log, game_id}, socket) do
-    if socket.assigns.game && socket.assigns.game.id == game_id do
-      {:noreply, assign(socket, ingest_log: Games.ingest_log(game_id))}
-    else
-      {:noreply, socket}
-    end
-  end
-
   @impl true
   def handle_info({:refresh_suggestions, game}, socket) do
     RuleMaven.Workers.SuggestionsWorker.enqueue(game.id)
@@ -1600,13 +1580,6 @@ defmodule RuleMavenWeb.GameLive.Form do
      socket
      |> assign(source_entries: entries, cleaning: Map.delete(socket.assigns.cleaning, sid))
      |> put_flash(:info, "Cleaned up the rulebook text.")}
-  end
-
-  # A re-extraction stage line was persisted — reload that source's durable log
-  # from the DB so the panel stays consistent across refresh/restart.
-  def handle_info({:reextract_log, sid}, socket) do
-    log = Map.put(socket.assigns.reextract_log, sid, Games.reextract_log(sid))
-    {:noreply, assign(socket, reextract_log: log)}
   end
 
   # One page's re-extraction finished — reload that source from the DB (the worker
@@ -1947,19 +1920,11 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   defp reload_entry(entry), do: entry
 
-  # Mark a source busy for `n` in-flight re-extraction jobs and (re)start its
-  # durable progress log: clear the doc's old lines once at the trigger (the jobs
-  # only append), seed a queued line, then load the log from the DB so the panel
-  # is populated. {:reextract_done} counts each job back down to zero.
+  # Mark a source busy for `n` in-flight re-extraction jobs. Per-page progress now
+  # streams to the admin job panel (each page is its own run); the form only
+  # tracks the busy count, which {:reextract_done} counts back down to zero.
   defp start_reextract(socket, sid, n) do
-    queued = if n > 1, do: "Queued #{n} flagged pages…", else: "Queued…"
-    Games.clear_reextract_log(sid)
-    Games.log_reextract(sid, queued, "info")
-
-    assign(socket,
-      reextracting: Map.put(socket.assigns.reextracting, sid, n),
-      reextract_log: Map.put(socket.assigns.reextract_log, sid, Games.reextract_log(sid))
-    )
+    assign(socket, reextracting: Map.put(socket.assigns.reextracting, sid, n))
   end
 
   # Honest re-extract feedback: the strong re-read can fail, or succeed but still
@@ -2146,18 +2111,6 @@ defmodule RuleMavenWeb.GameLive.Form do
         n > 0,
         into: %{},
         do: {sid, n}
-  end
-
-  # Rebuild the durable re-extraction log per source from the DB, so the progress
-  # panel survives a refresh/restart (the log persists until the next run clears
-  # it). Only sources with lines are included.
-  defp seed_reextract_log(entries) do
-    for %{source_id: sid} <- entries,
-        not is_nil(sid),
-        lines = Games.reextract_log(sid),
-        lines != [],
-        into: %{},
-        do: {sid, lines}
   end
 
   defp parse_id(id_str) do
@@ -2395,67 +2348,6 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   defp reextractable_source?(_), do: false
-
-  # Detailed, durable extraction progress log for an incoming document. Rebuilt
-  # from the DB, so it survives refresh and shows the full run after a restart.
-  # The OpenWhileRunning hook keeps the panel open whenever `running` is true —
-  # on mount and on every update — so a live trigger, a refresh, or a connect
-  # mid-run all show progress (the server `open` attribute alone isn't reliably
-  # re-applied after the LiveView patches the DOM). The user can collapse it
-  # once the run finishes.
-  attr :id, :string, required: true
-  attr :log, :list, required: true
-  attr :running, :boolean, default: false
-
-  defp ingest_log_panel(assigns) do
-    ~H"""
-    <%!-- While running, render the log as a plain always-open block so it's
-          guaranteed visible (no collapsible <details>, which fights LiveView DOM
-          patches over its open state). Once finished, switch to a collapsed
-          <details> the user can expand to review. --%>
-    <div
-      :if={@log != [] and @running}
-      style="margin-top:0.8rem;border:1px solid var(--border);border-radius:0.4rem;background:var(--bg-subtle)"
-    >
-      <div style="padding:0.5rem 0.7rem;font-size:0.78rem;font-weight:600;color:var(--text-secondary)">
-        Processing log
-        <span style="font-weight:400;color:var(--text-muted)">({length(@log)} steps)</span>
-      </div>
-      <.log_lines log={@log} />
-    </div>
-
-    <details
-      :if={@log != [] and not @running}
-      id={@id}
-      style="margin-top:0.8rem;border:1px solid var(--border);border-radius:0.4rem;background:var(--bg-subtle)"
-    >
-      <summary style="cursor:pointer;padding:0.5rem 0.7rem;font-size:0.78rem;font-weight:600;color:var(--text-secondary)">
-        Processing log
-        <span style="font-weight:400;color:var(--text-muted)">({length(@log)} steps)</span>
-      </summary>
-      <.log_lines log={@log} />
-    </details>
-    """
-  end
-
-  attr :log, :list, required: true
-
-  defp log_lines(assigns) do
-    ~H"""
-    <div style="max-height:14rem;overflow:auto;padding:0.4rem 0.7rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.72rem;line-height:1.55">
-      <%!-- Newest line first, so live progress shows at the top without scrolling. --%>
-      <div :for={line <- Enum.reverse(@log)} style={ingest_line_style(line.kind)}>
-        <span style="color:var(--text-muted)">{Calendar.strftime(line.inserted_at, "%H:%M:%S")}</span>
-        {line.text}
-      </div>
-    </div>
-    """
-  end
-
-  defp ingest_line_style("error"), do: "color:var(--red, #c0392b)"
-  defp ingest_line_style("warn"), do: "color:var(--amber-text, #b8860b)"
-  defp ingest_line_style("done"), do: "color:var(--green, #2e7d32);font-weight:600"
-  defp ingest_line_style(_), do: "color:var(--text)"
 
   defp review_flag(assigns) do
     assigns =
@@ -2980,7 +2872,6 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%= if @download_error do %>
             <p class="text-sm text-red-500 mt-2">{@download_error}</p>
           <% end %>
-          <.ingest_log_panel id="ingestlog-download" log={@ingest_log} running={@downloading} />
         </div>
 
         <.form
@@ -3347,11 +3238,6 @@ defmodule RuleMavenWeb.GameLive.Form do
                       @keyframes rm-spin { to { transform: rotate(360deg); } }
                     </style>
                   </div>
-                  <.ingest_log_panel
-                    id={"reextlog-#{entry.source_id}"}
-                    log={Map.get(@reextract_log, entry.source_id, [])}
-                    running={regenerating?}
-                  />
                   <%!-- Edits feed socket state via edit_page (layer encoded in the
                         name), so this stays in sync with the expanded reader. --%>
                   <textarea
@@ -3562,11 +3448,6 @@ defmodule RuleMavenWeb.GameLive.Form do
                             cur={cur}
                             can_reextract={reextractable_source?(reader)}
                             busy={regenerating?}
-                          />
-                          <.ingest_log_panel
-                            id={"reextlog-modal-#{reader.source_id}"}
-                            log={Map.get(@reextract_log, reader.source_id, [])}
-                            running={regenerating?}
                           />
                           <textarea
                             name={"pgm_#{reader.id}_#{cur}_#{layer_field(layer)}"}

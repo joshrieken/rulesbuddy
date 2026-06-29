@@ -198,6 +198,16 @@
           {@inner_content}
         </div>
       </main>
+
+      <%!-- Persistent admin-only background-job panel. Rendered in the root
+            layout (not the app layout) so it stays mounted across live
+            navigation; gated to admins. --%>
+      <% panel_user =
+        assigns[:current_user] || (assigns[:conn] && assigns[:conn].assigns[:current_user]) ||
+          (assigns[:conn] && RuleMavenWeb.Layouts.current_user(assigns[:conn])) %>
+      <%= if assigns[:conn] && panel_user && RuleMaven.Users.can?(panel_user, :admin) do %>
+        {live_render(@conn, RuleMavenWeb.AdminLive.JobPanel, id: "job-panel")}
+      <% end %>
     </div>
 
     <script>

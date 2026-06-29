@@ -14,16 +14,21 @@ defmodule RuleMaven.Workers.CheatSheetGenWorker do
     max_attempts: 3,
     unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
 
-  alias RuleMaven.{Games, Settings, CheatSheet}
+  alias RuleMaven.{Games, Jobs, Settings, CheatSheet}
 
   def topic(game_id), do: "cheat:#{game_id}"
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"game_id" => game_id} = args}) do
+  def perform(%Oban.Job{id: oban_id, args: %{"game_id" => game_id} = args}) do
     game = Games.get_game!(game_id)
     level = Map.get(args, "level", "compact")
     expansion_ids = Map.get(args, "expansion_ids", [])
     started = CheatSheet.stored_started(game_id) || System.system_time(:second)
+
+    run =
+      Jobs.start_run("cheat_sheet", {"game", game_id}, "Cheat sheet — #{game.name}",
+        oban_job_id: oban_id
+      )
 
     result =
       try do
@@ -49,6 +54,11 @@ defmodule RuleMaven.Workers.CheatSheetGenWorker do
       end
 
       Settings.put("cheat_elapsed_#{game_id}", elapsed)
+    end
+
+    case result do
+      {:ok, _} -> Jobs.finish_run(run, "done", "Generated in #{elapsed}s.")
+      {:error, reason} -> Jobs.finish_run(run, "failed", reason)
     end
 
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:cheat_done, game_id})
