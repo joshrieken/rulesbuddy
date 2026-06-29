@@ -2266,12 +2266,13 @@ defmodule RuleMavenWeb.GameLive.Form do
   # Detailed, durable extraction progress log for an incoming document. Rebuilt
   # from the DB, so it survives refresh and shows the full run after a restart.
   attr :log, :list, required: true
+  attr :running, :boolean, default: false
 
   defp ingest_log_panel(assigns) do
     ~H"""
     <details
       :if={@log != []}
-      open
+      open={@running}
       style="margin-top:0.8rem;border:1px solid var(--border);border-radius:0.4rem;background:var(--bg-subtle)"
     >
       <summary style="cursor:pointer;padding:0.5rem 0.7rem;font-size:0.78rem;font-weight:600;color:var(--text-secondary)">
@@ -2768,7 +2769,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%= if @download_error do %>
             <p class="text-sm text-red-500 mt-2">{@download_error}</p>
           <% end %>
-          <.ingest_log_panel log={@ingest_log} />
+          <.ingest_log_panel log={@ingest_log} running={@downloading} />
         </div>
 
         <.form
