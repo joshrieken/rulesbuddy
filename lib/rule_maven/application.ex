@@ -13,6 +13,7 @@ defmodule RuleMaven.Application do
       # Local/Test adapters used in dev/test.
       {Finch, name: RuleMaven.Finch},
       RuleMaven.Auth.LoginThrottle,
+      RuleMaven.LLM.NormalizeCache,
       RuleMavenWeb.Endpoint
     ]
 

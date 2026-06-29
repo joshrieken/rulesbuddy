@@ -35,9 +35,18 @@ defmodule RuleMaven.LLM do
   def ask(game, question, expansion_ids \\ [], recent_context \\ [], opts \\ []) do
     skip_pool = Keyword.get(opts, :skip_pool, false)
 
-    # Step 0: embed the question (used for pool check + logging)
+    # Step 0: normalize the question to a standalone canonical form FIRST, then
+    # drive everything downstream off the cleaned text. Paraphrases and terse
+    # fragments ("snack bar max limit") collapse onto one phrasing, so they share
+    # an embedding — lifting the pool hit rate — and the retrieval + LLM answer
+    # also run on the cleaned question. Falls back to the raw question on error.
+    cleaned = normalize_question(game, question, recent_context)
+    match_text = if cleaned == "", do: question, else: cleaned
+
+    # Embed the cleaned question (used for pool check + stored on the logged row,
+    # so a future paraphrase normalizes to the same form and matches it).
     question_embedding =
-      case RuleMaven.Embed.embed(question) do
+      case RuleMaven.Embed.embed(match_text) do
         {:ok, vec} -> vec
         {:error, _} -> nil
       end
@@ -68,15 +77,16 @@ defmodule RuleMaven.LLM do
            tier: tier,
            verified: tier == :trusted,
            source_question_log_id: row.id,
-           question_embedding: question_embedding
+           question_embedding: question_embedding,
+           cleaned_question: cleaned
          }}
 
       true ->
-        call_llm(game, question, expansion_ids, recent_context, question_embedding)
+        call_llm(game, match_text, expansion_ids, recent_context, question_embedding, cleaned)
     end
   end
 
-  defp call_llm(game, question, expansion_ids, recent_context, question_embedding) do
+  defp call_llm(game, question, expansion_ids, recent_context, question_embedding, cleaned) do
     game_ids = [game.id | expansion_ids]
     # Reuse the embedding already computed in ask/5 — no second embed call.
     retrieval_opts = if question_embedding, do: [embedding: question_embedding], else: []
@@ -110,7 +120,9 @@ defmodule RuleMaven.LLM do
            faq_hit: false,
            followups: llm_result[:followups] || [],
            also_asked: llm_result[:also_asked] || [],
-           cleaned_question: llm_result[:cleaned_question],
+           # Canonical question came from the pre-answer normalize step, not the
+           # answer JSON — the answer schema no longer carries it.
+           cleaned_question: cleaned,
            raw_response: llm_result[:raw_response],
            # Retrieved chunk texts (each prefixed with a [Page N] marker) so the
            # worker can recover the page if the model drops it from the citation.
@@ -120,6 +132,111 @@ defmodule RuleMaven.LLM do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Rewrites a raw user question into a standalone canonical form before it drives
+  the pool lookup, retrieval, and the answer. Paraphrases and terse fragments
+  converge on one phrasing so they share an embedding and hit the same cached
+  answer. Returns the cleaned question, or the original on any error/empty result.
+
+  Uses the cheap cleanup model. Context-free questions are cached per
+  `{game_id, raw}`; followups (which carry `recent_context`) are not pure
+  functions of the raw text, so they skip the cache.
+  """
+  def normalize_question(game, question, recent_context \\ []) do
+    raw = question |> to_string() |> String.trim()
+
+    cond do
+      raw == "" ->
+        raw
+
+      # Followups resolve against the conversation — not cacheable by raw text.
+      recent_context != [] ->
+        do_normalize(game, raw, recent_context)
+
+      true ->
+        key = {game.id, String.downcase(raw)}
+
+        case RuleMaven.LLM.NormalizeCache.get(key) do
+          {:ok, cached} ->
+            cached
+
+          :miss ->
+            cleaned = do_normalize(game, raw, [])
+            RuleMaven.LLM.NormalizeCache.put(key, cleaned)
+            cleaned
+        end
+    end
+  end
+
+  defp do_normalize(game, raw, recent_context) do
+    user =
+      RuleMaven.Prompts.render("normalize_question", %{
+        game_name: game.name,
+        game_kind: RuleMaven.Games.Category.context_noun(game.category),
+        context_block: normalize_context_block(recent_context),
+        question: raw
+      })
+
+    case chat(user, "normalize_question",
+           system: RuleMaven.Prompts.template("normalize_question_system"),
+           max_tokens: 64,
+           model: model(:cleanup),
+           operation: "normalize",
+           game_id: game.id
+         ) do
+      {:ok, text} ->
+        cleaned =
+          text
+          |> to_string()
+          |> String.split("\n", parts: 2)
+          |> hd()
+          |> String.trim()
+          |> strip_wrapping_quotes()
+          |> strip_game_name(game.name)
+          |> String.trim()
+
+        if accept_normalized?(cleaned, raw), do: cleaned, else: raw
+
+      {:error, _} ->
+        raw
+    end
+  end
+
+  # A rewrite is kept only if it's a plausible question (non-empty, not absurdly
+  # long): a model that dumped an answer or refusal here is discarded for the raw.
+  defp accept_normalized?(cleaned, raw) do
+    cleaned != "" and String.length(cleaned) <= 200 and
+      String.length(cleaned) <= max(String.length(raw) * 3, 80)
+  end
+
+  defp normalize_context_block([]), do: ""
+
+  defp normalize_context_block(recent_context) do
+    pairs =
+      Enum.map(recent_context, fn {q, a} -> "Q: #{q}\nA: #{String.slice(a, 0, 200)}" end)
+
+    "\nRECENT CONVERSATION:\n#{Enum.join(pairs, "\n\n")}\n"
+  end
+
+  # Strip a single pair of wrapping quotes the model sometimes adds.
+  defp strip_wrapping_quotes(text) do
+    case Regex.run(~r/^["'“”](.*)["'“”]$/u, text) do
+      [_, inner] -> inner
+      _ -> text
+    end
+  end
+
+  # Drop the game name if the model echoed it despite the instruction not to,
+  # so the canonical form stays game-agnostic (matches the answer-schema rule).
+  defp strip_game_name(text, nil), do: text
+
+  defp strip_game_name(text, game_name) do
+    text
+    |> String.replace(~r/\b#{Regex.escape(game_name)}\b/i, "")
+    |> String.replace(~r/\s{2,}/, " ")
+    |> String.trim()
   end
 
   # Cleanup prompts are editable templates (Light/Standard/Aggressive). See
@@ -532,7 +649,6 @@ defmodule RuleMaven.LLM do
           cited_page: coerce_page(map["page"]),
           verdict: coerce_verdict(map["verdict"]),
           followups: string_list(map["followups"]),
-          cleaned_question: nilable_string(map["cleaned_question"]),
           also_asked: string_list(map["also_asked"])
         }
 
@@ -543,7 +659,6 @@ defmodule RuleMaven.LLM do
           cited_page: nil,
           verdict: nil,
           followups: [],
-          cleaned_question: nil,
           also_asked: []
         }
     end

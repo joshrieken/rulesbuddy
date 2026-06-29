@@ -53,7 +53,6 @@ defmodule RuleMaven.Prompts do
 
   OUTPUT — respond with ONE json object (a single JSON object) and nothing else (no markdown fences, no prose around it). Schema:
   {
-    "cleaned_question": string,  // the user's question rephrased as a standalone question: fix pronouns, add missing context, under 12 words, NEVER include the game name. WRONG: "How do turns work in Catan?" RIGHT: "How do turns work?"
     "answer": string,            // the answer in plain English. Use markdown (**bold**, bullet lists). Concise: 1-3 sentences plus optional list. On refusal this is exactly: "The rulebook does not cover this question."
     "verdict": string,           // classify the answer for a verdict stamp. Exactly one of: "legal" (the asked action/move IS permitted by the rules), "illegal" (the asked action/move is NOT permitted / forbidden), "silent" (use ONLY when refusing — rulebook does not cover it), "info" (a factual/explanatory answer that is not a yes/no legality question, e.g. "how does scoring work"). If the question is not about whether something is allowed, use "info". On refusal always "silent".
     "citation": string,          // verbatim supporting prose — follow CITATION RULES above exactly. Empty string only when refusing.
@@ -65,6 +64,42 @@ defmodule RuleMaven.Prompts do
 
   RULEBOOK:
   {{rulebook}}
+  """
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Question normalize. Runs before the pool lookup + retrieval so paraphrases
+  # and terse fragments ("snack bar max limit") collapse onto one canonical
+  # phrasing — paraphrases then share an embedding and hit the same cached answer.
+  # Vars: game_name, game_kind, context_block, question.
+  # ──────────────────────────────────────────────────────────────────────────
+  @normalize_question_system """
+  You rewrite a board-game player's question into ONE canonical question. The goal is convergence: any two questions that mean the same thing MUST produce identical wording, so paraphrases and terse fragments map to the same cached answer.
+
+  Rules:
+  1. Expand terse keyword fragments into a complete grammatical question.
+  2. Use impersonal third person — never "I", "me", "my", "you", "your", or "a player". Phrase as "What is…", "How many…", "Can a token…".
+  3. Strip filler, politeness, and redundant verbs; keep ONLY the core fact being asked.
+  4. Prefer the simplest canonical phrasing for a concept (e.g. "maximum X" not "the most X someone can have").
+  5. Resolve pronouns using the recent conversation when present.
+  6. Under 12 words. NEVER include the game's name.
+  7. Preserve the meaning exactly — do not answer, narrow, or broaden it.
+
+  Output ONLY the canonical question — no quotes, no preamble, no explanation.
+
+  Examples:
+  - "How many cards can I hold in my hand?" -> "What is the maximum hand size?"
+  - "hand size limit" -> "What is the maximum hand size?"
+  - "is there a cap on how many cards you keep?" -> "What is the maximum hand size?"
+  - "what do you do at the start of your turn?" -> "What happens at the start of a turn?"
+  - "max coins" -> "What is the maximum number of coins?"
+  """
+
+  @normalize_question """
+  Game: {{game_name}} (a {{game_kind}}).
+  {{context_block}}
+  Rewrite this player's question as a standalone canonical question (resolve pronouns, add missing context, under 12 words, no game name):
+
+  {{question}}
   """
 
   # Shared cleanup fragments, inlined into each level's default so each level is a
@@ -567,6 +602,24 @@ defmodule RuleMaven.Prompts do
         "Drives every rulebook answer. Strict JSON schema — keep the schema block intact or answering breaks.",
       vars: ~w(game_name game_kind context_block rulebook),
       default: @answer
+    },
+    %{
+      key: "normalize_question_system",
+      group: "Q&A",
+      label: "Question normalize — system",
+      description:
+        "System primer for the pre-answer question rewrite that drives cache matching.",
+      vars: [],
+      default: @normalize_question_system
+    },
+    %{
+      key: "normalize_question",
+      group: "Q&A",
+      label: "Question normalize — prompt",
+      description:
+        "Rewrites a raw question into a standalone canonical form before the pool lookup, so paraphrases share an embedding and hit the cache.",
+      vars: ~w(game_name game_kind context_block question),
+      default: @normalize_question
     },
     %{
       key: "cleanup_light",
