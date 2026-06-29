@@ -7,7 +7,10 @@ defmodule RuleMaven.Workers.SetupChecklistWorker do
   use Oban.Worker,
     queue: :llm,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   alias RuleMaven.{Games, Jobs, Settings, Setup}
 
@@ -33,7 +36,7 @@ defmodule RuleMaven.Workers.SetupChecklistWorker do
       {:ok, json} ->
         Settings.put("setup_status_#{game_id}", "done")
         Settings.put("setup_content_#{game_id}", json)
-        Jobs.finish_run(run, "done", "Checklist generated.")
+        Jobs.finish_run(run, "done", "Checklist generated (#{setup_step_count(json)} steps).")
 
       {:error, reason} ->
         Settings.put("setup_status_#{game_id}", "error")
@@ -43,5 +46,13 @@ defmodule RuleMaven.Workers.SetupChecklistWorker do
 
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, Setup.topic(game_id), {:setup_done, game_id})
     :ok
+  end
+
+  # Count the ordered steps in the generated checklist JSON for the job summary.
+  defp setup_step_count(json) do
+    case Jason.decode(json) do
+      {:ok, %{"steps" => steps}} when is_list(steps) -> length(steps)
+      _ -> 0
+    end
   end
 end

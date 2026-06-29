@@ -9,7 +9,10 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
   use Oban.Worker,
     queue: :expansion,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   import Ecto.Query
   alias RuleMaven.{Games, Jobs}
@@ -47,16 +50,25 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
         {:ok, updated} ->
           # Cover may have just landed — derive the per-game theme (durable, async).
           RuleMaven.Workers.ThemePaletteWorker.enqueue(updated)
-          :ok
+          {:ok, changed_fields(game, updated)}
 
         {:error, reason} ->
           {:error, reason}
       end
 
     case status do
-      :ok -> Jobs.finish_run(run, "done", "Enriched from BGG.")
-      {:error, reason} -> Jobs.finish_run(run, "failed", inspect(reason))
+      {:ok, []} ->
+        Jobs.finish_run(run, "done", "Enriched from BGG — no field changes.")
+
+      {:ok, fields} ->
+        Jobs.finish_run(run, "done", "Enriched from BGG — updated #{Enum.join(fields, ", ")}.")
+
+      {:error, reason} ->
+        Jobs.finish_run(run, "failed", inspect(reason))
     end
+
+    # Collapse the success payload (changed fields) back to :ok for subscribers.
+    status = with {:ok, _} <- status, do: :ok
 
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:bgg_enriched, game_id, status})
 
@@ -64,5 +76,15 @@ defmodule RuleMaven.Workers.BggEnrichWorker do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Names of the BGG-sourced fields whose value actually changed, for the job
+  # summary (so the log says what the enrich did, not just that it ran).
+  @tracked_fields ~w(image_url year_published min_players max_players playing_time bgg_rank category)a
+  defp changed_fields(before, after_) do
+    Enum.filter(@tracked_fields, fn f ->
+      Map.get(before, f) != Map.get(after_, f)
+    end)
+    |> Enum.map(&to_string/1)
   end
 end

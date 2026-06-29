@@ -13,7 +13,10 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   import Ecto.Query
   alias RuleMaven.{Games, Jobs, LLM, ThemePalette}
@@ -48,7 +51,7 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
       case build_palette(game) do
         {:ok, palette} ->
           case Games.update_game(game, %{theme_palette: palette}) do
-            {:ok, _} -> :ok
+            {:ok, _} -> {:ok, palette}
             {:error, reason} -> {:error, reason}
           end
 
@@ -60,21 +63,31 @@ defmodule RuleMaven.Workers.ThemePaletteWorker do
       end
 
     case status do
-      :ok -> Jobs.finish_run(run, "done", "Palette generated.")
-      :skip -> Jobs.finish_run(run, "done", "Skipped — no cover image.")
-      {:error, reason} -> Jobs.finish_run(run, "failed", inspect(reason))
+      {:ok, palette} ->
+        Jobs.finish_run(run, "done", "Palette generated (#{map_size(palette)} colours).")
+
+      :skip ->
+        Jobs.finish_run(run, "done", "Skipped — no cover image.")
+
+      {:error, reason} ->
+        Jobs.finish_run(run, "failed", inspect(reason))
     end
+
+    # Subscribers only care about success vs failure — collapse the success
+    # payload (which now carries the palette for the job summary) back to :ok.
+    result =
+      case status do
+        {:error, reason} -> {:error, reason}
+        _ -> :ok
+      end
 
     Phoenix.PubSub.broadcast(
       RuleMaven.PubSub,
       topic(game_id),
-      {:theme_palette, game_id, if(status == :skip, do: :ok, else: status)}
+      {:theme_palette, game_id, result}
     )
 
-    case status do
-      {:error, reason} -> {:error, reason}
-      _ -> :ok
-    end
+    result
   end
 
   defp build_palette(%{name: name, image_url: url}) when is_binary(url) and url != "" do

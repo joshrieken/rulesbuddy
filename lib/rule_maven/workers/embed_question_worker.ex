@@ -21,6 +21,7 @@ defmodule RuleMaven.Workers.EmbedQuestionWorker do
           from(ql in QuestionLog, where: ql.id == ^q.id),
           set: [question_embedding: Pgvector.new(vector)]
         )
+
         :ok
 
       {:error, reason} ->

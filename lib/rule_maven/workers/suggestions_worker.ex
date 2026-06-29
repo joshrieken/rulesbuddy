@@ -10,7 +10,10 @@ defmodule RuleMaven.Workers.SuggestionsWorker do
   use Oban.Worker,
     queue: :llm,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   alias RuleMaven.{Games, Jobs, Settings}
 
@@ -41,7 +44,11 @@ defmodule RuleMaven.Workers.SuggestionsWorker do
       |> Enum.map(& &1.question)
       |> Enum.uniq()
 
-    Jobs.event(run, :info, "Asking the model for fresh questions (avoiding #{length(already_asked)} already asked)…")
+    Jobs.event(
+      run,
+      :info,
+      "Reading #{String.length(text)} chars of rulebook, avoiding #{length(already_asked)} already-asked questions…"
+    )
 
     case RuleMaven.LLM.suggest_questions(game.name, text, already_asked) do
       {:ok, qs} ->

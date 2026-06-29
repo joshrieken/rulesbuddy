@@ -18,7 +18,10 @@ defmodule RuleMaven.Workers.VoiceWorker do
   alias RuleMaven.{Games, Jobs, Voices}
 
   @impl Oban.Worker
-  def perform(%Oban.Job{id: oban_id, args: %{"question_log_id" => ql_id, "voice" => voice, "game_id" => game_id}}) do
+  def perform(%Oban.Job{
+        id: oban_id,
+        args: %{"question_log_id" => ql_id, "voice" => voice, "game_id" => game_id}
+      }) do
     ql = Games.get_question_log(ql_id)
 
     if ql do
@@ -40,7 +43,12 @@ defmodule RuleMaven.Workers.VoiceWorker do
             {:voice_ready, ql_id, voice, content}
           )
 
-          Jobs.finish_run(run, "done", "Restyled as “#{voice}”.")
+          Jobs.finish_run(
+            run,
+            "done",
+            "Restyled as “#{voice}” (#{String.length(content)} chars)."
+          )
+
           :ok
 
         {:error, reason} ->

@@ -26,7 +26,10 @@ defmodule RuleMaven.Workers.AskWorker do
     # One run per question. High-volume, so the panel hides "ask" by default; the
     # admin can toggle it on. Every terminal branch below closes this run, so it
     # never lingers as "running".
-    run = Jobs.start_run("ask", {"question", question_log_id}, ask_label(question), oban_job_id: oban_id)
+    run =
+      Jobs.start_run("ask", {"question", question_log_id}, ask_label(question),
+        oban_job_id: oban_id
+      )
 
     if RuleMaven.Security.prompt_injection?(question) do
       if ql = get_question_log!(question_log_id) do
@@ -60,7 +63,11 @@ defmodule RuleMaven.Workers.AskWorker do
       Jobs.finish_run(run, "done", "Blocked by security filter.")
       :ok
     else
-      Jobs.event(run, :info, "Answering against the rulebook#{if expansion_ids != [], do: " (+#{length(expansion_ids)} expansion(s))", else: ""}…")
+      Jobs.event(
+        run,
+        :info,
+        "Answering against the rulebook#{if expansion_ids != [], do: " (+#{length(expansion_ids)} expansion(s))", else: ""}…"
+      )
 
       case RuleMaven.LLM.ask(game, question, expansion_ids, recent_context,
              user_id: user_id,
@@ -178,11 +185,19 @@ defmodule RuleMaven.Workers.AskWorker do
                    }}
                 )
 
-                Jobs.finish_run(
-                  run,
-                  "done",
-                  if(refused?, do: "Refused — not in rulebook.", else: "Answered.")
-                )
+                summary =
+                  cond do
+                    refused? ->
+                      "Refused — not in rulebook."
+
+                    pool_hit? ->
+                      "Answered from cache — #{String.length(answer)} chars, page #{cited_page || "—"}."
+
+                    true ->
+                      "Answered — #{String.length(answer)} chars, page #{cited_page || "—"}#{if citation_valid, do: "", else: " (citation unverified)"}."
+                  end
+
+                Jobs.finish_run(run, "done", summary)
 
               {:error, changeset} ->
                 require Logger

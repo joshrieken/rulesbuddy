@@ -11,7 +11,10 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
   use Oban.Worker,
     queue: :llm,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   import Ecto.Query
   alias RuleMaven.{Games, Jobs, Settings}
@@ -50,7 +53,11 @@ defmodule RuleMaven.Workers.DidYouKnowWorker do
         oban_job_id: oban_id
       )
 
-    Jobs.event(run, :info, "Asking the model for did-you-know facts from the rulebook…")
+    Jobs.event(
+      run,
+      :info,
+      "Reading #{String.length(text)} chars of rulebook for did-you-know facts…"
+    )
 
     case RuleMaven.LLM.generate_did_you_know(game.name, text) do
       {:ok, facts} when facts != [] ->

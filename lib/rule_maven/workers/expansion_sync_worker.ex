@@ -11,7 +11,10 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
   use Oban.Worker,
     queue: :expansion,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   alias RuleMaven.{Games, Jobs, Settings}
 
@@ -61,7 +64,13 @@ defmodule RuleMaven.Workers.ExpansionSyncWorker do
         :counters.add(counter, 1, 1)
         done = :counters.get(counter, 1)
         Settings.put(key(game_id), "#{done}/#{total}")
-        Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:expansion_progress, game_id, done, total})
+        Jobs.event(run, "info", "Synced #{exp.name} · #{done}/#{total}")
+
+        Phoenix.PubSub.broadcast(
+          RuleMaven.PubSub,
+          topic(game_id),
+          {:expansion_progress, game_id, done, total}
+        )
       end,
       max_concurrency: 2,
       ordered: false,

@@ -7,7 +7,10 @@ defmodule RuleMaven.Workers.CategoriesWorker do
   use Oban.Worker,
     queue: :llm,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   alias RuleMaven.{Games, Jobs, Settings}
 
@@ -32,10 +35,12 @@ defmodule RuleMaven.Workers.CategoriesWorker do
         oban_job_id: oban_id
       )
 
-    Jobs.event(run, :info, "Asking the model to derive rule categories from the rulebook…")
+    Jobs.event(run, :info, "Reading #{String.length(text)} chars to derive rule categories…")
 
     case RuleMaven.LLM.generate_categories(game.name, text) do
       {:ok, cats} ->
+        Jobs.event(run, :info, "Derived #{length(cats)} categories: #{category_names(cats)}")
+
         # When the game has no saved categories yet, there's nothing to blow away
         # — commit straight to the curated set (saves the admin a review click).
         # Once categories exist, a regeneration stays a draft so it doesn't nuke a
@@ -63,6 +68,9 @@ defmodule RuleMaven.Workers.CategoriesWorker do
   defp broadcast(game_id, msg) do
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), msg)
   end
+
+  defp category_names([]), do: "—"
+  defp category_names(cats), do: Enum.map_join(cats, ", ", & &1.name)
 
   defp oban_running?, do: Application.get_env(:rule_maven, Oban)[:testing] != :manual
 end

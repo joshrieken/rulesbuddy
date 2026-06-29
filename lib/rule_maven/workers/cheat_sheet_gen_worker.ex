@@ -12,7 +12,10 @@ defmodule RuleMaven.Workers.CheatSheetGenWorker do
   use Oban.Worker,
     queue: :cheatsheet,
     max_attempts: 3,
-    unique: [keys: [:game_id], states: [:available, :scheduled, :executing, :retryable, :suspended]]
+    unique: [
+      keys: [:game_id],
+      states: [:available, :scheduled, :executing, :retryable, :suspended]
+    ]
 
   alias RuleMaven.{Games, Jobs, Settings, CheatSheet}
 
@@ -30,7 +33,11 @@ defmodule RuleMaven.Workers.CheatSheetGenWorker do
         oban_job_id: oban_id
       )
 
-    Jobs.event(run, :info, "Generating the #{level} cheat sheet#{if expansion_ids != [], do: " (+#{length(expansion_ids)} expansion(s))", else: ""}…")
+    Jobs.event(
+      run,
+      :info,
+      "Generating the #{level} cheat sheet#{if expansion_ids != [], do: " (+#{length(expansion_ids)} expansion(s))", else: ""}…"
+    )
 
     result =
       try do
@@ -59,8 +66,15 @@ defmodule RuleMaven.Workers.CheatSheetGenWorker do
     end
 
     case result do
-      {:ok, _} -> Jobs.finish_run(run, "done", "Generated in #{elapsed}s.")
-      {:error, reason} -> Jobs.finish_run(run, "failed", reason)
+      {:ok, content} ->
+        Jobs.finish_run(
+          run,
+          "done",
+          "Generated in #{elapsed}s (#{String.length(content)} chars)."
+        )
+
+      {:error, reason} ->
+        Jobs.finish_run(run, "failed", reason)
     end
 
     Phoenix.PubSub.broadcast(RuleMaven.PubSub, topic(game_id), {:cheat_done, game_id})

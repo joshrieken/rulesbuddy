@@ -102,7 +102,12 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
                  ) do
               {:ok, result} ->
                 Games.replace_page(doc, index, result)
-                log.("Done — #{label} re-extracted and saved.", "done")
+
+                log.(
+                  "Done — #{label} re-extracted (confidence #{fmt_conf(page.confidence)} → #{fmt_conf(result[:confidence])}).",
+                  "done"
+                )
+
                 :ok
 
               {:error, reason} ->
@@ -131,4 +136,7 @@ defmodule RuleMaven.Workers.ReextractPageWorker do
 
     :ok
   end
+
+  defp fmt_conf(c) when is_number(c), do: :erlang.float_to_binary(c / 1, decimals: 2)
+  defp fmt_conf(_), do: "—"
 end
