@@ -25,4 +25,30 @@ defmodule RuleMaven.LLMSavingsTest do
       assert :ok = Savings.record("cache_hit", %{estimated_tokens: "not-an-int"})
     end
   end
+
+  describe "estimate_avoided/2" do
+    alias RuleMaven.LLM
+    alias RuleMaven.Repo
+
+    defp log!(op, p, c) do
+      Repo.insert!(%LLM.Log{
+        provider: "test", model: "google/gemini-2.5-flash", operation: op,
+        prompt_tokens: p, completion_tokens: c, total_tokens: p + c, success: true
+      })
+    end
+
+    test "averages recent same-operation history" do
+      log!("ask", 1000, 100)
+      log!("ask", 3000, 300)
+      est = Savings.estimate_avoided("ask", nil)
+      assert est.tokens == 2200
+      assert est.usd > 0.0
+    end
+
+    test "falls back to a constant when there is no history" do
+      est = Savings.estimate_avoided("ask", nil)
+      assert est.tokens > 0
+      assert est.usd > 0.0
+    end
+  end
 end

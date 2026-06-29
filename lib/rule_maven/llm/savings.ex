@@ -14,9 +14,16 @@ defmodule RuleMaven.LLM.Savings do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query
   require Logger
 
   alias RuleMaven.Repo
+
+  # Cold-start fallback per operation: {prompt_tokens, completion_tokens}.
+  @fallback_tokens %{"ask" => {4000, 300}}
+  @default_fallback {2000, 200}
+  @window 50
+  @min_same_game 3
 
   @kinds ~w(cache_hit prompt_cache cheap_route)
 
@@ -49,4 +56,44 @@ defmodule RuleMaven.LLM.Savings do
   end
 
   def record(_kind, _attrs), do: :ok
+
+  @doc """
+  Estimates the tokens/USD a now-avoided call of `operation` would have cost,
+  from the average of recent real `LLM.Log` rows (preferring `game_id`). Falls
+  back to a per-operation constant when there is no usable history.
+  """
+  def estimate_avoided(operation, game_id) do
+    model = RuleMaven.LLM.model()
+    rows = recent_logs(operation, game_id)
+
+    rows = if length(rows) < @min_same_game, do: recent_logs(operation, nil), else: rows
+
+    {p, c} =
+      case rows do
+        [] ->
+          Map.get(@fallback_tokens, operation, @default_fallback)
+
+        _ ->
+          {avg(rows, & &1.prompt_tokens), avg(rows, & &1.completion_tokens)}
+      end
+
+    %{tokens: p + c, usd: RuleMaven.LLM.Pricing.cost(model, p, c), model: model}
+  end
+
+  defp recent_logs(operation, game_id) do
+    base =
+      from l in RuleMaven.LLM.Log,
+        where: l.operation == ^operation and l.success == true,
+        order_by: [desc: l.inserted_at],
+        limit: @window
+
+    base = if game_id, do: where(base, [l], l.game_id == ^game_id), else: base
+    Repo.all(base)
+  end
+
+  defp avg([], _fun), do: 0
+  defp avg(rows, fun) do
+    vals = rows |> Enum.map(fun) |> Enum.map(&(&1 || 0))
+    div(Enum.sum(vals), length(vals))
+  end
 end
