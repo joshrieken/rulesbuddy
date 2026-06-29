@@ -3545,9 +3545,13 @@ defmodule RuleMavenWeb.GameLive.Form do
                         not regenerating? %>
                     <% edit_style =
                       "width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9rem;line-height:1.6;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:0.4rem;padding:1rem;resize:vertical#{if not editable, do: ";opacity:0.7;background:var(--bg-subtle)"}" %>
+                    <%!-- Paginated mode: the box itself doesn't scroll — the top
+                          matter (heading, flags, log) stays put and the textarea
+                          fills the remaining height and scrolls internally. Scroll
+                          mode (continuous read-only) does scroll the whole area. --%>
                     <div
                       id="reader-scroll"
-                      style="overflow:auto;padding:2rem clamp(1.5rem,8vw,8rem);flex:1;min-height:0;display:flex;flex-direction:column"
+                      style={"padding:2rem clamp(1.5rem,8vw,8rem);flex:1;min-height:0;display:flex;flex-direction:column;overflow:#{if @reader_mode == "paginated", do: "hidden", else: "auto"}"}
                     >
                       <%= if @reader_mode == "paginated" do %>
                         <%= if cur_page do %>
@@ -3568,7 +3572,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                             name={"pgm_#{reader.id}_#{cur}_#{layer_field(layer)}"}
                             phx-change="edit_page"
                             phx-debounce="250"
-                            style={"#{edit_style};flex:1;min-height:60vh"}
+                            style={"#{edit_style};flex:1;min-height:0;resize:none"}
                             readonly={not editable}
                           >{layer_text(cur_page, layer)}</textarea>
                         <% else %>
