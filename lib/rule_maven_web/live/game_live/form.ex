@@ -83,6 +83,9 @@ defmodule RuleMavenWeb.GameLive.Form do
         # Cleanup strength applied by "Wipe & clean" / "Clean again". Persisted
         # per-browser (localStorage → connect params) so it survives reloads.
         clean_level: restore_clean_level(socket),
+        # Which rulebook source the Manage tab shows (one at a time, picker/j-k
+        # selectable). nil → falls back to the first source in the template.
+        selected_source_id: nil,
         # Source ids freshly added by upload/download — drives the "clean now?"
         # prompt on the Manage tab.
         clean_prompt_sids: [],
@@ -691,6 +694,26 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   def handle_event("close_source", _params, socket) do
     {:noreply, assign(socket, expanded_source_id: nil)}
+  end
+
+  # Manage tab shows one source at a time; the dropdown picks which.
+  def handle_event("select_inline_source", %{"inline_source" => id}, socket) do
+    {:noreply, assign(socket, selected_source_id: parse_id(id))}
+  end
+
+  # j / k step through the Manage-tab sources without leaving the keyboard.
+  def handle_event("cycle_inline_source", %{"delta" => delta}, socket) do
+    entries = socket.assigns.source_entries
+    cur = current_inline_source_id(socket)
+
+    with d when d in [-1, 1] <- parse_delta(delta),
+         i when is_integer(i) <- Enum.find_index(entries, &(&1.id == cur)),
+         true <- length(entries) > 1 do
+      next = Enum.at(entries, Integer.mod(i + d, length(entries)))
+      {:noreply, assign(socket, selected_source_id: next.id)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   # j / k in the reader cycle which rulebook source is open (vim-style: h/l page,
@@ -2156,6 +2179,19 @@ defmodule RuleMavenWeb.GameLive.Form do
   defp parse_delta("-1"), do: -1
   defp parse_delta(_), do: nil
 
+  # The Manage tab's currently-shown source id, falling back to the first source
+  # when none is selected yet or the selection is stale (matches the template).
+  defp current_inline_source_id(socket) do
+    entries = socket.assigns.source_entries
+    sel = socket.assigns.selected_source_id
+
+    cond do
+      Enum.any?(entries, &(&1.id == sel)) -> sel
+      (first = List.first(entries)) -> first.id
+      true -> nil
+    end
+  end
+
   defp resolve_bgg_cookies do
     bgg_user = Settings.get("bgg_user")
     bgg_pass = Settings.get("bgg_pass")
@@ -3188,7 +3224,35 @@ defmodule RuleMavenWeb.GameLive.Form do
                 >Upload Rulebook</button>
                 tab.
               </p>
-              <%= for entry <- @source_entries do %>
+              <%= if @source_entries != [] do %>
+                <% entry =
+                  Enum.find(@source_entries, &(&1.id == @selected_source_id)) ||
+                    List.first(@source_entries) %>
+                <%!-- One source at a time: pick which with the dropdown, or press
+                      j / k to step through them (the editor is the same either
+                      way). Hidden when there's only one source. --%>
+                <div
+                  :if={length(@source_entries) > 1}
+                  style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;flex-wrap:wrap"
+                >
+                  <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary)">
+                    Rulebook source
+                  </label>
+                  <select
+                    name="inline_source"
+                    phx-change="select_inline_source"
+                    style="height:2.4rem;min-width:12rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.4rem;padding:0 0.6rem;font-size:0.95rem;font-weight:600;background:var(--bg);color:var(--text);cursor:pointer"
+                  >
+                    <option
+                      :for={s <- @source_entries}
+                      value={s.id}
+                      selected={s.id == entry.id}
+                    >{if String.trim(s.label) != "", do: s.label, else: "Untitled source"}</option>
+                  </select>
+                  <span style="font-size:0.72rem;color:var(--text-muted)">
+                    {Enum.find_index(@source_entries, &(&1.id == entry.id)) + 1} / {length(@source_entries)} · press j / k to switch
+                  </span>
+                </div>
                 <div
                   id={"inline-reader-#{entry.id}"}
                   phx-hook="ReaderKeys"

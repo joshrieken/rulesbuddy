@@ -541,11 +541,18 @@ Hooks.ReaderKeys = {
         return;
       }
 
-      // j / k switch which rulebook source is open in the reader (vim-style:
-      // h/l page, j/k source). Modal only — there's nothing to switch inline.
-      if (isModal && (e.key === "j" || e.key === "k")) {
-        e.preventDefault();
-        this.pushEvent("cycle_source", {delta: e.key === "j" ? "1" : "-1"});
+      // j / k switch the rulebook source (vim-style: h/l page, j/k source). In
+      // the modal it cycles the open source; inline it cycles the Manage-tab
+      // selection. Inline still needs this source to be the active one.
+      if (e.key === "j" || e.key === "k") {
+        const delta = e.key === "j" ? "1" : "-1";
+        if (isModal) {
+          e.preventDefault();
+          this.pushEvent("cycle_source", {delta});
+        } else if (!modalOpen && (this._active() || this._sole())) {
+          e.preventDefault();
+          this.pushEvent("cycle_inline_source", {delta});
+        }
         return;
       }
 
@@ -612,18 +619,17 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
 });
 
 // Scroll the expanded reader to the top after it opens or switches source.
-// Fired by the server (after the DOM patch), and hammered across a few frames +
-// a tick so late content/layout can't leave it scrolled partway down.
+// Fired by the server (after the DOM patch). Pin it to the top on every frame
+// for a short window so late content/layout/focus settling can't leave it
+// scrolled partway down; after the window the user is free to scroll.
 window.addEventListener("phx:reader_scroll_top", () => {
-  const top = () => {
+  const start = performance.now();
+  const tick = () => {
     const sc = document.getElementById("reader-scroll");
     if (sc) sc.scrollTop = 0;
+    if (performance.now() - start < 500) requestAnimationFrame(tick);
   };
-  top();
-  requestAnimationFrame(top);
-  requestAnimationFrame(() => requestAnimationFrame(top));
-  setTimeout(top, 60);
-  setTimeout(top, 200);
+  requestAnimationFrame(tick);
 });
 
 // Persist the cleanup strength choice.
