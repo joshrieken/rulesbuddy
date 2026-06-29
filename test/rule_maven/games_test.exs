@@ -280,7 +280,9 @@ defmodule RuleMaven.GamesTest do
     end
 
     test "sets canonical question and answer", %{q: q} do
-      {:ok, updated} = Games.update_canonical(q, "How many cards do I draw?", "You draw five cards.")
+      {:ok, updated} =
+        Games.update_canonical(q, "How many cards do I draw?", "You draw five cards.")
+
       assert updated.canonical_question == "How many cards do I draw?"
       assert updated.canonical_answer == "You draw five cards."
     end

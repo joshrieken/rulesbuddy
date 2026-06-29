@@ -760,7 +760,8 @@ defmodule RuleMaven.Prompts do
       key: "cheat_compress",
       group: "Cheat sheet",
       label: "Cheat sheet — compressor",
-      description: "Strips flavor to raw rules before generating a cheat sheet (long rulebooks only).",
+      description:
+        "Strips flavor to raw rules before generating a cheat sheet (long rulebooks only).",
       vars: ~w(rulebook),
       default: @cheat_compress
     },

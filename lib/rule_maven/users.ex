@@ -71,7 +71,8 @@ defmodule RuleMaven.Users do
       # Lock all admin rows for the duration so a concurrent demotion serializes
       # behind this one and re-reads the post-update count. (Postgres rejects
       # FOR UPDATE alongside an aggregate, so select the rows and count them.)
-      admin_ids = Repo.all(from u in User, where: u.role == "admin", select: u.id, lock: "FOR UPDATE")
+      admin_ids =
+        Repo.all(from u in User, where: u.role == "admin", select: u.id, lock: "FOR UPDATE")
 
       cond do
         not User.can?(user, :admin) -> Repo.rollback(:not_admin)

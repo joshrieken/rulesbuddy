@@ -24,7 +24,11 @@ defmodule RuleMavenWeb.AdminLive.Takedowns do
   defp load(socket), do: assign(socket, active: Games.list_taken_down())
 
   @impl true
-  def handle_event("take_down", %{"game_id" => gid, "reason" => reason, "complainant" => who}, socket) do
+  def handle_event(
+        "take_down",
+        %{"game_id" => gid, "reason" => reason, "complainant" => who},
+        socket
+      ) do
     reason = String.trim(reason)
     who = String.trim(who)
 
@@ -98,7 +102,12 @@ defmodule RuleMavenWeb.AdminLive.Takedowns do
         <input type="text" name="game_id" value={@prefill_game} inputmode="numeric" style={inp()} />
 
         <label style={lbl()}>Complainant</label>
-        <input type="text" name="complainant" placeholder="Rights holder / who reported" style={inp()} />
+        <input
+          type="text"
+          name="complainant"
+          placeholder="Rights holder / who reported"
+          style={inp()}
+        />
 
         <label style={lbl()}>Reason</label>
         <textarea name="reason" rows="2" placeholder="Nature of the complaint" style={inp()}></textarea>
@@ -128,7 +137,8 @@ defmodule RuleMavenWeb.AdminLive.Takedowns do
           <%= for g <- @active do %>
             <div style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.75rem">
               <div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:baseline">
-                <span style="font-weight:600;font-size:0.9rem">{g.name} <span style="color:var(--text-muted);font-weight:400">#{g.id}</span></span>
+                <span style="font-weight:600;font-size:0.9rem">{g.name}
+                <span style="color:var(--text-muted);font-weight:400">#{g.id}</span></span>
                 <button
                   type="button"
                   phx-click="restore"
@@ -137,10 +147,14 @@ defmodule RuleMavenWeb.AdminLive.Takedowns do
                   style="background:none;border:1px solid var(--green);color:var(--green);padding:0.15rem 0.6rem;border-radius:0.25rem;font-size:0.72rem;font-weight:600;cursor:pointer"
                 >Restore</button>
               </div>
-              <p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0 0">{g.takedown_reason}</p>
+              <p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0 0">
+                {g.takedown_reason}
+              </p>
               <p style="font-size:0.72rem;color:var(--text-muted);margin:0.15rem 0 0">
-                Complainant: {g.takedown_complainant || "—"} ·
-                {Calendar.strftime(g.taken_down_at, "%b %-d, %Y %H:%M")}
+                Complainant: {g.takedown_complainant || "—"} · {Calendar.strftime(
+                  g.taken_down_at,
+                  "%b %-d, %Y %H:%M"
+                )}
               </p>
             </div>
           <% end %>

@@ -8,7 +8,15 @@ defmodule RuleMavenWeb.RegistrationLive do
     if socket.assigns.current_user do
       {:ok, push_navigate(socket, to: ~p"/")}
     else
-      {:ok, assign(socket, invite_code: code, username: "", email: "", password: "", errors: %{}, submitted: false)}
+      {:ok,
+       assign(socket,
+         invite_code: code,
+         username: "",
+         email: "",
+         password: "",
+         errors: %{},
+         submitted: false
+       )}
     end
   end
 
@@ -16,12 +24,24 @@ defmodule RuleMavenWeb.RegistrationLive do
     if socket.assigns.current_user do
       {:ok, push_navigate(socket, to: ~p"/")}
     else
-      {:ok, assign(socket, invite_code: "", username: "", email: "", password: "", errors: %{}, submitted: false)}
+      {:ok,
+       assign(socket,
+         invite_code: "",
+         username: "",
+         email: "",
+         password: "",
+         errors: %{},
+         submitted: false
+       )}
     end
   end
 
   @impl true
-  def handle_event("register", %{"code" => code, "username" => username, "email" => email, "password" => password}, socket) do
+  def handle_event(
+        "register",
+        %{"code" => code, "username" => username, "email" => email, "password" => password},
+        socket
+      ) do
     errors = %{}
 
     {errors, code_valid?} =
@@ -35,9 +55,14 @@ defmodule RuleMavenWeb.RegistrationLive do
 
     errors =
       cond do
-        password == "" -> Map.put(errors, :password, "Required.")
-        String.length(password) < 4 -> Map.put(errors, :password, "Must be at least 4 characters.")
-        true -> errors
+        password == "" ->
+          Map.put(errors, :password, "Required.")
+
+        String.length(password) < 4 ->
+          Map.put(errors, :password, "Must be at least 4 characters.")
+
+        true ->
+          errors
       end
 
     if map_size(errors) == 0 && code_valid? do
@@ -55,12 +80,16 @@ defmodule RuleMavenWeb.RegistrationLive do
         {:error, changeset} ->
           db_errors =
             Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)
-            |> Enum.reduce(errors, fn {field, msgs}, acc -> Map.put(acc, field, List.first(msgs)) end)
+            |> Enum.reduce(errors, fn {field, msgs}, acc ->
+              Map.put(acc, field, List.first(msgs))
+            end)
 
-          {:noreply, assign(socket, errors: db_errors, invite_code: code, username: username, email: email)}
+          {:noreply,
+           assign(socket, errors: db_errors, invite_code: code, username: username, email: email)}
       end
     else
-      {:noreply, assign(socket, errors: errors, invite_code: code, username: username, email: email)}
+      {:noreply,
+       assign(socket, errors: errors, invite_code: code, username: username, email: email)}
     end
   end
 
@@ -161,7 +190,10 @@ defmodule RuleMavenWeb.RegistrationLive do
       </form>
 
       <div style="text-align:center;margin-top:1rem">
-        <.link navigate={~p"/login"} style="color:var(--text-muted);font-size:0.78rem;text-decoration:none">
+        <.link
+          navigate={~p"/login"}
+          style="color:var(--text-muted);font-size:0.78rem;text-decoration:none"
+        >
           Already have an account? Log in
         </.link>
       </div>

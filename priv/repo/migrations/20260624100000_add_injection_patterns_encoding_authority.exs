@@ -71,7 +71,7 @@ defmodule RuleMaven.Repo.Migrations.AddInjectionPatternsEncodingAuthority do
       {"skip the citation", "output_manipulation"},
       {"no citation needed", "output_manipulation"},
       {"without the citation", "output_manipulation"},
-      {"ignore your output format", "output_manipulation"},
+      {"ignore your output format", "output_manipulation"}
     ]
 
     rows =
@@ -81,12 +81,21 @@ defmodule RuleMaven.Repo.Migrations.AddInjectionPatternsEncodingAuthority do
         RuleMaven.Repo.get_by(RuleMaven.Security.InjectionPattern, pattern: pattern) != nil
       end)
       |> Enum.map(fn {pattern, category} ->
-        %{pattern: pattern, category: category, enabled: true, note: nil,
-          inserted_at: now, updated_at: now}
+        %{
+          pattern: pattern,
+          category: category,
+          enabled: true,
+          note: nil,
+          inserted_at: now,
+          updated_at: now
+        }
       end)
 
     if rows != [] do
-      execute(fn -> repo().insert_all("injection_patterns", rows, on_conflict: :nothing) end, fn -> :ok end)
+      execute(
+        fn -> repo().insert_all("injection_patterns", rows, on_conflict: :nothing) end,
+        fn -> :ok end
+      )
     end
   end
 end

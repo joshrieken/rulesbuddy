@@ -2,7 +2,13 @@ defmodule RuleMaven.Workers.BackgroundWorkersTest do
   use RuleMaven.DataCase
 
   alias RuleMaven.{Games, Settings}
-  alias RuleMaven.Workers.{SuggestionsWorker, CategoriesWorker, CheatSheetGenWorker, DownloadWorker}
+
+  alias RuleMaven.Workers.{
+    SuggestionsWorker,
+    CategoriesWorker,
+    CheatSheetGenWorker,
+    DownloadWorker
+  }
 
   # Stub the LLM at the do_request boundary. Each test sets its own answer.
   defp mock_llm(answer) do

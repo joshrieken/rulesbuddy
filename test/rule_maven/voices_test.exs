@@ -38,7 +38,9 @@ defmodule RuleMaven.VoicesTest do
     test "valid?/2 covers globals and the game's own generated voices only" do
       g = game()
       other = game()
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "x"}])
+
+      :ok =
+        Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "x"}])
 
       assert Voices.valid?("pirate", g)
       assert Voices.valid?("g:herald", g)
@@ -51,14 +53,23 @@ defmodule RuleMaven.VoicesTest do
     test "unchanged style keeps the row id and any cached restyles" do
       g = game()
       q = question(g)
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "courtly"}])
+
+      :ok =
+        Voices.replace_generated(g.id, [
+          %{slug: "herald", label: "H", emoji: "🦉", style: "courtly"}
+        ])
+
       row1 = Repo.get_by!(GameVoice, game_id: g.id, slug: "herald")
 
       # A paid-for restyle is cached under the namespaced id.
       Repo.insert!(%AnswerVoice{question_log_id: q.id, voice: "g:herald", content: "hark!"})
 
       # Re-run with the SAME style — slug stable, cache preserved.
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "Herald II", emoji: "🦉", style: "courtly"}])
+      :ok =
+        Voices.replace_generated(g.id, [
+          %{slug: "herald", label: "Herald II", emoji: "🦉", style: "courtly"}
+        ])
+
       row2 = Repo.get_by!(GameVoice, game_id: g.id, slug: "herald")
       assert row1.id == row2.id
       assert row2.label == "Herald II"
@@ -68,17 +79,29 @@ defmodule RuleMaven.VoicesTest do
     test "changed style drops that voice's cached restyles" do
       g = game()
       q = question(g)
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "courtly"}])
+
+      :ok =
+        Voices.replace_generated(g.id, [
+          %{slug: "herald", label: "H", emoji: "🦉", style: "courtly"}
+        ])
+
       Repo.insert!(%AnswerVoice{question_log_id: q.id, voice: "g:herald", content: "hark!"})
 
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "GRUFF now"}])
+      :ok =
+        Voices.replace_generated(g.id, [
+          %{slug: "herald", label: "H", emoji: "🦉", style: "GRUFF now"}
+        ])
+
       assert Voices.get(q.id, "g:herald") == nil
     end
 
     test "vanished voice is deleted and its restyles cleared" do
       g = game()
       q = question(g)
-      :ok = Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "x"}])
+
+      :ok =
+        Voices.replace_generated(g.id, [%{slug: "herald", label: "H", emoji: "🦉", style: "x"}])
+
       Repo.insert!(%AnswerVoice{question_log_id: q.id, voice: "g:herald", content: "hark!"})
 
       :ok = Voices.replace_generated(g.id, [%{slug: "rogue", label: "R", emoji: "🗡️", style: "y"}])

@@ -12,7 +12,12 @@ defmodule RuleMavenWeb.AdminLive.Security do
        |> assign(tab: "blocked")
        |> load_blocked()
        |> load_patterns()
-       |> assign(new_pattern: "", new_category: "instruction_override", new_note: "", add_error: nil)}
+       |> assign(
+         new_pattern: "",
+         new_category: "instruction_override",
+         new_note: "",
+         add_error: nil
+       )}
     else
       {:ok, socket |> put_flash(:error, "Access denied.") |> push_navigate(to: ~p"/")}
     end
@@ -45,14 +50,16 @@ defmodule RuleMavenWeb.AdminLive.Security do
             expansion_ids = []
             recent_context = []
 
-            Oban.insert(RuleMaven.Workers.AskWorker.new(%{
-              "game_id" => updated.game_id,
-              "question" => updated.question,
-              "question_log_id" => updated.id,
-              "user_id" => updated.user_id,
-              "expansion_ids" => expansion_ids,
-              "recent_context" => recent_context
-            }))
+            Oban.insert(
+              RuleMaven.Workers.AskWorker.new(%{
+                "game_id" => updated.game_id,
+                "question" => updated.question,
+                "question_log_id" => updated.id,
+                "user_id" => updated.user_id,
+                "expansion_ids" => expansion_ids,
+                "recent_context" => recent_context
+              })
+            )
 
             {:noreply, socket |> load_blocked() |> put_flash(:info, "Unblocked and re-queued.")}
 
@@ -66,7 +73,9 @@ defmodule RuleMavenWeb.AdminLive.Security do
     id = String.to_integer(id)
 
     case Enum.find(socket.assigns.blocked, &(&1.id == id)) do
-      nil -> {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
       q ->
         case Games.delete_question(q) do
           {:ok, _} ->
@@ -88,7 +97,9 @@ defmodule RuleMavenWeb.AdminLive.Security do
     id = String.to_integer(id)
 
     case Enum.find(socket.assigns.patterns, &(&1.id == id)) do
-      nil -> {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
       p ->
         case Security.toggle_pattern(p) do
           {:ok, _} ->
@@ -111,7 +122,9 @@ defmodule RuleMavenWeb.AdminLive.Security do
     id = String.to_integer(id)
 
     case Enum.find(socket.assigns.patterns, &(&1.id == id)) do
-      nil -> {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
       p ->
         case Security.delete_pattern(p) do
           {:ok, _} ->
@@ -129,7 +142,11 @@ defmodule RuleMavenWeb.AdminLive.Security do
     end
   end
 
-  def handle_event("add_pattern", %{"pattern" => pattern, "category" => category, "note" => note}, socket) do
+  def handle_event(
+        "add_pattern",
+        %{"pattern" => pattern, "category" => category, "note" => note},
+        socket
+      ) do
     case Security.create_pattern(%{pattern: pattern, category: category, note: note}) do
       {:ok, created} ->
         Audit.log(socket.assigns.current_user, "security.add_pattern",
@@ -139,7 +156,8 @@ defmodule RuleMavenWeb.AdminLive.Security do
           metadata: %{"category" => category}
         )
 
-        {:noreply, socket |> assign(new_pattern: "", new_note: "", add_error: nil) |> load_patterns()}
+        {:noreply,
+         socket |> assign(new_pattern: "", new_note: "", add_error: nil) |> load_patterns()}
 
       {:error, changeset} ->
         msg = changeset.errors |> Enum.map_join(", ", fn {f, {m, _}} -> "#{f} #{m}" end)
@@ -169,7 +187,6 @@ defmodule RuleMavenWeb.AdminLive.Security do
   defp category_label("output_manipulation"), do: "Output manipulation"
   defp category_label(other), do: other
 
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -197,19 +214,23 @@ defmodule RuleMavenWeb.AdminLive.Security do
           <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
             <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
               <colgroup>
-                <col style="width:7rem">
-                <col style="width:6rem">
-                <col style="width:8rem">
-                <col>
-                <col style="width:9.5rem">
+                <col style="width:7rem" />
+                <col style="width:6rem" />
+                <col style="width:8rem" />
+                <col />
+                <col style="width:9.5rem" />
               </colgroup>
               <thead>
                 <tr style="background:var(--bg-subtle);text-align:left">
                   <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">When</th>
                   <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">User</th>
                   <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Game</th>
-                  <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Question</th>
-                  <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Actions</th>
+                  <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">
+                    Question
+                  </th>
+                  <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -219,10 +240,14 @@ defmodule RuleMavenWeb.AdminLive.Security do
                       {Calendar.strftime(q.inserted_at, "%b %-d %H:%M")}
                     </td>
                     <td style="padding:0.45rem 0.75rem;font-size:0.75rem;overflow:hidden">
-                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{q.user && q.user.username || "—"}</span>
+                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{(q.user &&
+                                                                                                                                            q.user.username) ||
+                        "—"}</span>
                     </td>
                     <td style="padding:0.45rem 0.75rem;font-size:0.75rem;overflow:hidden">
-                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{q.game && q.game.name || "—"}</span>
+                      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{(q.game &&
+                                                                                                                                            q.game.name) ||
+                        "—"}</span>
                     </td>
                     <td style="padding:0.45rem 0.75rem;overflow:hidden">
                       <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.8rem;color:var(--text)">{q.question}</span>
@@ -256,10 +281,15 @@ defmodule RuleMavenWeb.AdminLive.Security do
       <%!-- Patterns Tab --%>
       <%= if @tab == "patterns" do %>
         <%!-- Add pattern form --%>
-        <form phx-submit="add_pattern" phx-change="form_change" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;margin-bottom:1.25rem">
+        <form
+          phx-submit="add_pattern"
+          phx-change="form_change"
+          style="background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;margin-bottom:1.25rem"
+        >
           <div style="display:grid;grid-template-columns:1fr 10rem 1fr;gap:0.75rem;margin-bottom:0.6rem">
             <div>
-              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Pattern <span style="font-weight:400;opacity:0.7">(lowercase substring)</span></label>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Pattern
+              <span style="font-weight:400;opacity:0.7">(lowercase substring)</span></label>
               <input
                 type="text"
                 name="pattern"
@@ -280,7 +310,8 @@ defmodule RuleMavenWeb.AdminLive.Security do
               </select>
             </div>
             <div>
-              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Note <span style="font-weight:400;opacity:0.7">(optional)</span></label>
+              <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-muted);margin-bottom:0.25rem">Note
+              <span style="font-weight:400;opacity:0.7">(optional)</span></label>
               <input
                 type="text"
                 name="note"
@@ -305,19 +336,25 @@ defmodule RuleMavenWeb.AdminLive.Security do
         <div style="border:1px solid var(--border);border-radius:0.5rem;overflow:hidden">
           <table style="width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed">
             <colgroup>
-              <col>
-              <col style="width:8.5rem">
-              <col style="width:8rem">
-              <col style="width:4.5rem">
-              <col style="width:7rem">
+              <col />
+              <col style="width:8.5rem" />
+              <col style="width:8rem" />
+              <col style="width:4.5rem" />
+              <col style="width:7rem" />
             </colgroup>
             <thead>
               <tr style="background:var(--bg-subtle);text-align:left">
-                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Pattern</th>
-                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Category</th>
+                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">
+                  Pattern
+                </th>
+                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">
+                  Category
+                </th>
                 <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Note</th>
                 <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Status</th>
-                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">Actions</th>
+                <th style="padding:0.5rem 0.75rem;font-weight:600;color:var(--text-muted)">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -327,10 +364,13 @@ defmodule RuleMavenWeb.AdminLive.Security do
                     <span style="display:block;font-family:monospace;font-size:0.75rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p.pattern}</span>
                   </td>
                   <td style="padding:0.45rem 0.75rem;overflow:hidden">
-                    <span style="display:inline-block;font-size:0.65rem;font-weight:600;padding:0.1rem 0.35rem;border-radius:0.2rem;background:var(--bg-subtle);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{category_label(p.category)}</span>
+                    <span style="display:inline-block;font-size:0.65rem;font-weight:600;padding:0.1rem 0.35rem;border-radius:0.2rem;background:var(--bg-subtle);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{category_label(
+                      p.category
+                    )}</span>
                   </td>
                   <td style="padding:0.45rem 0.75rem;overflow:hidden">
-                    <span style="display:block;font-size:0.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p.note || ""}</span>
+                    <span style="display:block;font-size:0.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{p.note ||
+                      ""}</span>
                   </td>
                   <td style="padding:0.45rem 0.75rem">
                     <span style={"font-size:0.7rem;font-weight:600;#{if p.enabled, do: "color:var(--green)", else: "color:var(--text-muted)"}"}>
@@ -359,7 +399,9 @@ defmodule RuleMavenWeb.AdminLive.Security do
             </tbody>
           </table>
         </div>
-        <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">Disabled patterns are skipped during detection but kept for reference.</p>
+        <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">
+          Disabled patterns are skipped during detection but kept for reference.
+        </p>
       <% end %>
     </div>
     """

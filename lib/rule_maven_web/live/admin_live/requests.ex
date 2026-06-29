@@ -6,7 +6,8 @@ defmodule RuleMavenWeb.AdminLive.Requests do
   @impl true
   def mount(_params, _session, socket) do
     if Users.can?(socket.assigns.current_user, :admin) do
-      {:ok, assign(socket, page_title: "Support Requests", requests: Games.list_support_requests())}
+      {:ok,
+       assign(socket, page_title: "Support Requests", requests: Games.list_support_requests())}
     else
       {:ok,
        socket

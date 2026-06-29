@@ -890,11 +890,19 @@ defmodule RuleMavenWeb.GameLive.Form do
       {:noreply,
        socket
        |> start_reextract(sid, n)
-       |> put_flash(:info, "Re-extracting #{n} flagged page#{if n == 1, do: "", else: "s"} with the strongest model…")}
+       |> put_flash(
+         :info,
+         "Re-extracting #{n} flagged page#{if n == 1, do: "", else: "s"} with the strongest model…"
+       )}
     else
-      nil -> {:noreply, put_flash(socket, :error, "Save the rulebook before re-extracting pages.")}
-      [] -> {:noreply, put_flash(socket, :info, "No flagged pages to re-extract.")}
-      _ -> {:noreply, put_flash(socket, :error, "Save the rulebook before re-extracting pages.")}
+      nil ->
+        {:noreply, put_flash(socket, :error, "Save the rulebook before re-extracting pages.")}
+
+      [] ->
+        {:noreply, put_flash(socket, :info, "No flagged pages to re-extract.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Save the rulebook before re-extracting pages.")}
     end
   end
 
@@ -1760,8 +1768,7 @@ defmodule RuleMavenWeb.GameLive.Form do
           :for={key <- ["--accent", "--bg", "--bg-surface", "--text"]}
           title={key}
           style={"width:1rem;height:1rem;border-radius:0.2rem;border:1px solid var(--border);background:#{@v[key]}"}
-        >
-        </span>
+        ></span>
       </div>
     </div>
     """
@@ -1994,13 +2001,27 @@ defmodule RuleMavenWeb.GameLive.Form do
               :for={p <- @rows}
               style="border-top:1px solid var(--border-subtle)"
             >
-              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-secondary)">{page_label(p)}</td>
-              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-secondary)">{p[:lane] || "—"}</td>
-              <td style={"padding:0.3rem 0.5rem;white-space:nowrap;color:#{decision_color(p)}"}>{decision_label(p)}</td>
-              <td style={"padding:0.3rem 0.5rem;text-align:right;color:#{conf_color(p[:confidence])}"}>{fmt_num(p[:confidence])}</td>
-              <td style="padding:0.3rem 0.5rem;text-align:right;color:var(--text-muted)">{fmt_num(p[:gate_agreement])}</td>
-              <td style="padding:0.3rem 0.5rem;text-align:right;color:var(--text-muted)">{fmt_num(p[:gate_coverage])}</td>
-              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-muted)">{critic_label(p)}</td>
+              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-secondary)">
+                {page_label(p)}
+              </td>
+              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-secondary)">
+                {p[:lane] || "—"}
+              </td>
+              <td style={"padding:0.3rem 0.5rem;white-space:nowrap;color:#{decision_color(p)}"}>
+                {decision_label(p)}
+              </td>
+              <td style={"padding:0.3rem 0.5rem;text-align:right;color:#{conf_color(p[:confidence])}"}>
+                {fmt_num(p[:confidence])}
+              </td>
+              <td style="padding:0.3rem 0.5rem;text-align:right;color:var(--text-muted)">
+                {fmt_num(p[:gate_agreement])}
+              </td>
+              <td style="padding:0.3rem 0.5rem;text-align:right;color:var(--text-muted)">
+                {fmt_num(p[:gate_coverage])}
+              </td>
+              <td style="padding:0.3rem 0.5rem;white-space:nowrap;color:var(--text-muted)">
+                {critic_label(p)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -2141,7 +2162,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
     cond do
       Enum.any?(entries, &(&1.id == sel)) -> sel
-      (first = List.first(entries)) -> first.id
+      first = List.first(entries) -> first.id
       true -> nil
     end
   end
@@ -2277,7 +2298,8 @@ defmodule RuleMavenWeb.GameLive.Form do
         title="Next page (→ or l)"
         style={@step_style}
       >›</button>
-      <span style="font-size:1rem;font-weight:600;color:var(--text-muted);white-space:nowrap">{@cur + 1} / {@count}</span>
+      <span style="font-size:1rem;font-weight:600;color:var(--text-muted);white-space:nowrap">{@cur +
+        1} / {@count}</span>
     </div>
     """
   end
@@ -2432,7 +2454,9 @@ defmodule RuleMavenWeb.GameLive.Form do
           data-confirm={"Re-extract all #{@flagged} flagged page#{if @flagged == 1, do: "", else: "s"} with the stronger model? This overwrites their text and uses extra LLM credits."}
           disabled={@busy}
           style="font-size:0.68rem;padding:0.15rem 0.55rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-        >{if @busy, do: "Re-extracting…", else: "⟳ Re-extract all #{@flagged} flagged (stronger model)"}</button>
+        >{if @busy,
+          do: "Re-extracting…",
+          else: "⟳ Re-extract all #{@flagged} flagged (stronger model)"}</button>
       </div>
     </div>
     """
@@ -3176,10 +3200,14 @@ defmodule RuleMavenWeb.GameLive.Form do
                       :for={s <- @source_entries}
                       value={s.id}
                       selected={s.id == entry.id}
-                    >{if String.trim(s.label) != "", do: s.label, else: "Untitled source"}</option>
+                    >
+                      {if String.trim(s.label) != "", do: s.label, else: "Untitled source"}
+                    </option>
                   </select>
                   <span style="font-size:0.72rem;color:var(--text-muted)">
-                    {Enum.find_index(@source_entries, &(&1.id == entry.id)) + 1} / {length(@source_entries)} · press j / k to switch
+                    {Enum.find_index(@source_entries, &(&1.id == entry.id)) + 1} / {length(
+                      @source_entries
+                    )} · press j / k to switch
                   </span>
                 </div>
                 <div
@@ -3206,8 +3234,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                           checked={entry[:is_core]}
                           phx-click="toggle_core"
                           phx-value-id={entry.id}
-                        />
-                        Core rules — title as “{core_label(@game)}”
+                        /> Core rules — title as “{core_label(@game)}”
                       </label>
                     </div>
                     <div class="flex gap-1 items-center">
@@ -3277,7 +3304,11 @@ defmodule RuleMavenWeb.GameLive.Form do
                   >
                     <span style="display:inline-block;width:0.8rem;height:0.8rem;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rm-spin 0.7s linear infinite"></span>
                     <span>
-                      Re-extracting {if reext_remaining > 1, do: "#{reext_remaining} pages", else: "this page"} — editing locked until {if reext_remaining > 1, do: "they finish", else: "it finishes"}.
+                      Re-extracting {if reext_remaining > 1,
+                        do: "#{reext_remaining} pages",
+                        else: "this page"} — editing locked until {if reext_remaining > 1,
+                        do: "they finish",
+                        else: "it finishes"}.
                     </span>
                     <style>
                       @keyframes rm-spin { to { transform: rotate(360deg); } }
@@ -3555,8 +3586,16 @@ defmodule RuleMavenWeb.GameLive.Form do
 
             <%!-- Suggested questions (compact, per-category collapsible) --%>
             <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
-              <button type="button" phx-click="toggle_section" phx-value-section="suggestions" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
-                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "suggestions"), do: "▾", else: "▸"}</span>
+              <button
+                type="button"
+                phx-click="toggle_section"
+                phx-value-section="suggestions"
+                style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)"
+              >
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(
+                                                                  @open_sections,
+                                                                  "suggestions"
+                                                                ), do: "▾", else: "▸"}</span>
                 <span>
                   Suggested questions
                   <%= if @suggestions != [] do %>
@@ -3565,51 +3604,58 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </span>
               </button>
               <%= if MapSet.member?(@open_sections, "suggestions") do %>
-              <div style="display:flex;align-items:center;gap:0.75rem;margin:0.5rem 0 0.4rem">
-                <button
-                  type="button"
-                  phx-click="regenerate_suggestions"
-                  disabled={@regenerating_suggestions}
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-                >
-                  {if @regenerating_suggestions, do: "Regenerating…", else: "Regenerate"}
-                </button>
-                <button
-                  :if={@suggestions != []}
-                  type="button"
-                  phx-click="clear_suggestions"
-                  data-confirm="Clear all suggested questions for this game?"
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
-                >
-                  Clear
-                </button>
-              </div>
-              <%= if @suggestions != [] do %>
-                <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
-                  <%= for cat <- @suggestions do %>
-                    <details style="border-bottom:1px solid var(--border-subtle)">
-                      <summary style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);cursor:pointer;user-select:none;list-style:none;display:flex;justify-content:space-between;align-items:center">
-                        <span>{tidy_category(cat.category)}</span>
-                        <span style="font-size:0.6rem;opacity:0.6">({length(cat.questions)})</span>
-                      </summary>
-                      <%= for q <- cat.questions do %>
-                        <.link
-                          navigate={~p"/games/#{@game.id}"}
-                          style="display:block;padding:0.3rem 0.6rem;font-size:0.72rem;color:var(--blue);text-decoration:none;border-top:1px solid var(--border-subtle);line-height:1.4"
-                          class="hover:bg-blue-50"
-                        >{q}</.link>
-                      <% end %>
-                    </details>
-                  <% end %>
+                <div style="display:flex;align-items:center;gap:0.75rem;margin:0.5rem 0 0.4rem">
+                  <button
+                    type="button"
+                    phx-click="regenerate_suggestions"
+                    disabled={@regenerating_suggestions}
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    {if @regenerating_suggestions, do: "Regenerating…", else: "Regenerate"}
+                  </button>
+                  <button
+                    :if={@suggestions != []}
+                    type="button"
+                    phx-click="clear_suggestions"
+                    data-confirm="Clear all suggested questions for this game?"
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                  >
+                    Clear
+                  </button>
                 </div>
-              <% end %>
+                <%= if @suggestions != [] do %>
+                  <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                    <%= for cat <- @suggestions do %>
+                      <details style="border-bottom:1px solid var(--border-subtle)">
+                        <summary style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);cursor:pointer;user-select:none;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                          <span>{tidy_category(cat.category)}</span>
+                          <span style="font-size:0.6rem;opacity:0.6">({length(cat.questions)})</span>
+                        </summary>
+                        <%= for q <- cat.questions do %>
+                          <.link
+                            navigate={~p"/games/#{@game.id}"}
+                            style="display:block;padding:0.3rem 0.6rem;font-size:0.72rem;color:var(--blue);text-decoration:none;border-top:1px solid var(--border-subtle);line-height:1.4"
+                            class="hover:bg-blue-50"
+                          >{q}</.link>
+                        <% end %>
+                      </details>
+                    <% end %>
+                  </div>
+                <% end %>
               <% end %>
             </div>
 
             <%!-- "Did you know?" facts (shown on the game's empty state) --%>
             <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
-              <button type="button" phx-click="toggle_section" phx-value-section="dyk" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
-                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "dyk"), do: "▾", else: "▸"}</span>
+              <button
+                type="button"
+                phx-click="toggle_section"
+                phx-value-section="dyk"
+                style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)"
+              >
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "dyk"),
+                  do: "▾",
+                  else: "▸"}</span>
                 <span>
                   💡 Did you know?
                   <%= if @dyk_facts != [] do %>
@@ -3618,42 +3664,42 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </span>
               </button>
               <%= if MapSet.member?(@open_sections, "dyk") do %>
-              <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
-                <button
-                  type="button"
-                  phx-click="regenerate_dyk"
-                  disabled={@regenerating_dyk}
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-                >
-                  {cond do
-                    @regenerating_dyk -> "Generating…"
-                    @dyk_facts != [] -> "Regenerate"
-                    true -> "Generate"
-                  end}
-                </button>
-                <button
-                  :if={@dyk_facts != []}
-                  type="button"
-                  phx-click="clear_dyk"
-                  data-confirm="Clear all generated “Did you know?” facts for this game?"
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
-                >
-                  Clear
-                </button>
-              </div>
-              <%= if @dyk_facts != [] do %>
-                <ul style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden;list-style:none;padding:0">
-                  <%= for fact <- @dyk_facts do %>
-                    <li style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-bottom:1px solid var(--border-subtle)">
-                      {fact}
-                    </li>
-                  <% end %>
-                </ul>
-              <% else %>
-                <p style="font-size:0.62rem;color:var(--text-muted)">
-                  Generate short, friendly rule facts shown on this game's page.
-                </p>
-              <% end %>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
+                  <button
+                    type="button"
+                    phx-click="regenerate_dyk"
+                    disabled={@regenerating_dyk}
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    {cond do
+                      @regenerating_dyk -> "Generating…"
+                      @dyk_facts != [] -> "Regenerate"
+                      true -> "Generate"
+                    end}
+                  </button>
+                  <button
+                    :if={@dyk_facts != []}
+                    type="button"
+                    phx-click="clear_dyk"
+                    data-confirm="Clear all generated “Did you know?” facts for this game?"
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <%= if @dyk_facts != [] do %>
+                  <ul style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden;list-style:none;padding:0">
+                    <%= for fact <- @dyk_facts do %>
+                      <li style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-bottom:1px solid var(--border-subtle)">
+                        {fact}
+                      </li>
+                    <% end %>
+                  </ul>
+                <% else %>
+                  <p style="font-size:0.62rem;color:var(--text-muted)">
+                    Generate short, friendly rule facts shown on this game's page.
+                  </p>
+                <% end %>
               <% end %>
             </div>
 
@@ -3665,8 +3711,16 @@ defmodule RuleMavenWeb.GameLive.Form do
                     length(@setup_checklist["setup"] || []),
                 else: 0 %>
             <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
-              <button type="button" phx-click="toggle_section" phx-value-section="setup" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
-                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "setup"), do: "▾", else: "▸"}</span>
+              <button
+                type="button"
+                phx-click="toggle_section"
+                phx-value-section="setup"
+                style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)"
+              >
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(
+                                                                  @open_sections,
+                                                                  "setup"
+                                                                ), do: "▾", else: "▸"}</span>
                 <span>
                   🧩 Setup checklist
                   <%= if setup_count > 0 do %>
@@ -3675,72 +3729,80 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </span>
               </button>
               <%= if MapSet.member?(@open_sections, "setup") do %>
-              <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
-                <button
-                  type="button"
-                  phx-click="regenerate_setup"
-                  disabled={@regenerating_setup}
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-                >
-                  {cond do
-                    @regenerating_setup -> "Generating…"
-                    setup_count > 0 -> "Regenerate"
-                    true -> "Generate"
-                  end}
-                </button>
-                <button
-                  :if={setup_count > 0}
-                  type="button"
-                  phx-click="clear_setup"
-                  data-confirm="Clear the generated setup checklist for this game?"
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
-                >
-                  Clear
-                </button>
-              </div>
-              <%= if @regenerating_setup do %>
-                <p style="font-size:0.62rem;color:var(--text-muted);margin:0 0 0.4rem">
-                  ⏳ This can take up to a minute — extracting the checklist from the rulebook.
-                </p>
-              <% end %>
-              <%= if setup_count > 0 do %>
-                <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
-                  <%= if (@setup_checklist["components"] || []) != [] do %>
-                    <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle)">
-                      Gather
-                    </div>
-                    <%= for item <- @setup_checklist["components"] do %>
-                      <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
-                        {item}
-                      </div>
-                    <% end %>
-                  <% end %>
-                  <%= if (@setup_checklist["setup"] || []) != [] do %>
-                    <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);border-top:1px solid var(--border-subtle)">
-                      Steps
-                    </div>
-                    <%= for step <- @setup_checklist["setup"] do %>
-                      <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
-                        <span style="font-weight:600">{step["title"]}</span>
-                        <%= if step["detail"] not in [nil, "", "nil"] do %>
-                          <span style="display:block;color:var(--text-muted)">{step["detail"]}</span>
-                        <% end %>
-                      </div>
-                    <% end %>
-                  <% end %>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
+                  <button
+                    type="button"
+                    phx-click="regenerate_setup"
+                    disabled={@regenerating_setup}
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    {cond do
+                      @regenerating_setup -> "Generating…"
+                      setup_count > 0 -> "Regenerate"
+                      true -> "Generate"
+                    end}
+                  </button>
+                  <button
+                    :if={setup_count > 0}
+                    type="button"
+                    phx-click="clear_setup"
+                    data-confirm="Clear the generated setup checklist for this game?"
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--red);cursor:pointer"
+                  >
+                    Clear
+                  </button>
                 </div>
-              <% else %>
-                <p style="font-size:0.62rem;color:var(--text-muted)">
-                  Generate a setup checklist (components to gather + ordered steps) shown on this game's page.
-                </p>
-              <% end %>
+                <%= if @regenerating_setup do %>
+                  <p style="font-size:0.62rem;color:var(--text-muted);margin:0 0 0.4rem">
+                    ⏳ This can take up to a minute — extracting the checklist from the rulebook.
+                  </p>
+                <% end %>
+                <%= if setup_count > 0 do %>
+                  <div style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                    <%= if (@setup_checklist["components"] || []) != [] do %>
+                      <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle)">
+                        Gather
+                      </div>
+                      <%= for item <- @setup_checklist["components"] do %>
+                        <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
+                          {item}
+                        </div>
+                      <% end %>
+                    <% end %>
+                    <%= if (@setup_checklist["setup"] || []) != [] do %>
+                      <div style="padding:0.3rem 0.6rem;font-size:0.62rem;font-weight:700;text-transform:uppercase;color:var(--text-secondary);background:var(--bg-subtle);border-top:1px solid var(--border-subtle)">
+                        Steps
+                      </div>
+                      <%= for step <- @setup_checklist["setup"] do %>
+                        <div style="padding:0.35rem 0.6rem;font-size:0.72rem;line-height:1.45;color:var(--text);border-top:1px solid var(--border-subtle)">
+                          <span style="font-weight:600">{step["title"]}</span>
+                          <%= if step["detail"] not in [nil, "", "nil"] do %>
+                            <span style="display:block;color:var(--text-muted)">{step["detail"]}</span>
+                          <% end %>
+                        </div>
+                      <% end %>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <p style="font-size:0.62rem;color:var(--text-muted)">
+                    Generate a setup checklist (components to gather + ordered steps) shown on this game's page.
+                  </p>
+                <% end %>
               <% end %>
             </div>
 
             <%!-- Categories section --%>
             <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
-              <button type="button" phx-click="toggle_section" phx-value-section="categories" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
-                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "categories"), do: "▾", else: "▸"}</span>
+              <button
+                type="button"
+                phx-click="toggle_section"
+                phx-value-section="categories"
+                style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)"
+              >
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(
+                                                                  @open_sections,
+                                                                  "categories"
+                                                                ), do: "▾", else: "▸"}</span>
                 <span>
                   Question categories
                   <%= if @saved_categories != [] do %>
@@ -3749,54 +3811,39 @@ defmodule RuleMavenWeb.GameLive.Form do
                 </span>
               </button>
               <%= if MapSet.member?(@open_sections, "categories") do %>
-              <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
-                <button
-                  type="button"
-                  phx-click="regenerate_categories"
-                  disabled={@regenerating_categories}
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-                >
-                  {if @regenerating_categories, do: "Generating…", else: "Generate"}
-                </button>
-                <button
-                  :if={@draft_categories != []}
-                  type="button"
-                  phx-click="save_categories"
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--blue);background:var(--blue);color:white;cursor:pointer"
-                >
-                  Save
-                </button>
-                <button
-                  :if={@saved_categories != []}
-                  type="button"
-                  phx-click="retag_all_questions"
-                  style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
-                >
-                  Re-tag All
-                </button>
-              </div>
-              <%= if @draft_categories != [] do %>
-                <p style="font-size:0.6rem;color:var(--orange);margin-bottom:0.4rem">
-                  Draft (unsaved) — saving will replace all categories and clear question tags.
-                </p>
-                <div style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
-                  <%= for cat <- @draft_categories do %>
-                    <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle)">
-                      <div style="font-size:0.72rem;font-weight:600;color:var(--text)">
-                        {cat.name}
-                      </div>
-                      <div style="font-size:0.65rem;color:var(--text-secondary)">
-                        {cat.description}
-                      </div>
-                    </div>
-                  <% end %>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0 0.4rem">
+                  <button
+                    type="button"
+                    phx-click="regenerate_categories"
+                    disabled={@regenerating_categories}
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    {if @regenerating_categories, do: "Generating…", else: "Generate"}
+                  </button>
+                  <button
+                    :if={@draft_categories != []}
+                    type="button"
+                    phx-click="save_categories"
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--blue);background:var(--blue);color:white;cursor:pointer"
+                  >
+                    Save
+                  </button>
+                  <button
+                    :if={@saved_categories != []}
+                    type="button"
+                    phx-click="retag_all_questions"
+                    style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:0.3rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer"
+                  >
+                    Re-tag All
+                  </button>
                 </div>
-              <% end %>
-              <%= if @saved_categories != [] do %>
-                <div style="border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
-                  <%= for cat <- @saved_categories do %>
-                    <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;gap:0.5rem">
-                      <div style="flex:1;min-width:0">
+                <%= if @draft_categories != [] do %>
+                  <p style="font-size:0.6rem;color:var(--orange);margin-bottom:0.4rem">
+                    Draft (unsaved) — saving will replace all categories and clear question tags.
+                  </p>
+                  <div style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                    <%= for cat <- @draft_categories do %>
+                      <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle)">
                         <div style="font-size:0.72rem;font-weight:600;color:var(--text)">
                           {cat.name}
                         </div>
@@ -3804,25 +3851,48 @@ defmodule RuleMavenWeb.GameLive.Form do
                           {cat.description}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        phx-click="delete_category"
-                        phx-value-id={cat.id}
-                        data-confirm={"Delete the “#{cat.name}” category?"}
-                        style="font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:0.25rem;border:1px solid var(--red);color:var(--red);background:transparent;cursor:pointer;flex-shrink:0"
-                      >×</button>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
+                    <% end %>
+                  </div>
+                <% end %>
+                <%= if @saved_categories != [] do %>
+                  <div style="border:1px solid var(--border);border-radius:0.35rem;overflow:hidden">
+                    <%= for cat <- @saved_categories do %>
+                      <div style="padding:0.3rem 0.6rem;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;gap:0.5rem">
+                        <div style="flex:1;min-width:0">
+                          <div style="font-size:0.72rem;font-weight:600;color:var(--text)">
+                            {cat.name}
+                          </div>
+                          <div style="font-size:0.65rem;color:var(--text-secondary)">
+                            {cat.description}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          phx-click="delete_category"
+                          phx-value-id={cat.id}
+                          data-confirm={"Delete the “#{cat.name}” category?"}
+                          style="font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:0.25rem;border:1px solid var(--red);color:var(--red);background:transparent;cursor:pointer;flex-shrink:0"
+                        >×</button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
               <% end %>
             </div>
 
             <%!-- Game theme (derived from the BGG cover art) --%>
             <% has_theme = is_map(@game) and is_map(@game.theme_palette) %>
             <div style="margin-top:1.25rem;border:1px solid var(--border);border-radius:0.4rem;padding:0.5rem 0.75rem">
-              <button type="button" phx-click="toggle_section" phx-value-section="theme" style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)">
-                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(@open_sections, "theme"), do: "▾", else: "▸"}</span>
+              <button
+                type="button"
+                phx-click="toggle_section"
+                phx-value-section="theme"
+                style="display:flex;align-items:center;gap:0.4rem;width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:0.68rem;font-weight:600;color:var(--text-secondary)"
+              >
+                <span style="width:0.6rem;font-size:0.6rem">{if MapSet.member?(
+                                                                  @open_sections,
+                                                                  "theme"
+                                                                ), do: "▾", else: "▸"}</span>
                 <span>
                   🎨 Game theme
                   <%= if has_theme do %>

@@ -100,15 +100,21 @@ defmodule RuleMaven.Repo.Migrations.InjectionPatternsAndBlockedQuestions do
       {"openai says", "authority_spoofing"},
       {"your developer says", "authority_spoofing"},
       {"your training says", "authority_spoofing"},
-      {"as your administrator", "authority_spoofing"},
+      {"as your administrator", "authority_spoofing"}
     ]
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     rows =
       Enum.map(patterns, fn {pattern, category} ->
-        %{pattern: pattern, category: category, enabled: true, note: nil,
-          inserted_at: now, updated_at: now}
+        %{
+          pattern: pattern,
+          category: category,
+          enabled: true,
+          note: nil,
+          inserted_at: now,
+          updated_at: now
+        }
       end)
 
     execute(fn -> repo().insert_all("injection_patterns", rows) end, fn -> :ok end)

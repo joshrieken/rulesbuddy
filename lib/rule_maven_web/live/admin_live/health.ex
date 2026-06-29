@@ -33,7 +33,10 @@ defmodule RuleMavenWeb.AdminLive.Health do
       Audit.log(socket.assigns.current_user, "settings.cost_alert", metadata: %{threshold: alert})
 
       {:noreply,
-       socket |> assign(cost_alert: alert) |> put_flash(:info, "Daily cost alert saved.") |> load()}
+       socket
+       |> assign(cost_alert: alert)
+       |> put_flash(:info, "Daily cost alert saved.")
+       |> load()}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
@@ -91,9 +94,17 @@ defmodule RuleMavenWeb.AdminLive.Health do
 
       <%!-- Top stats --%>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:0.6rem;margin-bottom:1.25rem">
-        <.stat label="Spend today" value={"$#{fmt(@cost_today)}"} danger={threshold > 0 and @cost_today >= threshold} />
+        <.stat
+          label="Spend today"
+          value={"$#{fmt(@cost_today)}"}
+          danger={threshold > 0 and @cost_today >= threshold}
+        />
         <.stat label="LLM errors (24h)" value={@err.errors} danger={@err.errors > 0} />
-        <.stat label="Error rate (24h)" value={"#{Float.round(@err.rate * 100, 1)}%"} danger={@err.rate > 0.1} />
+        <.stat
+          label="Error rate (24h)"
+          value={"#{Float.round(@err.rate * 100, 1)}%"}
+          danger={@err.rate > 0.1}
+        />
         <.stat label="Requests (24h)" value={@err.requests} />
         <.stat label="Users" value={@total_users} />
       </div>
@@ -102,10 +113,22 @@ defmodule RuleMavenWeb.AdminLive.Health do
       <h2 style="font-size:1.1rem;font-weight:700;margin:0 0 0.5rem">Background jobs (Oban)</h2>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:0.6rem;margin-bottom:1rem">
         <.stat label="Executing" value={state(@oban, "executing")} />
-        <.stat label="Available" value={state(@oban, "available")} danger={state(@oban, "available") > 100} />
-        <.stat label="Retryable" value={state(@oban, "retryable")} danger={state(@oban, "retryable") > 0} />
+        <.stat
+          label="Available"
+          value={state(@oban, "available")}
+          danger={state(@oban, "available") > 100}
+        />
+        <.stat
+          label="Retryable"
+          value={state(@oban, "retryable")}
+          danger={state(@oban, "retryable") > 0}
+        />
         <.stat label="Scheduled" value={state(@oban, "scheduled")} />
-        <.stat label="Discarded" value={state(@oban, "discarded")} danger={state(@oban, "discarded") > 0} />
+        <.stat
+          label="Discarded"
+          value={state(@oban, "discarded")}
+          danger={state(@oban, "discarded") > 0}
+        />
       </div>
 
       <%= if @oban.per_queue != [] do %>
@@ -126,7 +149,9 @@ defmodule RuleMavenWeb.AdminLive.Health do
                   <td style={td()}><code>{queue}</code></td>
                   <td style={td()}>{Map.get(states, "executing", 0)}</td>
                   <td style={td()}>{Map.get(states, "available", 0)}</td>
-                  <td style={num(Map.get(states, "retryable", 0))}>{Map.get(states, "retryable", 0)}</td>
+                  <td style={num(Map.get(states, "retryable", 0))}>
+                    {Map.get(states, "retryable", 0)}
+                  </td>
                   <td style={td()}>{Map.get(states, "scheduled", 0)}</td>
                 </tr>
               <% end %>
@@ -135,7 +160,11 @@ defmodule RuleMavenWeb.AdminLive.Health do
         </div>
       <% end %>
       <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 1.5rem">
-        Deep job inspection lives in the <.link href="/oban" target="_blank" style="color:var(--accent)">Oban dashboard ↗</.link>.
+        Deep job inspection lives in the <.link
+          href="/oban"
+          target="_blank"
+          style="color:var(--accent)"
+        >Oban dashboard ↗</.link>.
       </p>
 
       <%!-- Cost alert setting --%>

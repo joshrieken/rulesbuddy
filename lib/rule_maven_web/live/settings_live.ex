@@ -118,7 +118,8 @@ defmodule RuleMavenWeb.SettingsLive do
        # Current prompt templates (override if set, else code default) keyed by
        # prompt key — backs the editable textareas on the Prompts tab.
        prompt_values:
-         (admin? && Map.new(RuleMaven.Prompts.specs(), &{&1.key, RuleMaven.Prompts.template(&1.key)})) ||
+         (admin? &&
+            Map.new(RuleMaven.Prompts.specs(), &{&1.key, RuleMaven.Prompts.template(&1.key)})) ||
            %{},
        saved: false,
        usage_stats: nil,
@@ -138,7 +139,8 @@ defmodule RuleMavenWeb.SettingsLive do
 
       {:noreply,
        assign(socket,
-         prompt_values: Map.put(socket.assigns.prompt_values, key, RuleMaven.Prompts.default(key)),
+         prompt_values:
+           Map.put(socket.assigns.prompt_values, key, RuleMaven.Prompts.default(key)),
          saved: false
        )}
     else
@@ -286,7 +288,9 @@ defmodule RuleMavenWeb.SettingsLive do
           default = RuleMaven.Prompts.default(key)
 
           cond do
-            is_nil(val) -> {key, RuleMaven.Prompts.template(key)}
+            is_nil(val) ->
+              {key, RuleMaven.Prompts.template(key)}
+
             normalize(val) == "" or normalize(val) == normalize(default) ->
               Settings.delete("prompt_#{key}")
               {key, default}
@@ -449,9 +453,7 @@ defmodule RuleMavenWeb.SettingsLive do
         </div>
 
         <!-- Profile Section -->
-        <section
-          style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);margin-bottom:1rem;display:#{if @tab == "profile", do: "block", else: "none"}"}
-        >
+        <section style={"border:1px solid var(--border);border-radius:0.75rem;padding:1.25rem;background:var(--bg-surface);margin-bottom:1rem;display:#{if @tab == "profile", do: "block", else: "none"}"}>
           <h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.75rem 0">Profile</h2>
 
           <div phx-change="profile_form_change">
@@ -1137,9 +1139,7 @@ defmodule RuleMavenWeb.SettingsLive do
             <%!-- ════════════════════════════════════════ --%>
             <%!-- Prompts --%>
             <%!-- ════════════════════════════════════════ --%>
-            <div
-              style={"flex-direction:column;gap:1rem;display:#{if @tab == "prompts", do: "flex", else: "none"}"}
-            >
+            <div style={"flex-direction:column;gap:1rem;display:#{if @tab == "prompts", do: "flex", else: "none"}"}>
               <p style="font-size:0.78rem;color:var(--text-muted);margin:0">
                 Edit the LLM prompts. Placeholders like <code>{"{{game_name}}"}</code> are filled in
                 at runtime — keep them. Leaving a prompt unchanged (or clicking Reset) uses the
@@ -1151,29 +1151,37 @@ defmodule RuleMavenWeb.SettingsLive do
                   {group}
                 </h2>
                 <%= for %{key: key, label: label, description: desc, vars: vars} <- Enum.filter(RuleMaven.Prompts.specs(), &(&1.group == group)) do %>
-                <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.25rem;background:var(--bg-surface)">
-                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-                    <h2 style="font-size:0.9rem;font-weight:700;margin:0">{label}</h2>
-                    <button
-                      type="button"
-                      phx-click="reset_prompt"
-                      phx-value-key={key}
-                      style="background:none;border:1px solid var(--border-strong);color:var(--text-muted);padding:0.2rem 0.6rem;border-radius:0.375rem;font-size:0.72rem;font-weight:600;cursor:pointer"
+                  <section style="border:1px solid var(--border);border-radius:0.75rem;padding:1rem 1.25rem;background:var(--bg-surface)">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+                      <h2 style="font-size:0.9rem;font-weight:700;margin:0">{label}</h2>
+                      <button
+                        type="button"
+                        phx-click="reset_prompt"
+                        phx-value-key={key}
+                        style="background:none;border:1px solid var(--border-strong);color:var(--text-muted);padding:0.2rem 0.6rem;border-radius:0.375rem;font-size:0.72rem;font-weight:600;cursor:pointer"
+                      >
+                        Reset to default
+                      </button>
+                    </div>
+                    <p style="font-size:0.72rem;color:var(--text-muted);margin:0.25rem 0 0 0">
+                      {desc}
+                    </p>
+                    <p
+                      :if={vars != []}
+                      style="font-size:0.7rem;color:var(--text-muted);margin:0.25rem 0 0 0"
                     >
-                      Reset to default
-                    </button>
-                  </div>
-                  <p style="font-size:0.72rem;color:var(--text-muted);margin:0.25rem 0 0 0">{desc}</p>
-                  <p :if={vars != []} style="font-size:0.7rem;color:var(--text-muted);margin:0.25rem 0 0 0">
-                    Variables: <%= for v <- vars do %><code style="margin-right:0.4rem">{"{{#{v}}}"}</code><% end %>
-                  </p>
-                  <textarea
-                    name={"prompt_#{key}"}
-                    rows="10"
-                    spellcheck="false"
-                    style="width:100%;margin-top:0.5rem;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.6rem;font-size:0.78rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:var(--bg);color:var(--text);resize:vertical"
-                  >{@prompt_values[key]}</textarea>
-                </section>
+                      Variables:
+                      <%= for v <- vars do %>
+                        <code style="margin-right:0.4rem">{"{{#{v}}}"}</code>
+                      <% end %>
+                    </p>
+                    <textarea
+                      name={"prompt_#{key}"}
+                      rows="10"
+                      spellcheck="false"
+                      style="width:100%;margin-top:0.5rem;border:1px solid var(--border-strong);border-radius:0.375rem;padding:0.5rem 0.6rem;font-size:0.78rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:var(--bg);color:var(--text);resize:vertical"
+                    >{@prompt_values[key]}</textarea>
+                  </section>
                 <% end %>
               <% end %>
             </div>

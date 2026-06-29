@@ -130,7 +130,8 @@ defmodule RuleMavenWeb.GameLive.Faq do
       >
         <span style="font-size:1.1rem;line-height:1">📖</span>
         <p style="font-size:0.72rem;color:var(--text-secondary);line-height:1.45;margin:0">
-          These answers are <strong>drawn from the official rules</strong> and surfaced by admins or the community as the most helpful. Always double-check the rulebook for anything that matters.
+          These answers are <strong>drawn from the official rules</strong>
+          and surfaced by admins or the community as the most helpful. Always double-check the rulebook for anything that matters.
         </p>
       </div>
 
@@ -160,7 +161,9 @@ defmodule RuleMavenWeb.GameLive.Faq do
       <% end %>
 
       <%= if @community_questions == [] do %>
-        <p style="font-size:0.8rem;color:var(--text-muted)">No community answers yet for this game.</p>
+        <p style="font-size:0.8rem;color:var(--text-muted)">
+          No community answers yet for this game.
+        </p>
       <% else %>
         <%= if @filter_category do %>
           <%!-- Filtered view: single category --%>
@@ -181,7 +184,9 @@ defmodule RuleMavenWeb.GameLive.Faq do
             <%= for q <- filtered do %>
               <.question_card q={q} is_admin={@is_admin} game={@game} />
             <% end %>
-            <p :if={filtered == []} style="font-size:0.75rem;color:var(--text-muted)">No questions in this category yet.</p>
+            <p :if={filtered == []} style="font-size:0.75rem;color:var(--text-muted)">
+              No questions in this category yet.
+            </p>
           </div>
         <% else %>
           <%!-- All categories view --%>
@@ -191,7 +196,9 @@ defmodule RuleMavenWeb.GameLive.Faq do
               <div id={"category-#{cat.id}"} style="margin-bottom:1.75rem">
                 <h2 style="font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem">
                   {cat.name}
-                  <span style="font-size:0.65rem;font-weight:400;color:var(--text-muted)">({length(cat_qs)})</span>
+                  <span style="font-size:0.65rem;font-weight:400;color:var(--text-muted)">({length(
+                    cat_qs
+                  )})</span>
                 </h2>
                 <div style="display:flex;flex-direction:column;gap:0.6rem">
                   <%= for q <- cat_qs do %>

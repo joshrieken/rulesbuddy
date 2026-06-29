@@ -117,8 +117,7 @@ defmodule RuleMavenWeb.AdminLive.Db do
         {:noreply, assign(socket, rows: rows, delete_id: nil)}
       rescue
         e in [Postgrex.Error, DBConnection.ConnectionError] ->
-          {:noreply,
-           socket |> assign(delete_id: nil) |> put_flash(:error, db_error_message(e))}
+          {:noreply, socket |> assign(delete_id: nil) |> put_flash(:error, db_error_message(e))}
       end
     else
       {:noreply,
@@ -190,7 +189,11 @@ defmodule RuleMavenWeb.AdminLive.Db do
       case mode do
         :new ->
           placeholders =
-            Enum.map_join(set_cols, ", ", &"$#{Enum.find_index(set_cols, fn c -> c == &1 end) + 1}")
+            Enum.map_join(
+              set_cols,
+              ", ",
+              &"$#{Enum.find_index(set_cols, fn c -> c == &1 end) + 1}"
+            )
 
           cols_str = Enum.map_join(set_cols, ", ", &safe(&1))
 
@@ -517,7 +520,10 @@ defmodule RuleMavenWeb.AdminLive.Db do
                     <% end %>
                     <td style="padding:0.15rem 0.3rem;border-bottom:1px solid var(--border-subtle);white-space:nowrap">
                       <span :if={not writable?(@table_name)} style="color:var(--text-muted)">—</span>
-                      <div :if={writable?(@table_name)} style="display:flex;gap:0.2rem;align-items:center">
+                      <div
+                        :if={writable?(@table_name)}
+                        style="display:flex;gap:0.2rem;align-items:center"
+                      >
                         <button
                           type="button"
                           phx-click="edit_row"

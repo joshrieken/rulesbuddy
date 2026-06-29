@@ -101,7 +101,9 @@ defmodule RuleMavenWeb.GameLive.Review do
               </div>
             </div>
           <% end %>
-          <div :if={@documents == []} class="text-sm" style="color:var(--text-muted)">No documents yet.</div>
+          <div :if={@documents == []} class="text-sm" style="color:var(--text-muted)">
+            No documents yet.
+          </div>
         </div>
       <% end %>
 
@@ -115,7 +117,10 @@ defmodule RuleMavenWeb.GameLive.Review do
                 <div class="font-semibold text-sm" style="word-break:break-word">
                   {q.canonical_question || q.question}
                 </div>
-                <div class="text-xs mt-1" style="color:var(--text-muted);line-height:1.4;word-break:break-word">
+                <div
+                  class="text-xs mt-1"
+                  style="color:var(--text-muted);line-height:1.4;word-break:break-word"
+                >
                   {String.slice(q.canonical_answer || q.answer || "", 0, 180)}
                 </div>
                 <%= if q.canonical_question do %>
@@ -143,10 +148,13 @@ defmodule RuleMavenWeb.GameLive.Review do
 
   defp status_color("published"),
     do: "background:color-mix(in srgb,var(--green) 20%,var(--bg-surface));color:var(--green)"
+
   defp status_color("pending_review"),
     do: "background:color-mix(in srgb,var(--yellow) 20%,var(--bg-surface));color:var(--yellow)"
+
   defp status_color("rejected"),
     do: "background:color-mix(in srgb,var(--red) 20%,var(--bg-surface));color:var(--red)"
+
   defp status_color(_),
     do: "background:var(--bg-subtle);color:var(--text-secondary)"
 end

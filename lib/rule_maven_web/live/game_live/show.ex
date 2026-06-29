@@ -91,7 +91,11 @@ defmodule RuleMavenWeb.GameLive.Show do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(RuleMaven.PubSub, "game:#{game.id}")
       Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Setup.topic(game.id))
-      Phoenix.PubSub.subscribe(RuleMaven.PubSub, RuleMaven.Workers.VoiceSuggestionsWorker.topic(game.id))
+
+      Phoenix.PubSub.subscribe(
+        RuleMaven.PubSub,
+        RuleMaven.Workers.VoiceSuggestionsWorker.topic(game.id)
+      )
     end
 
     grouped = Games.grouped_questions(game, user_id: socket.assigns.current_user.id)
@@ -595,7 +599,8 @@ defmodule RuleMavenWeb.GameLive.Show do
 
     cond do
       Games.taken_down?(socket.assigns.game) ->
-        {:noreply, put_flash(socket, :error, "This game has been removed and can't be asked about.")}
+        {:noreply,
+         put_flash(socket, :error, "This game has been removed and can't be asked about.")}
 
       RuleMaven.Settings.asks_disabled?() and not socket.assigns.is_admin ->
         {:noreply, put_flash(socket, :error, RuleMaven.Settings.asks_disabled_message())}
@@ -1431,32 +1436,32 @@ defmodule RuleMavenWeb.GameLive.Show do
                 <span>Rulebooks</span>
                 <span style="font-size:0.6rem;opacity:0.6">▾</span>
               </summary>
-                <div style="position:absolute;right:0;top:calc(100% + 0.35rem);z-index:200;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:200px;max-width:min(320px,calc(100vw - 2rem));overflow:hidden">
-                  <%= for {src, i} <- Enum.with_index(@sources) do %>
-                    <div style={"padding:0.5rem 0.75rem;#{if i > 0, do: "border-top:1px solid var(--border-subtle)"}"}>
-                      <div style="font-size:0.78rem;font-weight:600;color:var(--text);margin-bottom:0.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                        {src.label}
-                      </div>
-                      <%!-- Rulebooks may be copyrighted, so regular users see
+              <div style="position:absolute;right:0;top:calc(100% + 0.35rem);z-index:200;background:var(--bg-surface);border:1px solid var(--border);border-radius:0.5rem;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:200px;max-width:min(320px,calc(100vw - 2rem));overflow:hidden">
+                <%= for {src, i} <- Enum.with_index(@sources) do %>
+                  <div style={"padding:0.5rem 0.75rem;#{if i > 0, do: "border-top:1px solid var(--border-subtle)"}"}>
+                    <div style="font-size:0.78rem;font-weight:600;color:var(--text);margin-bottom:0.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                      {src.label}
+                    </div>
+                    <%!-- Rulebooks may be copyrighted, so regular users see
                             only the source name — no PDF, no full text. Admins
                             get the extracted-text HTML view. --%>
-                      <div :if={@is_admin and src.html_path} style="display:flex;gap:0.5rem">
-                        <.link
-                          href={~p"/rulebooks/#{src.id}/html"}
-                          target="_blank"
-                          style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
-                        >🔗 HTML</.link>
-                        <button
-                          type="button"
-                          phx-click="regenerate_html"
-                          phx-value-id={src.id}
-                          title="Re-render the HTML view from the current text"
-                          style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--text-secondary);font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border:1px solid var(--border);border-radius:0.25rem;background:none;cursor:pointer"
-                        >↻ Regen</button>
-                      </div>
+                    <div :if={@is_admin and src.html_path} style="display:flex;gap:0.5rem">
+                      <.link
+                        href={~p"/rulebooks/#{src.id}/html"}
+                        target="_blank"
+                        style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--blue);font-size:0.7rem;font-weight:600;text-decoration:none;padding:0.15rem 0.4rem;border:1px solid var(--blue);border-radius:0.25rem;opacity:0.85"
+                      >🔗 HTML</.link>
+                      <button
+                        type="button"
+                        phx-click="regenerate_html"
+                        phx-value-id={src.id}
+                        title="Re-render the HTML view from the current text"
+                        style="display:inline-flex;align-items:center;gap:0.2rem;color:var(--text-secondary);font-size:0.7rem;font-weight:600;padding:0.15rem 0.4rem;border:1px solid var(--border);border-radius:0.25rem;background:none;cursor:pointer"
+                      >↻ Regen</button>
                     </div>
-                  <% end %>
-                </div>
+                  </div>
+                <% end %>
+              </div>
             </details>
             <%!-- Community --%>
             <%= if @community_count > 0 do %>
@@ -1736,7 +1741,10 @@ defmodule RuleMavenWeb.GameLive.Show do
 
           <%= if @conversation == [] && @source_count > 0 do %>
             <!-- Empty state: lead with the primary action, suggestions visible immediately -->
-            <div class="answer-in" style="text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.6;position:relative;z-index:1">
+            <div
+              class="answer-in"
+              style="text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.6;position:relative;z-index:1"
+            >
               <%= if @game.image_url do %>
                 <img
                   src={@game.image_url}
@@ -1925,7 +1933,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                       verdict_stamp(msg[:verdict]) %>
                   <%= if stamp do %>
                     <% {emoji, label, color, bg} = stamp %>
-                    <div class="verdict-stamp" style={"display:inline-flex;align-items:center;gap:0.3rem;margin-bottom:0.5rem;padding:0.2rem 0.55rem;border-radius:999px;background:#{bg};color:#{color};font-weight:800;font-size:0.7rem;letter-spacing:0.04em;text-transform:uppercase"}>
+                    <div
+                      class="verdict-stamp"
+                      style={"display:inline-flex;align-items:center;gap:0.3rem;margin-bottom:0.5rem;padding:0.2rem 0.55rem;border-radius:999px;background:#{bg};color:#{color};font-weight:800;font-size:0.7rem;letter-spacing:0.04em;text-transform:uppercase"}
+                    >
                       <span aria-hidden="true">{emoji}</span> {label}
                     </div>
                   <% end %>
@@ -1989,7 +2000,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                           Rulebook &middot; p.{msg.cited_page}
                         </figcaption>
                       <% end %>
-                      <blockquote style={"margin:0;padding:0.55rem 0.7rem 0.55rem 0.85rem;border-left:3px solid #{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 50%,transparent)", else: "var(--accent)"};font-style:italic;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 92%,transparent)", else: "var(--text)"}"} phx-no-format>{String.trim(msg.cited_passage)}</blockquote>
+                      <blockquote
+                        style={"margin:0;padding:0.55rem 0.7rem 0.55rem 0.85rem;border-left:3px solid #{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 50%,transparent)", else: "var(--accent)"};font-style:italic;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#{if on_user, do: "color-mix(in srgb,var(--accent-text,#fff) 92%,transparent)", else: "var(--text)"}"}
+                        phx-no-format
+                      >{String.trim(msg.cited_passage)}</blockquote>
                       <%= if msg[:cited_html_link] do %>
                         <div style="padding:0 0.7rem 0.5rem 0.85rem">
                           <.link href={msg.cited_html_link} target="_blank" class="action-link">
@@ -2156,7 +2170,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                         phx-value-id={msg[:id]}
                         phx-value-voice={v.id}
                         class="card-menu__item"
-                        style={if cur_voice == v.id, do: "background:var(--accent);color:var(--accent-text,#fff)"}
+                        style={
+                          if cur_voice == v.id,
+                            do: "background:var(--accent);color:var(--accent-text,#fff)"
+                        }
                       >
                         <span aria-hidden="true">{v.emoji}</span>
                         <span>{v.label}</span>
@@ -2493,7 +2510,10 @@ defmodule RuleMavenWeb.GameLive.Show do
                         >✕</button>
                       <% end %>
                       <%= if RuleMaven.Users.can?(@current_user, :admin) && (msg[:llm_provider] || msg[:llm_model]) do %>
-                        <span class="text-xs" style="color:var(--text-muted);margin-left:0.5rem;min-width:0;overflow-wrap:anywhere;word-break:break-word">{msg[
+                        <span
+                          class="text-xs"
+                          style="color:var(--text-muted);margin-left:0.5rem;min-width:0;overflow-wrap:anywhere;word-break:break-word"
+                        >{msg[
                           :llm_provider
                         ]} &middot; {msg[:llm_model]}</span>
                       <% end %>

@@ -71,9 +71,7 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
   def handle_event("clear_all_games", _params, socket) do
     {count, _} = Games.delete_all_games()
 
-    Audit.log(socket.assigns.current_user, "catalog.clear_all",
-      metadata: %{"deleted" => count}
-    )
+    Audit.log(socket.assigns.current_user, "catalog.clear_all", metadata: %{"deleted" => count})
 
     {:noreply,
      socket
@@ -122,7 +120,10 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
         Catalog currently holds <strong>{@total_games}</strong> games.
       </p>
 
-      <form phx-submit="import" style="border:1px solid var(--border);border-radius:0.5rem;padding:1rem;background:var(--bg-surface)">
+      <form
+        phx-submit="import"
+        style="border:1px solid var(--border);border-radius:0.5rem;padding:1rem;background:var(--bg-surface)"
+      >
         <div style="display:flex;flex-direction:column;gap:0.6rem">
           <button
             type="submit"
@@ -135,7 +136,10 @@ defmodule RuleMavenWeb.AdminLive.Catalog do
       </form>
 
       <%= if @importing do %>
-        <div style="margin-top:1rem;padding:0.75rem;background:var(--bg-subtle);border-radius:0.5rem;font-size:0.8rem;color:var(--text-muted)" class="animate-pulse">
+        <div
+          style="margin-top:1rem;padding:0.75rem;background:var(--bg-subtle);border-radius:0.5rem;font-size:0.8rem;color:var(--text-muted)"
+          class="animate-pulse"
+        >
           Logging in, downloading the data dump, and upserting the catalog…
         </div>
       <% end %>

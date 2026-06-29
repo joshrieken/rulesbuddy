@@ -187,7 +187,12 @@ defmodule RuleMaven.ThemePalette do
   end
 
   defp hex({r, g, b}) do
-    "#" <> (Enum.map_join([r, g, b], &(&1 |> clamp() |> Integer.to_string(16) |> String.pad_leading(2, "0"))) |> String.upcase())
+    "#" <>
+      (Enum.map_join(
+         [r, g, b],
+         &(&1 |> clamp() |> Integer.to_string(16) |> String.pad_leading(2, "0"))
+       )
+       |> String.upcase())
   end
 
   defp rgba({r, g, b}, a), do: "rgba(#{clamp(r)}, #{clamp(g)}, #{clamp(b)}, #{a})"

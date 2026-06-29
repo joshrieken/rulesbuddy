@@ -98,7 +98,9 @@ defmodule RuleMaven.QuestionFlagsTest do
 
   defp make_verified(q) do
     {:ok, _} =
-      q |> Ecto.Changeset.change(verified: true, visibility: "community") |> RuleMaven.Repo.update()
+      q
+      |> Ecto.Changeset.change(verified: true, visibility: "community")
+      |> RuleMaven.Repo.update()
   end
 
   test "provisional answer is pulled on the first report", %{q: q} do
@@ -143,7 +145,9 @@ defmodule RuleMaven.QuestionFlagsTest do
   test "report respects the daily flag quota", %{game: game} do
     RuleMaven.Settings.put("flag_limit_daily", "2")
     u = user_fixture("quota")
-    [a, b, c] = for _ <- 1..3, do: log(game, user_fixture("a#{System.unique_integer([:positive])}"))
+
+    [a, b, c] =
+      for _ <- 1..3, do: log(game, user_fixture("a#{System.unique_integer([:positive])}"))
 
     assert {:ok, _} = Games.report_answer(a.id, u)
     assert {:ok, _} = Games.report_answer(b.id, u)

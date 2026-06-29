@@ -69,7 +69,9 @@ defmodule RuleMaven.Workers.DirectPromotionWorkerTest do
 
     # One high-rep confirmed voter can clear the floor alone, but quorum (2) is
     # not met, so it must stay private.
-    {:ok, voter} = confirmed_user("solo") |> Ecto.Changeset.change(reputation: 50) |> Repo.update()
+    {:ok, voter} =
+      confirmed_user("solo") |> Ecto.Changeset.change(reputation: 50) |> Repo.update()
+
     Games.set_community_vote(row.id, voter.id, "up")
 
     assert Repo.get(QuestionLog, row.id).trust_score >= 3.0

@@ -32,7 +32,9 @@ defmodule RuleMaven.GamesPoolInvalidationTest do
       Games.get_document!(doc.id) |> Games.chunk_document()
 
       contents =
-        Repo.all(from c in RuleMaven.Games.Chunk, where: c.document_id == ^doc.id, select: c.content)
+        Repo.all(
+          from c in RuleMaven.Games.Chunk, where: c.document_id == ^doc.id, select: c.content
+        )
         |> Enum.join("\n")
 
       assert contents =~ "CLEANED"

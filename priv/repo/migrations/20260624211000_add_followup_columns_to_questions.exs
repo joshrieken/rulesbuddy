@@ -12,7 +12,8 @@ defmodule RuleMaven.Repo.Migrations.AddFollowupColumnsToQuestions do
 
     flush()
 
-    rows = repo().query!("SELECT id, raw_response FROM questions_log WHERE raw_response IS NOT NULL")
+    rows =
+      repo().query!("SELECT id, raw_response FROM questions_log WHERE raw_response IS NOT NULL")
 
     Enum.each(rows.rows, fn [id, raw] ->
       followups = parse(raw, "followups", "FOLLOWUPS")

@@ -57,7 +57,9 @@ defmodule RuleMaven.TrustTest do
     test "citation bonus applies only with a grounded citation", %{game: game, author: author} do
       uncited = log(game, author, %{cited_passage: nil, cited_page: nil})
       ungrounded = log(game, author, %{cited_passage: "see p.4", cited_page: 4})
-      grounded = log(game, author, %{cited_passage: "see p.4", cited_page: 4, citation_valid: true})
+
+      grounded =
+        log(game, author, %{cited_passage: "see p.4", cited_page: 4, citation_valid: true})
 
       assert Trust.recompute_trust(uncited) == 0.0
       # Citation present but not validated → no bonus.

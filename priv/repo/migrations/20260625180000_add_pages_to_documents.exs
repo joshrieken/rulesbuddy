@@ -18,7 +18,7 @@ defmodule RuleMaven.Repo.Migrations.AddPagesToDocuments do
     # Backfill first-class pages from each document's existing marker-delimited
     # full_text blob.
     for %{id: id, full_text: full_text} <-
-          Repo.all(from d in "documents", select: %{id: d.id, full_text: d.full_text}) do
+          Repo.all(from(d in "documents", select: %{id: d.id, full_text: d.full_text})) do
       doc = Repo.get!(Document, id)
 
       doc

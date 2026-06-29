@@ -110,7 +110,9 @@
                 >
                   ✨ {label}
                 </option>
-                <option :for={{slug, label} <- RuleMaven.Metrics.themes()} value={slug}>{label}</option>
+                <option :for={{slug, label} <- RuleMaven.Metrics.themes()} value={slug}>
+                  {label}
+                </option>
               </select>
               <button
                 type="button"
