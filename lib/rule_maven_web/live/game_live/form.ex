@@ -2642,7 +2642,7 @@ defmodule RuleMavenWeb.GameLive.Form do
         <div style="display:flex;align-items:center;gap:1rem">
           <.link
             :if={@game && bgg_synced?(@game)}
-            navigate={~p"/games/#{@game.id}/prepare"}
+            href={~p"/games/#{@game.id}/prepare"}
             class="back-link"
             style="margin-bottom:0"
           >

@@ -56,6 +56,21 @@ defmodule RuleMaven.Readiness.Estimator do
     |> Enum.reduce(0.0, fn step, acc -> acc + step_cost(step, game, docs) end)
   end
 
+  @doc """
+  Estimated USD to re-run prepare on an already-Ready game. The required steps
+  (extract/cleanup/embed) stay complete and don't re-run — only the enrichment
+  pass regenerates — so this sums the enrichment LLM steps regardless of whether
+  they're already done (unlike `remaining_cost`, which would read 0).
+  """
+  def rerun_cost(%Games.Game{} = game) do
+    docs = Games.list_documents(game)
+
+    Readiness.enrichment_steps()
+    |> Enum.reduce(0.0, fn step, acc ->
+      if Readiness.llm_step?(step), do: acc + do_step_cost(step, game, docs), else: acc
+    end)
+  end
+
   # --- per-step projections ---
 
   defp do_step_cost(:extract, _game, docs) do

@@ -64,6 +64,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       auto?: Readiness.auto?(game.id),
       pause_reason: Readiness.pause_reason(game.id),
       remaining_cost: Estimator.remaining_cost(game),
+      rerun_cost: Estimator.rerun_cost(game),
       estimates: estimates,
       actuals: actuals,
       total_actual: LLM.cost_for_game(game.id),
@@ -176,11 +177,25 @@ defmodule RuleMavenWeb.GameLive.Prepare do
             Pause
           </button>
         <% else %>
+          <%!-- Once the game is Ready, re-running the pipeline re-spends on
+                enrichments, so deemphasize the action and confirm-gate it. --%>
           <button
             phx-click="prepare"
-            style="background:var(--accent);color:#fff;border:none;padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:700;cursor:pointer"
+            data-confirm={
+              @playable? &&
+                "This game is already Ready. Re-run the pipeline (regenerates enrichments and spends)?"
+            }
+            style={
+              if @playable?,
+                do:
+                  "background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border);padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.82rem;font-weight:600;cursor:pointer",
+                else:
+                  "background:var(--accent);color:var(--accent-text,#fff);border:none;padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.85rem;font-weight:700;cursor:pointer"
+            }
           >
-            Prepare game · est. ${fmt_cost(@remaining_cost)}
+            {if @playable?, do: "Re-run prepare", else: "Prepare game"} · est. ${fmt_cost(
+              if @playable?, do: @rerun_cost, else: @remaining_cost
+            )}
           </button>
         <% end %>
 
