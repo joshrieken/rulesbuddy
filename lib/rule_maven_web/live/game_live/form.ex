@@ -2349,6 +2349,40 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   defp reextractable_source?(_), do: false
 
+  # Aggregate gate outcome across every source on the game. `graded` counts
+  # pages that carried an extraction confidence (i.e. went through the gate —
+  # native docx/xlsx pages have none); `flagged` counts the low-confidence ones
+  # still needing review. graded > 0 && flagged == 0 → everything passed.
+  defp confidence_summary(entries) do
+    pages = Enum.flat_map(entries, & &1.pages)
+
+    %{
+      graded: Enum.count(pages, &is_number(&1[:confidence])),
+      flagged: Enum.count(pages, & &1[:needs_review])
+    }
+  end
+
+  # Green "all passed" / amber "N flagged" banner summarising the gate across all
+  # rulebook sources. Silent when no page was graded (nothing to vouch for).
+  defp confidence_banner(assigns) do
+    assigns = assign(assigns, summary: confidence_summary(assigns.entries))
+
+    ~H"""
+    <div :if={@summary.graded > 0}>
+      <span
+        :if={@summary.flagged == 0}
+        title="Every extracted page cleared the confidence gate (two reads agreed and the adversarial check found no residual defects)."
+        style="display:inline-flex;align-items:center;gap:0.4rem;font-size:0.75rem;font-weight:600;padding:0.25rem 0.6rem;border-radius:0.3rem;border:1px solid var(--green-border, #2f9e44);background:var(--green-bg, rgba(47,158,68,0.12));color:var(--green-text, #2b8a3e)"
+      >✓ All {@summary.graded} page(s) passed the confidence check</span>
+      <span
+        :if={@summary.flagged > 0}
+        title="Some pages had low extraction confidence. Open them below to verify or re-extract."
+        style="display:inline-flex;align-items:center;gap:0.4rem;font-size:0.75rem;font-weight:600;padding:0.25rem 0.6rem;border-radius:0.3rem;border:1px solid var(--amber-border, #d4a017);background:var(--amber-bg, rgba(212,160,23,0.12));color:var(--amber-text, #b8860b)"
+      >⚠ {@summary.flagged} of {@summary.graded} page(s) flagged for review</span>
+    </div>
+    """
+  end
+
   defp review_flag(assigns) do
     assigns =
       assign(assigns,
@@ -3060,7 +3094,10 @@ defmodule RuleMavenWeb.GameLive.Form do
           <%!-- Manage Rulebooks tab --%>
           <div style={if @tab == "manage", do: "display:block", else: "display:none"}>
             <div class="space-y-4">
-              <h2 class="text-lg font-semibold">Rulebook Sources</h2>
+              <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+                <h2 class="text-lg font-semibold">Rulebook Sources</h2>
+                <.confidence_banner :if={@source_entries != []} entries={@source_entries} />
+              </div>
               <div
                 :if={@uploading_pdfs}
                 style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0.85rem;border:1px solid var(--blue);background:rgba(59,130,246,0.08);border-radius:0.4rem;font-size:0.82rem;color:var(--text-secondary)"
