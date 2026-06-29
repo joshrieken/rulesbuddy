@@ -2272,9 +2272,9 @@ defmodule RuleMavenWeb.GameLive.Form do
       assign(assigns,
         count: length(assigns.pages),
         step_style:
-          "height:2.6rem;min-width:2.6rem;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:1.5rem;line-height:1;padding:0 0.7rem;border-radius:0.4rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer",
+          "height:2.1rem;min-width:2.1rem;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:1.25rem;line-height:1;padding:0 0.55rem;border-radius:0.4rem;border:1px solid var(--border);background:var(--bg-subtle);color:var(--text-secondary);cursor:pointer",
         select_style:
-          "height:2.6rem;min-width:9rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.4rem;padding:0 0.7rem;font-size:1.05rem;font-weight:600;background:var(--bg);color:var(--text);cursor:pointer"
+          "height:2.1rem;min-width:8rem;box-sizing:border-box;border:1px solid var(--border);border-radius:0.4rem;padding:0 0.55rem;font-size:0.95rem;font-weight:600;background:var(--bg);color:var(--text);cursor:pointer"
       )
 
     ~H"""
@@ -3473,7 +3473,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                 <% cur_page = Enum.at(pages, cur) %>
                 <% layer = editor_layer(reader, @editor_tab) %>
                 <% page_head =
-                  "font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:1.5rem 0 0.6rem 0;text-align:center" %>
+                  "font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 0.4rem 0;text-align:center" %>
                 <% page_label = fn p ->
                   if p.printed, do: "Page #{p.printed} · Sheet #{p.sheet}", else: "Sheet #{p.sheet}"
                 end %>
@@ -3490,7 +3490,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                     phx-key="Escape"
                     style="background:var(--bg);border-radius:0.6rem;width:100%;height:100%;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.4)"
                   >
-                    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.75rem 1.1rem;border-bottom:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 1.1rem;border-bottom:1px solid var(--border)">
                       <strong style="font-size:0.95rem;flex-shrink:0">
                         {if String.trim(reader.label) != "", do: reader.label, else: "Rulebook"}
                       </strong>
@@ -3551,7 +3551,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                           mode (continuous read-only) does scroll the whole area. --%>
                     <div
                       id="reader-scroll"
-                      style={"padding:2rem clamp(1.5rem,8vw,8rem);flex:1;min-height:0;display:flex;flex-direction:column;overflow:#{if @reader_mode == "paginated", do: "hidden", else: "auto"}"}
+                      style={"padding:0.5rem clamp(1.5rem,8vw,8rem) 1rem;flex:1;min-height:0;display:flex;flex-direction:column;overflow:#{if @reader_mode == "paginated", do: "hidden", else: "auto"}"}
                     >
                       <%= if @reader_mode == "paginated" do %>
                         <%= if cur_page do %>
