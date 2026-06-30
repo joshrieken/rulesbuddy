@@ -1264,12 +1264,19 @@ defmodule RuleMaven.LLM do
     prompt =
       RuleMaven.Prompts.render("generate_voices", %{
         game_name: game_name,
-        rulebook: sample_across(rulebook_text, 6000, 2000)
+        # A contiguous head excerpt, not sample_across's fragmented "\n...\n"
+        # windows: the flash model reliably returns an EMPTY completion for the
+        # fragmented input here, while a contiguous excerpt yields a full themed
+        # set. Theme/flavor is front-loaded in rulebooks, so the head is enough.
+        rulebook: String.slice(rulebook_text, 0, 8000)
       })
 
     case chat(prompt, "generate_voices",
            system: RuleMaven.Prompts.template("generate_voices_system"),
-           max_tokens: 1200
+           # Each voice now carries 4-6 loading_phrases on top of its style, so
+           # a full 6-voice set needs noticeably more room. Too low and the JSON
+           # truncates mid-array → parse fails → no voices.
+           max_tokens: 2600
          ) do
       {:ok, text} ->
         {:ok, parse_voices(text)}
