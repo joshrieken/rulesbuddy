@@ -398,6 +398,8 @@ defmodule RuleMaven.Prompts do
 
   Keep all facts and numbers identical. Do not add rules. Do not add a sign-off unless it is one short in-character phrase.
 
+  Stay about as long as the original — no padding. The persona changes the tone, not the word count; never inflate the answer to perform the character.
+
   ANSWER:
   {{answer}}
   """
