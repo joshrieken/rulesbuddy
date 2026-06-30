@@ -50,6 +50,9 @@ defmodule RuleMavenWeb.GameLive.Show do
        voice_sel: %{},
        voice_cache: %{},
        voice_pending: MapSet.new(),
+       # {question_log_id, voice} restyles that failed — render falls back to the
+       # plain answer for these instead of showing the loader forever.
+       voice_failed: MapSet.new(),
        # Voices available on this game: the built-in globals plus the game's own
        # generated, themed personas. Filled in once the game loads; updated live
        # by {:voices_ready} when generation finishes.
@@ -357,9 +360,12 @@ defmodule RuleMavenWeb.GameLive.Show do
   # the default only fills in answers the user hasn't overridden (via the display
   # fallback). Already-cached restyles are reused; uncached ones enqueue a job.
   defp apply_default_voice(socket, voice) do
-    socket = assign(socket, default_voice: voice)
+    # Coerce an unknown/stale voice to neutral so the render never shows the
+    # loader for a voice that will never resolve.
+    valid_voice? = voice != "neutral" and RuleMaven.Voices.valid?(voice, socket.assigns.game)
+    socket = assign(socket, default_voice: if(valid_voice?, do: voice, else: "neutral"))
 
-    if voice == "neutral" or not RuleMaven.Voices.valid?(voice, socket.assigns.game) do
+    if not valid_voice? do
       socket
     else
       socket.assigns.conversation
@@ -390,7 +396,10 @@ defmodule RuleMavenWeb.GameLive.Show do
             |> RuleMaven.Workers.VoiceWorker.new()
             |> Oban.insert()
 
-            assign(acc, voice_pending: MapSet.put(acc.assigns.voice_pending, {id, voice}))
+            assign(acc,
+              voice_pending: MapSet.put(acc.assigns.voice_pending, {id, voice}),
+              voice_failed: MapSet.delete(acc.assigns.voice_failed, {id, voice})
+            )
         end
       end)
     end
@@ -1301,15 +1310,17 @@ defmodule RuleMavenWeb.GameLive.Show do
   def handle_info({:voice_ready, ql_id, voice, content}, socket) do
     cache = Map.put(socket.assigns.voice_cache, {ql_id, voice}, content)
     pending = MapSet.delete(socket.assigns.voice_pending, {ql_id, voice})
-    {:noreply, assign(socket, voice_cache: cache, voice_pending: pending)}
+    failed = MapSet.delete(socket.assigns.voice_failed, {ql_id, voice})
+    {:noreply, assign(socket, voice_cache: cache, voice_pending: pending, voice_failed: failed)}
   end
 
   def handle_info({:voice_failed, ql_id, voice}, socket) do
     pending = MapSet.delete(socket.assigns.voice_pending, {ql_id, voice})
+    failed = MapSet.put(socket.assigns.voice_failed, {ql_id, voice})
 
     {:noreply,
      socket
-     |> assign(voice_pending: pending)
+     |> assign(voice_pending: pending, voice_failed: failed)
      |> put_flash(:error, "Couldn't apply that voice — showing the plain answer.")}
   end
 
@@ -2053,9 +2064,13 @@ defmodule RuleMavenWeb.GameLive.Show do
                         if v_sel == "neutral",
                           do: nil,
                           else: Map.get(@voice_cache, {msg[:id], v_sel}) %>
-                      <% v_pending = MapSet.member?(@voice_pending, {msg[:id], v_sel}) %>
+                      <% v_failed = MapSet.member?(@voice_failed, {msg[:id], v_sel}) %>
+                      <%!-- Loader shows for any non-neutral voice until its restyle
+                            lands, so the plain answer never flashes first; a failed
+                            restyle falls through to the plain answer. --%>
+                      <% show_loader = v_sel != "neutral" && is_nil(v_content) && not v_failed %>
                       <div class="answer-in">
-                        <%= if v_pending && is_nil(v_content) do %>
+                        <%= if show_loader do %>
                           <div
                             class="voice-loader"
                             id={"voice-loader-#{msg[:id]}"}
