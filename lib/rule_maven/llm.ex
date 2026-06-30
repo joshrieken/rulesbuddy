@@ -51,40 +51,61 @@ defmodule RuleMaven.LLM do
         {:error, _} -> nil
       end
 
+    user_id = opts[:user_id]
+
     # Pooled/community answers are rulebook-derived, so any asker may be served a
     # match — the lookup intentionally doesn't filter by user (no user_id passed).
     pool_hit =
       !skip_pool && question_embedding &&
         RuleMaven.Games.find_similar_question_in_pool(game.id, question_embedding)
 
+    # Same-user tiers: a returning asker is served their OWN prior answer even
+    # when it never pooled. Exact (normalized-text) dedup first, then a tight
+    # semantic fallback. Skipped when there's no signed-in asker or skip_pool.
+    user_exact =
+      !skip_pool && user_id &&
+        RuleMaven.Games.find_user_duplicate(game.id, user_id, match_text, question)
+
+    user_semantic =
+      !skip_pool && user_id && question_embedding &&
+        RuleMaven.Games.find_user_similar(game.id, user_id, question_embedding)
+
     cond do
       pool_hit ->
-        {row, tier} = pool_hit
-        RuleMaven.LLM.Savings.record_cache_hit("ask", game.id, opts[:user_id])
+        serve_from_cache(pool_hit, question_embedding, cleaned, game.id, user_id)
 
-        # Serve answer text only — never the source row's question wording or
-        # author. tier is :trusted | :provisional (unverified single source).
-        {:ok,
-         %{
-           answer: row.canonical_answer || row.answer,
-           cited_passage: row.cited_passage,
-           cited_page: row.cited_page,
-           verdict: row.verdict,
-           provider: "pool",
-           # Encode tier in the model field so it survives a page reload
-           # (the served row has no trust_score of its own to derive from).
-           model: if(tier == :trusted, do: "cached", else: "cached-unverified"),
-           pool_hit: true,
-           tier: tier,
-           verified: tier == :trusted,
-           source_question_log_id: row.id,
-           question_embedding: question_embedding,
-           cleaned_question: cleaned
-         }}
+      user_exact ->
+        serve_from_cache(user_exact, question_embedding, cleaned, game.id, user_id)
+
+      user_semantic ->
+        serve_from_cache(user_semantic, question_embedding, cleaned, game.id, user_id)
 
       true ->
         call_llm(game, match_text, expansion_ids, recent_context, question_embedding, cleaned)
     end
+  end
+
+  # Builds the cache-serving result from a `{row, tier}` and records the save.
+  # Serves answer text only — never the source row's question wording or author.
+  defp serve_from_cache({row, tier}, question_embedding, cleaned, game_id, user_id) do
+    RuleMaven.LLM.Savings.record_cache_hit("ask", game_id, user_id)
+
+    {:ok,
+     %{
+       answer: row.canonical_answer || row.answer,
+       cited_passage: row.cited_passage,
+       cited_page: row.cited_page,
+       verdict: row.verdict,
+       provider: "pool",
+       # Encode tier in the model field so it survives a page reload.
+       model: if(tier == :trusted, do: "cached", else: "cached-unverified"),
+       pool_hit: true,
+       tier: tier,
+       verified: tier == :trusted,
+       source_question_log_id: row.id,
+       question_embedding: question_embedding,
+       cleaned_question: cleaned
+     }}
   end
 
   defp call_llm(game, question, expansion_ids, recent_context, question_embedding, cleaned) do

@@ -260,6 +260,107 @@ defmodule RuleMaven.LLMTest do
       assert result.provider != "pool"
       assert result.answer =~ "Fresh answer"
     end
+
+    test "serves the same user's own un-pooled prior answer (exact dup)" do
+      {:ok, game} = Games.create_game(%{name: "UserDupGame"})
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "udup",
+          email: "udup@test.com",
+          password_hash: "x"
+        })
+
+      # Private, NOT pooled, no embedding — invisible to the shared pool.
+      {:ok, q} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: user.id,
+          question: "How many dice do I roll?",
+          answer: "You roll 3 dice.",
+          visibility: "private"
+        })
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, Enum.to_list(1..768)} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      {:ok, result} = LLM.ask(game, "How many dice do I roll?", [], [], user_id: user.id)
+
+      assert result[:pool_hit] == true
+      assert result.answer == "You roll 3 dice."
+      assert result[:source_question_log_id] == q.id
+      assert result.provider == "pool"
+    end
+
+    test "does NOT serve another user's un-pooled answer" do
+      {:ok, game} = Games.create_game(%{name: "NoCrossGame"})
+
+      author =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "author_x",
+          email: "ax@test.com",
+          password_hash: "x"
+        })
+
+      asker =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "asker_x",
+          email: "kx@test.com",
+          password_hash: "x"
+        })
+
+      Games.log_question(%{
+        game_id: game.id,
+        user_id: author.id,
+        question: "How many dice do I roll?",
+        answer: "Author's private answer.",
+        visibility: "private"
+      })
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, Enum.to_list(1..768)} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      mock_llm(fn _ ->
+        {:ok, %{answer: "Fresh LLM answer", cited_passage: "p.1", followup: false, followups: []}}
+      end)
+
+      {:ok, result} = LLM.ask(game, "How many dice do I roll?", [], [], user_id: asker.id)
+
+      assert result.provider != "pool"
+      assert result.answer =~ "Fresh LLM answer"
+    end
+
+    test "skip_pool also bypasses the same-user dedup" do
+      {:ok, game} = Games.create_game(%{name: "UserSkipGame"})
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "uskip",
+          email: "uskip@test.com",
+          password_hash: "x"
+        })
+
+      Games.log_question(%{
+        game_id: game.id,
+        user_id: user.id,
+        question: "How many dice do I roll?",
+        answer: "Cached own answer.",
+        visibility: "private"
+      })
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, Enum.to_list(1..768)} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      mock_llm(fn _ ->
+        {:ok, %{answer: "Fresh answer", cited_passage: "p.1", followup: false, followups: []}}
+      end)
+
+      {:ok, result} =
+        LLM.ask(game, "How many dice do I roll?", [], [], user_id: user.id, skip_pool: true)
+
+      assert result.provider != "pool"
+      assert result.answer =~ "Fresh answer"
+    end
   end
 
   describe "voice parsing includes loading_phrases" do
