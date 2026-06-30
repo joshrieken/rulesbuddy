@@ -236,18 +236,38 @@ defmodule RuleMaven.Voices do
     end
   end
 
+  # Canonical answers run up to ~1024 tokens (the ask cap) and a persona adds
+  # framing words on top, so a tight cap truncated longer restyles mid-sentence.
+  @restyle_max_tokens 1536
+  @restyle_max_tokens_retry 3072
+
   defp generate(%{id: id, style: style}, canonical, game_name, game_id) do
     system = RuleMaven.Prompts.template("voice_restyle_system")
     prompt = RuleMaven.Prompts.render("voice_restyle", %{style: style, answer: canonical})
 
-    LLM.chat(prompt, "voice_#{id}_#{game_name}",
-      operation: "voice",
-      game_id: game_id,
-      system: system,
-      # Canonical answers run up to ~1024 tokens (the ask cap) and a persona adds
-      # framing words on top, so 700 truncated longer restyles mid-sentence.
-      max_tokens: 1536
-    )
+    do_generate(prompt, system, id, game_name, game_id, @restyle_max_tokens)
+  end
+
+  # Reject a truncated restyle rather than cache a partial. On the first cut-off,
+  # retry once at a higher cap; a second truncation returns {:error, :truncated}
+  # so nothing partial is stored.
+  defp do_generate(prompt, system, id, game_name, game_id, cap) do
+    result =
+      LLM.chat(prompt, "voice_#{id}_#{game_name}",
+        operation: "voice",
+        game_id: game_id,
+        system: system,
+        max_tokens: cap,
+        reject_truncated: true
+      )
+
+    case result do
+      {:error, :truncated} when cap < @restyle_max_tokens_retry ->
+        do_generate(prompt, system, id, game_name, game_id, @restyle_max_tokens_retry)
+
+      other ->
+        other
+    end
   end
 
   defp store(question_log_id, voice, content) do

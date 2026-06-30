@@ -383,6 +383,24 @@ defmodule RuleMaven.LLMTest do
     end
   end
 
+  describe "truncation detection (__truncated__/2)" do
+    test "provider finish_reason length/max_tokens is authoritative" do
+      assert LLM.__truncated__("length", "anything, even with a period.")
+      assert LLM.__truncated__("max_tokens", "anything.")
+    end
+
+    test "a complete stop is not truncated regardless of text" do
+      refute LLM.__truncated__("stop", "However, tokens")
+    end
+
+    test "nil finish_reason falls back to mid-sentence heuristic" do
+      assert LLM.__truncated__(nil, "However, tokens")
+      refute LLM.__truncated__(nil, "Return the tokens to gain energy.")
+      refute LLM.__truncated__(nil, "Spend them wisely!")
+      refute LLM.__truncated__(nil, "")
+    end
+  end
+
   describe "normalize_question repeat handling" do
     alias RuleMaven.LLM.NormalizeCache
 

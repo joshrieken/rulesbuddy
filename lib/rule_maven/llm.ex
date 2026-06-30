@@ -522,9 +522,33 @@ defmodule RuleMaven.LLM do
            game_id: opts[:game_id],
            user_id: opts[:user_id]
          ) do
-      {:ok, %{answer: text}} -> {:ok, text}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{answer: text} = res} ->
+        if opts[:reject_truncated] && truncated?(res[:finish_reason], text) do
+          {:error, :truncated}
+        else
+          {:ok, text}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  @doc false
+  # Test seam for the completeness check.
+  def __truncated__(finish_reason, text), do: truncated?(finish_reason, text)
+
+  # True when a response was cut off. The provider's finish_reason is
+  # authoritative ("length" / "max_tokens"); when it's absent, fall back to a
+  # conservative heuristic — text that ends mid-sentence (no terminal
+  # punctuation) is treated as incomplete.
+  defp truncated?(reason, _text) when reason in ["length", "max_tokens"], do: true
+  defp truncated?(nil, text), do: incomplete_text?(text)
+  defp truncated?(_reason, _text), do: false
+
+  defp incomplete_text?(text) do
+    trimmed = text |> to_string() |> String.trim_trailing()
+    trimmed != "" and not Regex.match?(~r/[.!?…)\]"”'`*]$/u, trimmed)
   end
 
   @doc false
@@ -720,8 +744,16 @@ defmodule RuleMaven.LLM do
 
   defp parse_response(body) do
     case body do
-      %{"choices" => [%{"message" => %{"content" => content}} | _]} ->
-        {:ok, content |> decode_answer() |> Map.put(:raw_response, content)}
+      %{"choices" => [%{"message" => %{"content" => content}} = choice | _]} ->
+        # finish_reason == "length" (or Anthropic "max_tokens") means the model was
+        # cut off at the token cap — surfaced so callers can reject a partial.
+        finish_reason = choice["finish_reason"] || body["stop_reason"]
+
+        {:ok,
+         content
+         |> decode_answer()
+         |> Map.put(:raw_response, content)
+         |> Map.put(:finish_reason, finish_reason)}
 
       %{"error" => %{"message" => message}} ->
         {:error, message}
