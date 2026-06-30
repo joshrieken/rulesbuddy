@@ -282,6 +282,31 @@ defmodule RuleMaven.LLMTest do
     end
   end
 
+  describe "normalize_question repeat handling" do
+    alias RuleMaven.LLM.NormalizeCache
+
+    test "an identical re-ask is normalized standalone (text-cached)" do
+      {:ok, game} = Games.create_game(%{name: "RepeatGame"})
+
+      LLM.normalize_question(game, "How many dice do I roll?", [
+        {"How many dice do I roll?", "You roll 3 dice."}
+      ])
+
+      # Standalone branch populates the per-raw cache; followup branch never does.
+      assert {:ok, _} = NormalizeCache.get({game.id, "how many dice do i roll?"})
+    end
+
+    test "a genuine followup is NOT text-cached (stays context-sensitive)" do
+      {:ok, game} = Games.create_game(%{name: "FollowupGame"})
+
+      LLM.normalize_question(game, "what about on a road?", [
+        {"How many dice do I roll?", "You roll 3 dice."}
+      ])
+
+      assert NormalizeCache.get({game.id, "what about on a road?"}) == :miss
+    end
+  end
+
   defp mock_llm(fun) do
     Application.put_env(:rule_maven, :llm_mock, fun)
 

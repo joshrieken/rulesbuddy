@@ -148,12 +148,20 @@ defmodule RuleMaven.LLM do
   def normalize_question(game, question, recent_context \\ []) do
     raw = question |> to_string() |> String.trim()
 
+    # A literally identical re-ask is NOT a followup — normalize it standalone so
+    # it collapses onto the original's canonical form + embedding (and hits the
+    # cache) instead of being rewritten against the conversation.
+    repeat? =
+      Enum.any?(recent_context, fn {q, _a} ->
+        String.downcase(String.trim(to_string(q))) == String.downcase(raw)
+      end)
+
     cond do
       raw == "" ->
         raw
 
       # Followups resolve against the conversation — not cacheable by raw text.
-      recent_context != [] ->
+      recent_context != [] and not repeat? ->
         do_normalize(game, raw, recent_context)
 
       true ->
