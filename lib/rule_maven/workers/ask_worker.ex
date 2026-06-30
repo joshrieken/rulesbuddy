@@ -87,8 +87,37 @@ defmodule RuleMaven.Workers.AskWorker do
                 if String.trim(stripped) == "", do: raw_answer, else: stripped
             end
 
-          if ql = get_question_log!(question_log_id) do
-            raw_passage = llm_result[:cited_passage]
+          ql = get_question_log!(question_log_id)
+          source_id = llm_result[:source_question_log_id]
+
+          cond do
+            is_nil(ql) ->
+              # Question row vanished (deleted by a retry) — close the run so it
+              # doesn't linger as running.
+              Jobs.finish_run(run, "done", "Question no longer exists.")
+
+            # Same-user duplicate: the asker already has this exact answer, so
+            # redirect them to it and drop this provisional row instead of
+            # persisting a second copy. Only when the source still exists; cross-
+            # user pool/community hits fall through and keep the anonymized copy.
+            llm_result[:same_user_hit] && source_id && get_question_log!(source_id) ->
+              Games.delete_question(ql)
+
+              Phoenix.PubSub.broadcast(
+                RuleMaven.PubSub,
+                "game:#{game_id}",
+                {:ask_redirect,
+                 %{question_log_id: question_log_id, source_question_log_id: source_id}}
+              )
+
+              Jobs.finish_run(
+                run,
+                "done",
+                "Duplicate of your prior question — redirected to ##{source_id}."
+              )
+
+            true ->
+              raw_passage = llm_result[:cited_passage]
             # Strip [Page N] markers from display passage AFTER extracting page number
             passage =
               if raw_passage do
@@ -221,10 +250,6 @@ defmodule RuleMaven.Workers.AskWorker do
 
                 Jobs.finish_run(run, "failed", "Failed to save answer.")
             end
-          else
-            # Question row vanished (deleted by a retry) — close the run so it
-            # doesn't linger as running.
-            Jobs.finish_run(run, "done", "Question no longer exists.")
           end
 
           :ok

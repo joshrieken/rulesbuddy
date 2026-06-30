@@ -383,6 +383,77 @@ defmodule RuleMaven.LLMTest do
     end
   end
 
+  describe "same_user_hit flag" do
+    test "false on a cross-user pool hit" do
+      {:ok, game} = Games.create_game(%{name: "FlagPoolGame"})
+
+      author =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "flag_author",
+          email: "fa@test.com",
+          password_hash: "x"
+        })
+
+      asker =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "flag_asker",
+          email: "fk@test.com",
+          password_hash: "x"
+        })
+
+      embedding = Enum.to_list(1..768)
+
+      {:ok, q} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: author.id,
+          question: "How many dice do I roll?",
+          answer: "Roll 3 dice.",
+          visibility: "community"
+        })
+
+      Repo.update_all(from(r in QuestionLog, where: r.id == ^q.id),
+        set: [question_embedding: Pgvector.new(embedding)]
+      )
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, embedding} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      {:ok, pool} = LLM.ask(game, "any phrasing", [], [], user_id: asker.id)
+      assert pool[:pool_hit] == true
+      assert pool[:same_user_hit] == false
+    end
+
+    test "true on a same-user hit (no pooled/community row to intercept)" do
+      {:ok, game} = Games.create_game(%{name: "FlagOwnGame"})
+
+      asker =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "flag_own",
+          email: "fo@test.com",
+          password_hash: "x"
+        })
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, Enum.to_list(1..768)} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      {:ok, own} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: asker.id,
+          question: "How many dice do I roll?",
+          answer: "Roll 3 dice (mine).",
+          cleaned_question: "how many dice do i roll?",
+          visibility: "private"
+        })
+
+      {:ok, mine} = LLM.ask(game, "How many dice do I roll?", [], [], user_id: asker.id)
+
+      assert mine[:same_user_hit] == true
+      assert mine[:source_question_log_id] == own.id
+    end
+  end
+
   describe "truncation detection (__truncated__/2)" do
     test "provider finish_reason length/max_tokens is authoritative" do
       assert LLM.__truncated__("length", "anything, even with a period.")

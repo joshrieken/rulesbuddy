@@ -72,13 +72,13 @@ defmodule RuleMaven.LLM do
 
     cond do
       pool_hit ->
-        serve_from_cache(pool_hit, question_embedding, cleaned, game.id, user_id)
+        serve_from_cache(pool_hit, question_embedding, cleaned, game.id, user_id, false)
 
       user_exact ->
-        serve_from_cache(user_exact, question_embedding, cleaned, game.id, user_id)
+        serve_from_cache(user_exact, question_embedding, cleaned, game.id, user_id, true)
 
       user_semantic ->
-        serve_from_cache(user_semantic, question_embedding, cleaned, game.id, user_id)
+        serve_from_cache(user_semantic, question_embedding, cleaned, game.id, user_id, true)
 
       true ->
         call_llm(game, match_text, expansion_ids, recent_context, question_embedding, cleaned)
@@ -87,7 +87,9 @@ defmodule RuleMaven.LLM do
 
   # Builds the cache-serving result from a `{row, tier}` and records the save.
   # Serves answer text only — never the source row's question wording or author.
-  defp serve_from_cache({row, tier}, question_embedding, cleaned, game_id, user_id) do
+  # `same_user?` marks a hit on the asker's OWN prior row, so AskWorker can drop
+  # the provisional row and redirect to the source instead of copying it.
+  defp serve_from_cache({row, tier}, question_embedding, cleaned, game_id, user_id, same_user?) do
     RuleMaven.LLM.Savings.record_cache_hit("ask", game_id, user_id)
 
     {:ok,
@@ -100,6 +102,7 @@ defmodule RuleMaven.LLM do
        # Encode tier in the model field so it survives a page reload.
        model: if(tier == :trusted, do: "cached", else: "cached-unverified"),
        pool_hit: true,
+       same_user_hit: same_user?,
        tier: tier,
        verified: tier == :trusted,
        source_question_log_id: row.id,

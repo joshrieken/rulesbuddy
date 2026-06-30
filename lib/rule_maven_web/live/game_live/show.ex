@@ -1154,6 +1154,25 @@ defmodule RuleMavenWeb.GameLive.Show do
     end)
   end
 
+  # Same-user duplicate: AskWorker deleted the provisional row and points us at
+  # the asker's existing answer. Only the asker (whose threads hold the
+  # provisional id) redirects; other viewers on this game topic ignore it.
+  @impl true
+  def handle_info(
+        {:ask_redirect, %{question_log_id: prov_id, source_question_log_id: source_id}},
+        socket
+      ) do
+    if Enum.any?(socket.assigns.threads, &(&1.id == prov_id)) do
+      {:noreply,
+       socket
+       |> assign(active_thread_id: source_id)
+       |> put_flash(:info, "You already asked this — here's your answer.")
+       |> push_patch(to: ~p"/games/#{socket.assigns.game}?t=#{RuleMaven.Hashid.encode(source_id)}")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info({:ask_complete, data}, socket) do
     question_log_id = data.question_log_id
