@@ -150,8 +150,12 @@ defmodule RuleMaven.Readiness do
     docs != [] and Enum.all?(docs, &doc_extracted?/1)
   end
 
+  # Review is only meaningfully "done" once there's extracted text to review.
+  # Without the doc_extracted? guard an unextracted source (no pages, so zero
+  # low-confidence pages) reads as vacuously reviewed right after upload.
   def step_complete?(:review, _game, docs) do
-    docs != [] and Enum.all?(docs, &(Games.review_page_count(&1) == 0))
+    docs != [] and
+      Enum.all?(docs, &(doc_extracted?(&1) and Games.review_page_count(&1) == 0))
   end
 
   def step_complete?(:cleanup, _game, docs) do

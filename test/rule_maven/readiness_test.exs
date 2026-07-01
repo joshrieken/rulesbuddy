@@ -83,6 +83,16 @@ defmodule RuleMaven.ReadinessTest do
       assert Readiness.step_complete?(:review, game, docs)
     end
 
+    test "review step is not vacuously done for an unextracted source" do
+      game = game_fixture()
+      # Saved but not yet extracted: no pages, so zero low-confidence pages. Review
+      # must not read as done until extraction has produced text to review.
+      doc_fixture(game, pages: [])
+      docs = Games.list_documents(game)
+      refute Readiness.step_complete?(:extract, game, docs)
+      refute Readiness.step_complete?(:review, game, docs)
+    end
+
     test "cleanup step needs every page cleaned" do
       game = game_fixture()
       doc_fixture(game, pages: [{0.9, true}, {0.9, false}], status: "published")
