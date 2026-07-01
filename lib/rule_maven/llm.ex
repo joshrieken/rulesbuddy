@@ -71,11 +71,16 @@ defmodule RuleMaven.LLM do
         RuleMaven.Games.find_user_similar(game.id, user_id, question_embedding)
 
     cond do
-      pool_hit ->
-        serve_from_cache(pool_hit, question_embedding, cleaned, game.id, user_id, false)
-
+      # The asker's OWN exact (normalized-text) repeat wins over the pool lookup:
+      # the pool match is user-agnostic, so once the asker's row is pooled a plain
+      # pool_hit would tag it same_user_hit=false and AskWorker would copy it into
+      # a second row instead of redirecting. Check own-exact first so a repeat
+      # always collapses to the one existing Q&A.
       user_exact ->
         serve_from_cache(user_exact, question_embedding, cleaned, game.id, user_id, true)
+
+      pool_hit ->
+        serve_from_cache(pool_hit, question_embedding, cleaned, game.id, user_id, false)
 
       user_semantic ->
         serve_from_cache(user_semantic, question_embedding, cleaned, game.id, user_id, true)

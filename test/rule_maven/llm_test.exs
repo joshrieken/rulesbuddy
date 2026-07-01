@@ -452,6 +452,44 @@ defmodule RuleMaven.LLMTest do
       assert mine[:same_user_hit] == true
       assert mine[:source_question_log_id] == own.id
     end
+
+    test "true when the asker repeats their OWN now-pooled question" do
+      # Regression: an exact repeat of the asker's own question that has since
+      # been pooled/community-shared must still redirect (same_user_hit), not be
+      # intercepted by the user-agnostic pool lookup and copied as a new row.
+      {:ok, game} = Games.create_game(%{name: "FlagOwnPooledGame"})
+
+      asker =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "flag_own_pooled",
+          email: "fop@test.com",
+          password_hash: "x"
+        })
+
+      embedding = Enum.to_list(1..768)
+
+      {:ok, own} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: asker.id,
+          question: "How many dice do I roll?",
+          answer: "Roll 3 dice (mine, pooled).",
+          cleaned_question: "how many dice do i roll?",
+          visibility: "community"
+        })
+
+      Repo.update_all(from(r in QuestionLog, where: r.id == ^own.id),
+        set: [question_embedding: Pgvector.new(embedding)]
+      )
+
+      Application.put_env(:rule_maven, :embed_mock, fn _ -> {:ok, embedding} end)
+      on_exit(fn -> Application.delete_env(:rule_maven, :embed_mock) end)
+
+      {:ok, mine} = LLM.ask(game, "How many dice do I roll?", [], [], user_id: asker.id)
+
+      assert mine[:same_user_hit] == true
+      assert mine[:source_question_log_id] == own.id
+    end
   end
 
   describe "truncation detection (__truncated__/2)" do
