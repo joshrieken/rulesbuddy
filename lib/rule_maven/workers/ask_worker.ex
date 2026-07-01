@@ -90,6 +90,14 @@ defmodule RuleMaven.Workers.AskWorker do
           ql = get_question_log!(question_log_id)
           source_id = llm_result[:source_question_log_id]
 
+          # Answer-side dedup: a fresh answer (not a cache hit) that is identical
+          # to one of the asker's own prior answers — two differently-worded
+          # questions that produced the same ruling. Redirect there instead of
+          # persisting a duplicate. Own rows only, so no cross-user exposure.
+          answer_dup =
+            ql && !llm_result[:pool_hit] && !refused?(answer) &&
+              Games.find_user_answer_duplicate(game_id, user_id, answer, question_log_id)
+
           cond do
             is_nil(ql) ->
               # Question row vanished (deleted by a retry) — close the run so it
@@ -114,6 +122,22 @@ defmodule RuleMaven.Workers.AskWorker do
                 run,
                 "done",
                 "Duplicate of your prior question — redirected to ##{source_id}."
+              )
+
+            answer_dup ->
+              Games.delete_question(ql)
+
+              Phoenix.PubSub.broadcast(
+                RuleMaven.PubSub,
+                "game:#{game_id}",
+                {:ask_redirect,
+                 %{question_log_id: question_log_id, source_question_log_id: answer_dup.id}}
+              )
+
+              Jobs.finish_run(
+                run,
+                "done",
+                "Duplicate answer — redirected to ##{answer_dup.id}."
               )
 
             true ->

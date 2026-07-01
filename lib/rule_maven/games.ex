@@ -1762,6 +1762,45 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  The asker's own prior row whose ANSWER is (near-)identical to `answer` —
+  catches two differently-worded questions that dodged question-similarity but
+  produced the same answer. Compares whitespace-collapsed, case-folded answer
+  text (near-zero false positives; no fuzzy matching). Excludes `exclude_id`
+  (the provisional row) and non-final/refused rows. Returns the row or nil; nil
+  when `user_id` is nil or the answer normalizes to empty.
+  """
+  def find_user_answer_duplicate(_game_id, nil, _answer, _exclude_id), do: nil
+
+  def find_user_answer_duplicate(game_id, user_id, answer, exclude_id) do
+    norm = normalize_answer_text(answer)
+
+    if norm == "" do
+      nil
+    else
+      Repo.one(
+        from q in QuestionLog,
+          where: q.game_id == ^game_id and q.user_id == ^user_id and q.id != ^exclude_id,
+          where: q.refused == false and q.blocked == false and q.needs_review == false,
+          where: q.answer != "Thinking..." and not is_nil(q.answer),
+          where:
+            fragment("btrim(lower(regexp_replace(?, '\\s+', ' ', 'g'))) = ?", q.answer, ^norm),
+          order_by: [desc: q.inserted_at, desc: q.id],
+          limit: 1
+      )
+    end
+  end
+
+  # Keep in lockstep with the SQL side of find_user_answer_duplicate/4:
+  # collapse runs of whitespace to one space, downcase, trim.
+  defp normalize_answer_text(answer) do
+    answer
+    |> to_string()
+    |> String.downcase()
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+  end
+
+  @doc """
   Classifies a pooled row as `:trusted` (community-promoted, admin-verified, or
   above the trust floor) or `:provisional` (citation-backed but unreviewed).
   """

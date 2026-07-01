@@ -417,6 +417,58 @@ defmodule RuleMaven.GamesTest do
     end
   end
 
+  describe "find_user_answer_duplicate/4" do
+    setup do
+      {:ok, game} = Games.create_game(%{name: "AnsDupGame"})
+
+      user =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "ansdup",
+          email: "ansdup@test.com",
+          password_hash: "x"
+        })
+
+      {:ok, prior} =
+        Games.log_question(%{
+          game_id: game.id,
+          user_id: user.id,
+          question: "how does a turn go?",
+          answer: "Roll 3 dice, then move.",
+          visibility: "private"
+        })
+
+      %{game: game, user: user, prior: prior}
+    end
+
+    test "matches an own answer up to whitespace/case", %{game: game, user: user, prior: prior} do
+      assert %{id: id} =
+               Games.find_user_answer_duplicate(game.id, user.id, "roll 3   DICE,\nthen move.", -1)
+
+      assert id == prior.id
+    end
+
+    test "excludes the provisional row itself", %{game: game, user: user, prior: prior} do
+      assert Games.find_user_answer_duplicate(game.id, user.id, "Roll 3 dice, then move.", prior.id) ==
+               nil
+    end
+
+    test "does not match another user's identical answer", %{game: game, prior: prior} do
+      other =
+        Repo.insert!(%RuleMaven.Users.User{
+          username: "ansdup2",
+          email: "ansdup2@test.com",
+          password_hash: "x"
+        })
+
+      assert Games.find_user_answer_duplicate(game.id, other.id, prior.answer, -1) == nil
+    end
+
+    test "nil user_id or blank answer returns nil", %{game: game, user: user} do
+      assert Games.find_user_answer_duplicate(game.id, nil, "Roll 3 dice, then move.", -1) == nil
+      assert Games.find_user_answer_duplicate(game.id, user.id, "   ", -1) == nil
+    end
+  end
+
   describe "find_user_similar/4" do
     setup do
       {:ok, game} = Games.create_game(%{name: "SimGame"})
