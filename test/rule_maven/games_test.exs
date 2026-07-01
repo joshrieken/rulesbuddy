@@ -532,4 +532,53 @@ defmodule RuleMaven.GamesTest do
       assert Games.find_user_similar(game.id, user.id, nil) == nil
     end
   end
+
+  describe "create_document/1 content-hash dedup" do
+    import Ecto.Query
+    alias RuleMaven.Games.Document
+
+    defp doc_count(game_id),
+      do: Repo.aggregate(from(d in Document, where: d.game_id == ^game_id), :count)
+
+    defp real_text, do: String.duplicate("A rulebook page with plenty of real words. ", 40)
+
+    test "a re-ingest of the same file (same game + hash) returns the existing doc" do
+      {:ok, game} = Games.create_game(%{name: "HashDedupGame"})
+
+      attrs = %{
+        game_id: game.id,
+        label: "Rulebook",
+        full_text: real_text(),
+        file_hash: "deadbeefhash"
+      }
+
+      {:ok, doc1} = Games.create_document(attrs)
+      # Simulates a retried DownloadWorker attempt: same content, new pdf filename.
+      {:ok, doc2} =
+        Games.create_document(Map.merge(attrs, %{label: "Rulebook (retry)", pdf_path: "uploads/x2.pdf"}))
+
+      assert doc2.id == doc1.id
+      assert doc_count(game.id) == 1
+    end
+
+    test "a different file_hash creates a separate doc" do
+      {:ok, game} = Games.create_game(%{name: "HashDistinctGame"})
+      base = %{game_id: game.id, label: "A", full_text: real_text()}
+
+      {:ok, _} = Games.create_document(Map.put(base, :file_hash, "hash-a"))
+      {:ok, _} = Games.create_document(Map.merge(base, %{label: "B", file_hash: "hash-b"}))
+
+      assert doc_count(game.id) == 2
+    end
+
+    test "sources without a file_hash are never deduped (pasted/legacy)" do
+      {:ok, game} = Games.create_game(%{name: "NoHashGame"})
+      base = %{game_id: game.id, label: "Pasted", full_text: real_text()}
+
+      {:ok, _} = Games.create_document(base)
+      {:ok, _} = Games.create_document(base)
+
+      assert doc_count(game.id) == 2
+    end
+  end
 end

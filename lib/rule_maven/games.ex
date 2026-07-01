@@ -477,6 +477,34 @@ defmodule RuleMaven.Games do
   def create_document(attrs) do
     attrs = derive_pages(attrs)
 
+    # Content-hash idempotency: a retried DownloadWorker attempt (or an identical
+    # re-upload) re-ingests the same file. If a source with this content already
+    # exists on the game, return it instead of inserting a duplicate — otherwise a
+    # single upload that retries lands as two rulebooks (and doubles the page
+    # count in the review banner). No hash (pasted/legacy sources) → never deduped.
+    case existing_document_by_hash(attrs) do
+      %Document{} = existing ->
+        {:ok, existing}
+
+      nil ->
+        insert_document(attrs)
+    end
+  end
+
+  defp existing_document_by_hash(attrs) do
+    hash = Map.get(attrs, :file_hash) || Map.get(attrs, "file_hash")
+    game_id = Map.get(attrs, :game_id) || Map.get(attrs, "game_id")
+
+    if is_binary(hash) and hash != "" and game_id do
+      Repo.one(
+        from d in Document,
+          where: d.game_id == ^game_id and d.file_hash == ^hash,
+          limit: 1
+      )
+    end
+  end
+
+  defp insert_document(attrs) do
     # Auto-publish if quality looks good
     status =
       if RuleMaven.Settings.get("auto_approve_documents") != "false" and

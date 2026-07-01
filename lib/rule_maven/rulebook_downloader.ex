@@ -179,6 +179,7 @@ defmodule RuleMaven.RulebookDownloader do
         source_url: url,
         content_type: content_type_for(pdf_path),
         file_size: file_size(full_path),
+        file_hash: file_hash(full_path),
         page_count: length(pages),
         printed_offset: Games.detect_printed_offset(pages),
         from_ocr: from_ocr,
@@ -216,6 +217,16 @@ defmodule RuleMaven.RulebookDownloader do
   defp file_size(path) do
     case File.stat(path) do
       {:ok, %{size: size}} -> size
+      _ -> nil
+    end
+  end
+
+  # SHA-256 of the stored file, used to dedup an identical re-ingest (a retried
+  # download attempt saves the PDF under a fresh timestamped name, so the path
+  # differs but the bytes don't). nil when the file can't be read.
+  defp file_hash(path) do
+    case File.read(path) do
+      {:ok, bin} -> :crypto.hash(:sha256, bin) |> Base.encode16(case: :lower)
       _ -> nil
     end
   end
