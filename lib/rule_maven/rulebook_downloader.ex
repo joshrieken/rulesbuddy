@@ -6,6 +6,7 @@ defmodule RuleMaven.RulebookDownloader do
   """
 
   alias RuleMaven.Games
+  alias RuleMaven.Games.Document
   alias RuleMaven.Extract.{Calibrate, Critic, Gate, Native}
 
   @bgg_base "https://boardgamegeek.com"
@@ -138,7 +139,7 @@ defmodule RuleMaven.RulebookDownloader do
     with {:ok, pdf_binary} <- fetch_pdf(url),
          :ok <- validate_pdf(pdf_binary),
          {:ok, pdf_path} <- save_pdf(pdf_binary, url) do
-      ingest_saved_pdf(game, pdf_path, url, label, on_progress)
+      save_source(game, pdf_path, url, label, on_progress)
     end
   end
 
@@ -148,38 +149,59 @@ defmodule RuleMaven.RulebookDownloader do
   pages, and creates the rulebook source. `pdf_path` is the static-relative path
   under priv/static. Returns `{:ok, source}` or `{:error, reason}`.
 
-  This is the same extraction pipeline as `download/4` minus the network fetch,
-  so uploads get the identical durable/timeout-guarded handling.
+  Extraction is deferred: this saves the source only. Fill its page text later
+  with `extract_document/2` (run by `ExtractWorker` from the prepare page).
   """
   def ingest_local(game, pdf_path, label \\ "", on_progress \\ &noop_progress/1) do
     label = if label == "", do: extract_filename_label(pdf_path), else: label
-    ingest_saved_pdf(game, pdf_path, nil, label, on_progress)
+    save_source(game, pdf_path, nil, label, on_progress)
   end
 
-  # Shared post-save tail of both download and upload ingestion.
-  defp ingest_saved_pdf(game, pdf_path, url, label, on_progress) do
+  @doc """
+  Persist a rulebook source from an already-saved file WITHOUT extracting its
+  text. Creates a `Document` with `pages: []` (unextracted) plus the file
+  metadata + content hash. Extraction runs later via `extract_document/2`.
+  """
+  def save_source(game, pdf_path, url, label, on_progress \\ &noop_progress/1) do
+    on_progress.(:finalizing)
+    full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
+
+    Games.create_rulebook_source(%{
+      game_id: game.id,
+      label: label,
+      pages: [],
+      full_text: nil,
+      pdf_path: pdf_path,
+      source_url: url,
+      content_type: content_type_for(pdf_path),
+      file_size: file_size(full_path),
+      file_hash: file_hash(full_path)
+    })
+  end
+
+  @doc """
+  Extract a saved source's text and fill its pages. Runs the same
+  timeout-guarded vision/OCR pipeline as before, then `update_document` (which
+  re-chunks, rebuilds the HTML view, and invalidates stale cached answers).
+  Returns `{:ok, document}` or `{:error, reason}`.
+  """
+  def extract_document(doc, on_progress \\ &noop_progress/1)
+
+  def extract_document(%Document{pdf_path: pdf_path} = doc, on_progress)
+      when is_binary(pdf_path) and pdf_path != "" do
     with {:ok, raw_text, from_ocr, page_meta} <-
-           extract_with_cleanup(pdf_path, on_progress, game.id) do
+           extract_with_cleanup(pdf_path, on_progress, doc.game_id) do
       on_progress.(:finalizing)
       # Number pages (printed page when detectable, else physical sheet) so the
       # reader can distinguish them.
       pages = String.split(raw_text, "\f")
       page_structs = Games.paginate(pages) |> attach_page_meta(page_meta)
       text = Games.rebuild_full_text(page_structs)
-      html_path = text_to_html(text, pdf_path)
-      full_path = Application.app_dir(:rule_maven, "priv/static/#{pdf_path}")
 
-      Games.create_rulebook_source(%{
-        game_id: game.id,
-        label: label,
+      Games.update_document(doc, %{
         pages: page_structs,
         full_text: text,
-        pdf_path: pdf_path,
-        html_path: html_path,
-        source_url: url,
         content_type: content_type_for(pdf_path),
-        file_size: file_size(full_path),
-        file_hash: file_hash(full_path),
         page_count: length(pages),
         printed_offset: Games.detect_printed_offset(pages),
         from_ocr: from_ocr,
@@ -187,6 +209,8 @@ defmodule RuleMaven.RulebookDownloader do
       })
     end
   end
+
+  def extract_document(%Document{}, _on_progress), do: {:error, "no source file to extract"}
 
   # Merges per-page extraction provenance (confidence/lane/source from the gate)
   # onto the paginated page structs. `meta` is physical-order, aligned 1:1 with

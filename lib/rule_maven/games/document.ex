@@ -121,7 +121,9 @@ defmodule RuleMaven.Games.Document do
       :reviewed_at
     ])
     |> cast_embed(:pages, with: &Page.changeset/2)
-    |> validate_required([:label, :full_text, :game_id])
+    # full_text is absent for a source saved before extraction (ExtractWorker
+    # fills it on demand); only label + game_id are required at ingest.
+    |> validate_required([:label, :game_id])
   end
 end
 

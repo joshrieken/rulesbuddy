@@ -1271,8 +1271,20 @@ defmodule RuleMavenWeb.GameLive.Form do
     end
 
     socket = if upload_files != [], do: assign(socket, uploading_pdfs: true), else: socket
+    game = socket.assigns.game
 
-    save_game(socket, socket.assigns.game, game_params, Map.new(source_map))
+    {:noreply, saved} = save_game(socket, game, game_params, Map.new(source_map))
+
+    # A save that brought in new PDF uploads lands on the prepare page (where the
+    # Extract action lives), overriding save_game's default edit-page redirect.
+    if upload_files != [] do
+      {:noreply,
+       saved
+       |> push_navigate(to: ~p"/games/#{game}/prepare")
+       |> put_flash(:info, "Saved — run extraction from the prepare page.")}
+    else
+      {:noreply, saved}
+    end
   end
 
   @impl true
@@ -1302,9 +1314,12 @@ defmodule RuleMavenWeb.GameLive.Form do
         RuleMaven.Workers.DownloadWorker.enqueue_upload(game.id, files)
 
         socket
-        |> assign(uploading_pdfs: true, tab: "manage")
-        |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
-        |> put_flash(:info, "Extracting #{length(files)} PDF(s) in the background…")
+        |> assign(uploading_pdfs: true)
+        |> push_navigate(to: ~p"/games/#{game}/prepare")
+        |> put_flash(
+          :info,
+          "Saved #{length(files)} rulebook(s) — run extraction from the prepare page."
+        )
       else
         socket
       end

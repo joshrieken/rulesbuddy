@@ -581,4 +581,39 @@ defmodule RuleMaven.GamesTest do
       assert doc_count(game.id) == 2
     end
   end
+
+  describe "create_document/1 save-only (unextracted)" do
+    import Ecto.Query
+    alias RuleMaven.Games.{Chunk, Document}
+
+    test "a source with no page text is saved pending_review, unchunked, unpublished" do
+      {:ok, game} = Games.create_game(%{name: "SaveOnlyGame"})
+
+      {:ok, doc} =
+        Games.create_document(%{
+          game_id: game.id,
+          label: "Rulebook",
+          pdf_path: "uploads/rulebooks/x.pdf",
+          pages: []
+        })
+
+      assert doc.status == "pending_review"
+      assert doc.pages == []
+      assert Repo.aggregate(from(c in Chunk, where: c.document_id == ^doc.id), :count) == 0
+    end
+
+    test "an extracted source is still chunked and can auto-publish" do
+      {:ok, game} = Games.create_game(%{name: "ExtractedGame"})
+
+      {:ok, doc} =
+        Games.create_document(%{
+          game_id: game.id,
+          label: "Rulebook",
+          full_text: String.duplicate("A real rulebook sentence with plenty of words. ", 40)
+        })
+
+      assert doc.status == "published"
+      assert Repo.aggregate(from(c in Chunk, where: c.document_id == ^doc.id), :count) > 0
+    end
+  end
 end

@@ -292,7 +292,9 @@ defmodule RuleMaven.Readiness do
         pause(game, "needs_source")
 
       not step_complete?(:extract, game, docs) ->
-        pause(game, "needs_extract")
+        run_extract(docs)
+        clear_pause(game)
+        {:running, :extract}
 
       not step_complete?(:review, game, docs) ->
         pause(game, "needs_review")
@@ -317,6 +319,17 @@ defmodule RuleMaven.Readiness do
         clear_pause(game)
         :done
     end
+  end
+
+  # Kick extraction for each source that isn't extracted yet and isn't already
+  # being extracted. A failed/blank extract leaves the doc unextracted, so the
+  # next advance (or the prepare page's Extract button) retries it.
+  defp run_extract(docs) do
+    Enum.each(docs, fn doc ->
+      unless doc_extracted?(doc) or Games.extract_running?(doc.id) do
+        Games.enqueue_extract(doc)
+      end
+    end)
   end
 
   defp run_cleanup(docs) do

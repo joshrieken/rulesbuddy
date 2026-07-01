@@ -505,9 +505,15 @@ defmodule RuleMaven.Games do
   end
 
   defp insert_document(attrs) do
-    # Auto-publish if quality looks good
+    # A source saved before extraction carries no page text. It can't be chunked,
+    # cheat-sheeted, or auto-published yet — those wait for ExtractWorker to fill
+    # the pages (extraction runs on demand from the prepare page). Detect it by
+    # the absence of real full_text.
+    extracted? = is_binary(attrs[:full_text]) and String.trim(attrs[:full_text]) != ""
+
+    # Auto-publish if quality looks good (only an extracted source can qualify).
     status =
-      if RuleMaven.Settings.get("auto_approve_documents") != "false" and
+      if extracted? and RuleMaven.Settings.get("auto_approve_documents") != "false" and
            quality_ok?(attrs[:full_text] || "") do
         "published"
       else
@@ -520,6 +526,11 @@ defmodule RuleMaven.Games do
       |> Repo.insert()
 
     case result do
+      {:ok, doc} when not extracted? ->
+        # Save-only: no text to chunk/summarize and nothing to invalidate (this
+        # source contributes no answers until it's extracted).
+        {:ok, doc}
+
       {:ok, doc} ->
         chunk_document(doc)
         # A new/corrected rulebook can make previously cached answers stale.
@@ -1173,6 +1184,37 @@ defmodule RuleMaven.Games do
     %{document_id: doc.id, game_id: doc.game_id, level: to_string(level), mode: to_string(mode)}
     |> RuleMaven.Workers.CleanupWorker.new()
     |> Oban.insert()
+  end
+
+  @extract_worker "RuleMaven.Workers.ExtractWorker"
+
+  @doc """
+  True when an extraction job for this document is queued or running. Reads
+  Oban's durable job state so it survives restarts (mirrors cleanup_running?/1).
+  """
+  def extract_running?(doc_id) do
+    Repo.exists?(
+      from j in Oban.Job,
+        where:
+          j.worker == ^@extract_worker and
+            j.state in ^@cleanup_active_states and
+            fragment("?->>'document_id' = ?", j.args, ^to_string(doc_id))
+    )
+  end
+
+  @doc """
+  Enqueue a durable text extraction for a saved-but-unextracted document (no-op
+  in test, where Oban isn't supervised). Idempotent per document — the worker is
+  `unique` on document_id and `extract_running?/1` guards callers.
+  """
+  def enqueue_extract(%Document{} = doc) do
+    if testing?() do
+      :ok
+    else
+      %{document_id: doc.id, game_id: doc.game_id}
+      |> RuleMaven.Workers.ExtractWorker.new()
+      |> Oban.insert()
+    end
   end
 
   @doc """

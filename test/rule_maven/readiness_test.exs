@@ -162,6 +162,22 @@ defmodule RuleMaven.ReadinessTest do
       assert Readiness.pause_reason(game.id) == "needs_source"
     end
 
+    test "runs extraction (not a pause) when a source is saved but unextracted" do
+      game = game_fixture()
+
+      {:ok, _doc} =
+        %Document{}
+        |> Document.changeset(%{
+          label: "Rulebook",
+          game_id: game.id,
+          pdf_path: "uploads/rulebooks/x.pdf",
+          pages: []
+        })
+        |> Repo.insert()
+
+      assert {:running, :extract} = Readiness.drive(game)
+    end
+
     test "pauses for human review when pages are flagged" do
       game = game_fixture()
       doc_fixture(game, pages: [{0.9, true}, {0.2, true}])

@@ -43,6 +43,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
   # JobRun.kind → step id, so a game-scoped running run lights up its step's
   # "Running…" indicator while the worker is in flight.
   @kind_to_step %{
+    "extract" => :extract,
     "suggestions" => :suggestions,
     "categories" => :categories,
     "cheat_sheet" => :cheat_sheet,
@@ -152,6 +153,30 @@ defmodule RuleMavenWeb.GameLive.Prepare do
        socket
        |> load()
        |> put_flash(:info, "Unpublished — the game is no longer ready.")}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
+  end
+
+  # Run text extraction on demand for every saved-but-unextracted source. Each
+  # enqueues a durable ExtractWorker; progress streams over the document Jobs
+  # topic (mount subscribes) and lights up the extract step's "Running…".
+  def handle_event("extract", _params, socket) do
+    if Users.can?(socket.assigns.current_user, :admin) do
+      docs = Games.list_documents(socket.assigns.game)
+
+      pending =
+        Enum.reject(docs, fn d ->
+          Readiness.step_complete?(:extract, socket.assigns.game, [d]) or
+            Games.extract_running?(d.id)
+        end)
+
+      Enum.each(pending, &Games.enqueue_extract/1)
+
+      {:noreply,
+       socket
+       |> load()
+       |> put_flash(:info, "Extracting the rulebook text — running in the background…")}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
@@ -773,14 +798,24 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       |> assign(:regen?, assigns.step.id in @regen_steps)
       |> assign(:clear?, assigns.step.id in @clear_steps)
       |> assign(:done?, assigns.step.state == :done)
+      |> assign(:extractable?, assigns.step.id == :extract and assigns.step.state != :done)
       |> assign(:cat_draft?, categories? and category_draft(assigns.game.id) != [])
       |> assign(:cat_saved?, categories? and Games.list_game_categories(assigns.game) != [])
 
     ~H"""
     <div
-      :if={@link || @regen? || @clear? || @cat_draft? || @cat_saved?}
+      :if={@link || @regen? || @clear? || @cat_draft? || @cat_saved? || @extractable?}
       style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem"
     >
+      <button
+        :if={@extractable? && !@running}
+        type="button"
+        phx-click="extract"
+        data-confirm="Extract the rulebook text now? This spends LLM budget."
+        style="background:var(--accent);color:var(--accent-text,#fff);border:none;padding:0.3rem 0.7rem;border-radius:0.3rem;font-size:0.74rem;font-weight:600;cursor:pointer"
+      >
+        Extract
+      </button>
       <button
         :if={@cat_draft? && !@running}
         type="button"

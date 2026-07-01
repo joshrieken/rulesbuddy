@@ -151,7 +151,7 @@ defmodule RuleMaven.Jobs do
   }
 
   # Kinds whose completion should walk the auto "Prepare game" pipeline forward.
-  @advance_kinds ~w(download cleanup embed)
+  @advance_kinds ~w(download extract cleanup embed)
 
   defp run_cost(%JobRun{started_at: nil}, _finished_at), do: nil
 
