@@ -1336,30 +1336,17 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:download_done, game_id, pdf_path}, socket) do
+  def handle_info({:download_done, game_id, _pdf_path}, socket) do
     game = socket.assigns.game
 
     if game && game.id == game_id do
-      # The worker persisted a new rulebook source — reload from the DB.
-      sources =
-        game
-        |> Games.list_rulebook_sources()
-        |> Enum.with_index()
-        |> Enum.map(fn {s, i} -> source_entry(s, i) end)
-
+      # The source is saved; extraction/generation is deferred to the prepare
+      # page, so send the admin straight there. push_navigate remounts a fresh
+      # LiveView, so there's no need to reload source state into this socket.
       {:noreply,
        socket
-       |> assign(
-         downloading: false,
-         uploading_pdfs: false,
-         download_stage: nil,
-         download_error: nil,
-         download_ok: pdf_path,
-         source_entries: sources,
-         tab: "manage"
-       )
-       |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
-       |> put_flash(:info, "Rulebook uploaded — extract it from the prepare page when ready.")}
+       |> put_flash(:info, "Rulebook uploaded — extract it from the prepare page when ready.")
+       |> push_navigate(to: ~p"/games/#{game}/prepare")}
     else
       {:noreply, socket}
     end
