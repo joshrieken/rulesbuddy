@@ -1359,12 +1359,7 @@ defmodule RuleMavenWeb.GameLive.Form do
          tab: "manage"
        )
        |> push_patch(to: ~p"/games/#{game}/edit?tab=manage")
-       |> put_flash(:info, "Rulebook ready!")
-       |> then(fn s ->
-         send(self(), {:refresh_suggestions, game})
-         send(self(), {:refresh_categories, game})
-         s
-       end)}
+       |> put_flash(:info, "Rulebook uploaded — extract it from the prepare page when ready.")}
     else
       {:noreply, socket}
     end
@@ -1402,12 +1397,6 @@ defmodule RuleMavenWeb.GameLive.Form do
   end
 
   @impl true
-  def handle_info({:refresh_suggestions, game}, socket) do
-    RuleMaven.Workers.SuggestionsWorker.enqueue(game.id)
-    {:noreply, assign(socket, regenerating_suggestions: true)}
-  end
-
-  @impl true
   def handle_info({:suggestions_ready, qs}, socket) do
     {:noreply, assign(socket, suggestions: qs, regenerating_suggestions: false)}
   end
@@ -1428,12 +1417,6 @@ defmodule RuleMavenWeb.GameLive.Form do
     else
       {:noreply, socket}
     end
-  end
-
-  @impl true
-  def handle_info({:refresh_categories, game}, socket) do
-    RuleMaven.Workers.CategoriesWorker.enqueue(game.id)
-    {:noreply, assign(socket, regenerating_categories: true)}
   end
 
   @impl true
