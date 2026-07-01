@@ -691,7 +691,15 @@ defmodule RuleMavenWeb.GameLive.Form do
   def handle_event("set_editor_tab", %{"id" => id, "tab" => tab}, socket)
       when tab in ~w(original cleaned) do
     id = String.to_integer(id)
-    {:noreply, assign(socket, editor_tab: Map.put(socket.assigns.editor_tab, id, tab))}
+    entry = Enum.find(socket.assigns.source_entries, &(&1.id == id))
+
+    # Ignore a switch to Cleaned when no cleaned text exists yet (the tab is
+    # disabled client-side; this guards a forged/stale event too).
+    if tab == "cleaned" and entry && not cleaned_available?(entry) do
+      {:noreply, socket}
+    else
+      {:noreply, assign(socket, editor_tab: Map.put(socket.assigns.editor_tab, id, tab))}
+    end
   end
 
   def handle_event("source_page_step", %{"id" => id, "delta" => delta}, socket) do
@@ -2399,9 +2407,20 @@ defmodule RuleMavenWeb.GameLive.Form do
   # ── Page-layer (Original/Cleaned) helpers ──
 
   # The layer a source shows: explicit user choice, else the editable Cleaned
-  # working copy (its content seeds from the original via layer_text/2).
+  # working copy (its content seeds from the original via layer_text/2). Before
+  # cleanup has run there's no cleaned text to show, so force Original and ignore
+  # any stale "cleaned" selection (the Cleaned tab is disabled in that state).
   defp editor_layer(entry, editor_tab) do
-    Map.get(editor_tab, entry.id) || "cleaned"
+    if cleaned_available?(entry) do
+      Map.get(editor_tab, entry.id) || "cleaned"
+    else
+      "original"
+    end
+  end
+
+  # True once at least one page carries persisted cleaned text (cleanup has run).
+  defp cleaned_available?(entry) do
+    Enum.any?(entry.pages, &is_binary(&1[:cleaned]))
   end
 
   # Text shown for a page in a given layer. The Cleaned working copy is seeded
@@ -2420,6 +2439,7 @@ defmodule RuleMavenWeb.GameLive.Form do
 
   attr :id, :integer, required: true
   attr :current, :string, required: true
+  attr :cleaned_available, :boolean, default: true
 
   defp layer_tabs(assigns) do
     ~H"""
@@ -2427,13 +2447,33 @@ defmodule RuleMavenWeb.GameLive.Form do
       <button
         :for={tab <- ~w(original cleaned)}
         type="button"
+        disabled={tab == "cleaned" and not @cleaned_available}
+        title={
+          if(tab == "cleaned" and not @cleaned_available,
+            do: "Run cleanup first to view the cleaned text"
+          )
+        }
         phx-click="set_editor_tab"
         phx-value-id={@id}
         phx-value-tab={tab}
-        style={"font-size:0.68rem;padding:0.15rem 0.55rem;border-radius:0.3rem;cursor:pointer;text-transform:capitalize;border:1px solid var(--border);#{if @current == tab, do: "background:var(--accent);color:white", else: "background:var(--bg-subtle);color:var(--text-secondary)"}"}
+        style={"font-size:0.68rem;padding:0.15rem 0.55rem;border-radius:0.3rem;text-transform:capitalize;border:1px solid var(--border);#{layer_tab_style(tab, @current, @cleaned_available)}"}
       >{tab}</button>
     </div>
     """
+  end
+
+  # Disabled (grayed, not clickable) for the Cleaned tab before cleanup has run;
+  # otherwise the usual active/inactive pill styling.
+  defp layer_tab_style("cleaned", _current, false),
+    do: "cursor:not-allowed;opacity:0.5;background:var(--bg-subtle);color:var(--text-muted)"
+
+  defp layer_tab_style(tab, current, _available) do
+    base = "cursor:pointer;"
+
+    base <>
+      if tab == current,
+        do: "background:var(--accent);color:white",
+        else: "background:var(--bg-subtle);color:var(--text-secondary)"
   end
 
   @impl true
@@ -3190,7 +3230,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                   <% editable =
                     layer_editable?(entry, layer) and @cleaning[entry.source_id] == nil and
                       not regenerating? %>
-                  <.layer_tabs id={entry.id} current={layer} />
+                  <.layer_tabs id={entry.id} current={layer} cleaned_available={cleaned_available?(entry)} />
                   <.page_nav id={entry.id} pages={entry.pages} cur={cur} />
                   <.page_detection_badge
                     id={entry.id}
@@ -3381,7 +3421,7 @@ defmodule RuleMavenWeb.GameLive.Form do
                       </div>
 
                       <div style="margin-left:0.5rem">
-                        <.layer_tabs id={reader.id} current={layer} />
+                        <.layer_tabs id={reader.id} current={layer} cleaned_available={cleaned_available?(reader)} />
                       </div>
 
                       <div
