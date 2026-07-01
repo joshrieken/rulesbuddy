@@ -817,7 +817,10 @@ let liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
     // Remembered game-edit tab per game ({gameId: tab}) so a refresh reopens it.
     edit_tab: localStorage.getItem("rm:edit:tab") || "",
     // Remembered rulebook reader page per source ({gameId: {srcId: page}}).
-    reader_pages: localStorage.getItem("rm:reader:pages") || ""
+    reader_pages: localStorage.getItem("rm:reader:pages") || "",
+    // Remembered default persona voice, so the server knows it at first render
+    // and never flashes the plain answer before the restore round-trips.
+    default_voice: localStorage.getItem("rm:default_voice") || ""
   }),
   hooks: Hooks
 });

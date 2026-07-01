@@ -57,10 +57,11 @@ defmodule RuleMavenWeb.GameLive.Show do
        # generated, themed personas. Filled in once the game loads; updated live
        # by {:voices_ready} when generation finishes.
        voices: RuleMaven.Voices.all(),
-       # User's preferred default voice, auto-selected on every answer. Restored
-       # from localStorage on connect (per-browser, like the theme). "neutral"
-       # means no auto-voice.
-       default_voice: "neutral",
+       # User's preferred default voice, auto-selected on every answer. Seeded
+       # from the localStorage connect param so it's known at the first connected
+       # render — otherwise a fast (pool-hit) answer flashes plain before the
+       # VoiceDefault hook's restore round-trips in. "neutral" means no auto-voice.
+       default_voice: restore_default_voice(socket),
        rule_card: nil,
        # LLM-generated "Did you know?" facts (durable, per-game). Empty until the
        # worker fills them; the card falls back to a raw rulebook chunk meanwhile.
@@ -70,6 +71,22 @@ defmodule RuleMavenWeb.GameLive.Show do
        setup_checklist: nil,
        checklist_done: MapSet.new()
      )}
+  end
+
+  # The per-browser default voice, read from the localStorage connect param so
+  # it's already set at the connected mount. Left unvalidated here (the game
+  # isn't loaded yet); apply_default_voice/2 coerces an unknown/stale voice to
+  # neutral once handle_params has the game. Falls back to neutral on the dead
+  # render and whenever nothing is saved.
+  defp restore_default_voice(socket) do
+    if connected?(socket) do
+      case get_connect_params(socket) do
+        %{"default_voice" => v} when is_binary(v) and v != "" -> v
+        _ -> "neutral"
+      end
+    else
+      "neutral"
+    end
   end
 
   @impl true
