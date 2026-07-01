@@ -88,7 +88,10 @@ defmodule RuleMavenWeb.GameLive.Prepare do
     game = socket.assigns.game
     docs = Games.list_documents(game)
     steps = Readiness.state(game)
-    by_operation = LLM.cost_by_operation_for_game(game.id)
+    # Scope the cost readout to spend since the last pipeline reset (nil = all
+    # time) so a fresh reset shows $0.00 without deleting billing history.
+    cost_since = Games.preparation_reset_at(game.id)
+    by_operation = LLM.cost_by_operation_for_game(game.id, cost_since)
 
     estimates =
       Map.new(steps, fn s -> {s.id, Estimator.step_cost(s.id, game, docs)} end)
@@ -111,7 +114,7 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       rerun_cost: Estimator.rerun_cost(game),
       estimates: estimates,
       actuals: actuals,
-      total_actual: LLM.cost_for_game(game.id),
+      total_actual: LLM.cost_for_game(game.id, cost_since),
       required_done: Enum.count(steps, &(&1.category == :required and &1.state == :done)),
       required_total: length(Readiness.required_steps()),
       review_pages: review_pages,

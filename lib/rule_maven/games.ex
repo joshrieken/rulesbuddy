@@ -776,6 +776,23 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  When the game's pipeline was last reset (a `DateTime`), or `nil` if never.
+  The Prepare page uses this to scope its cost readout to post-reset spend.
+  """
+  def preparation_reset_at(game_id) do
+    case RuleMaven.Settings.get("prep_reset_at_#{game_id}") do
+      iso when is_binary(iso) ->
+        case DateTime.from_iso8601(iso) do
+          {:ok, dt, _} -> dt
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
   Reset a game's whole prepare pipeline back to its blank, pre-prepare state:
   delete every rulebook source (files, chunks, extracted/cleaned pages) and clear
   every generated artifact (suggestions, categories, cheat sheet, setup, did-you-
@@ -811,6 +828,15 @@ defmodule RuleMaven.Games do
       # update_all rather than update_game/2 so a stale in-memory `game` (theme set
       # after it was loaded) can't make the change look like a no-op.
       Repo.update_all(from(g in Game, where: g.id == ^game.id), set: [theme_palette: nil])
+
+      # Stamp the reset time so the Prepare page can scope its "actual cost"
+      # readout to post-reset spend. The llm_logs rows themselves are kept —
+      # they feed the global cost dashboard + spend cap — so we bound the display
+      # rather than delete history.
+      RuleMaven.Settings.put(
+        "prep_reset_at_#{game.id}",
+        DateTime.utc_now() |> DateTime.to_iso8601()
+      )
 
       :ok
     end

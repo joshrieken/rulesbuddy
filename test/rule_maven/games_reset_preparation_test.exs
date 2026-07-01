@@ -60,6 +60,15 @@ defmodule RuleMaven.GamesResetPreparationTest do
     assert :ok = Games.reset_preparation(game())
   end
 
+  test "stamps a reset timestamp used to scope the cost readout" do
+    game = game()
+    assert Games.preparation_reset_at(game.id) == nil
+
+    assert :ok = Games.reset_preparation(game)
+
+    assert %DateTime{} = Games.preparation_reset_at(game.id)
+  end
+
   test "refuses and deletes nothing when the game has logged questions" do
     game = game()
     {_doc, full} = doc_with_file(game)
