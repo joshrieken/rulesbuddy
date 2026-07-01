@@ -114,7 +114,8 @@ defmodule RuleMavenWeb.GameLive.Prepare do
       total_actual: LLM.cost_for_game(game.id),
       required_done: Enum.count(steps, &(&1.category == :required and &1.state == :done)),
       required_total: length(Readiness.required_steps()),
-      review_pages: review_pages
+      review_pages: review_pages,
+      question_count: Games.question_count(game)
     )
   end
 
@@ -155,6 +156,38 @@ defmodule RuleMavenWeb.GameLive.Prepare do
        |> put_flash(:info, "Unpublished — the game is no longer ready.")}
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
+  end
+
+  # Wipe the whole pipeline back to a blank, pre-prepare state. Gated to admins
+  # and to games with no logged questions (the UI also disables the button, but
+  # re-check here — the client can't be trusted).
+  def handle_event("reset_all", _params, socket) do
+    game = socket.assigns.game
+
+    cond do
+      not Users.can?(socket.assigns.current_user, :admin) ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+
+      true ->
+        case Games.reset_preparation(game) do
+          {:error, :has_questions} ->
+            {:noreply,
+             socket
+             |> reload()
+             |> put_flash(:error, "Can't reset — this game already has questions.")}
+
+          :ok ->
+            if socket.assigns.playable?,
+              do: Readiness.revoke_publish(game, socket.assigns.current_user)
+
+            Readiness.recompute(game)
+
+            {:noreply,
+             socket
+             |> reload()
+             |> put_flash(:info, "Reset — all rulebooks and generated content removed.")}
+        end
     end
   end
 
@@ -412,6 +445,34 @@ defmodule RuleMavenWeb.GameLive.Prepare do
         >
           Unpublish
         </button>
+
+        <%!-- Danger zone: wipe the whole pipeline. Only offered while no questions
+              have been logged — once players have engaged, show it disabled with a
+              reason instead. Right-aligned so it reads apart from the build actions. --%>
+        <%= if @question_count == 0 do %>
+          <button
+            phx-click="reset_all"
+            data-confirm={"Delete every rulebook and all generated content for “#{@game.name}”? This can’t be undone."}
+            style="margin-left:auto;background:var(--bg-subtle);color:var(--red);border:1px solid color-mix(in srgb,var(--red) 40%,var(--border));padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.82rem;font-weight:600;cursor:pointer"
+          >
+            Reset all
+          </button>
+        <% else %>
+          <span
+            title="Reset is disabled because this game already has logged questions."
+            style="margin-left:auto;display:inline-flex;align-items:center;gap:0.5rem"
+          >
+            <button
+              disabled
+              style="background:var(--bg-subtle);color:var(--text-muted);border:1px solid var(--border);padding:0.45rem 1.1rem;border-radius:0.375rem;font-size:0.82rem;font-weight:600;cursor:not-allowed;opacity:0.7"
+            >
+              Reset all
+            </button>
+            <span style="font-size:0.72rem;color:var(--text-muted);max-width:12rem;line-height:1.3">
+              Players have asked questions — unpublish instead of resetting.
+            </span>
+          </span>
+        <% end %>
       </div>
 
       <%= if @pause_reason && @pause_reason != "" do %>

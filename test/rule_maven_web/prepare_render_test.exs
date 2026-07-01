@@ -3,18 +3,20 @@ defmodule RuleMavenWeb.PrepareRenderTest do
   import Phoenix.LiveViewTest
   import RuleMaven.GamesFixtures
 
-  test "prepare page renders for a saved-but-unextracted source", %{conn: conn} do
+  defp admin!(name) do
     {:ok, admin} =
       RuleMaven.Users.create_user(%{
-        username: "prep_render_admin",
-        email: "pra@test.com",
+        username: name,
+        email: "#{name}@test.com",
         password: "password1234",
         role: "admin"
       })
 
-    game = game_fixture(%{name: "Prep Test Game", bgg_id: 7788})
+    admin
+  end
 
-    {:ok, _doc} =
+  defp with_doc(game) do
+    {:ok, doc} =
       RuleMaven.Games.create_document(%{
         game_id: game.id,
         label: "Rulebook",
@@ -22,10 +24,51 @@ defmodule RuleMavenWeb.PrepareRenderTest do
         pages: []
       })
 
+    doc
+  end
+
+  test "prepare page renders for a saved-but-unextracted source", %{conn: conn} do
+    admin = admin!("prep_render_admin")
+    game = game_fixture(%{name: "Prep Test Game", bgg_id: 7788})
+    with_doc(game)
+
     conn = Plug.Test.init_test_session(conn, %{"user_id" => admin.id})
     {:ok, _view, html} = live(conn, "/games/#{RuleMaven.Hashid.encode(game.id)}/prepare")
 
     assert html =~ "Prepare Prep Test Game"
     assert html =~ "Extract"
+  end
+
+  test "reset button is active and wipes the pipeline when there are no questions",
+       %{conn: conn} do
+    admin = admin!("prep_reset_admin")
+    game = game_fixture(%{name: "Reset Me", bgg_id: 1122})
+    with_doc(game)
+
+    conn = Plug.Test.init_test_session(conn, %{"user_id" => admin.id})
+    {:ok, view, html} = live(conn, "/games/#{RuleMaven.Hashid.encode(game.id)}/prepare")
+
+    assert html =~ "Reset all"
+    assert has_element?(view, "button[phx-click=\"reset_all\"]")
+
+    render_click(view, "reset_all")
+
+    assert RuleMaven.Games.list_documents(game) == []
+  end
+
+  test "reset button is disabled with help text once questions exist", %{conn: conn} do
+    admin = admin!("prep_noreset_admin")
+    game = game_fixture(%{name: "Locked Game", bgg_id: 3344})
+    with_doc(game)
+
+    {:ok, _} =
+      RuleMaven.Games.log_question(%{game_id: game.id, question: "Q?", answer: "A."})
+
+    conn = Plug.Test.init_test_session(conn, %{"user_id" => admin.id})
+    {:ok, view, html} = live(conn, "/games/#{RuleMaven.Hashid.encode(game.id)}/prepare")
+
+    assert html =~ "unpublish instead of resetting."
+    refute has_element?(view, "button[phx-click=\"reset_all\"]")
+    assert has_element?(view, "button[disabled]", "Reset all")
   end
 end

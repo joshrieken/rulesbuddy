@@ -776,6 +776,47 @@ defmodule RuleMaven.Games do
   end
 
   @doc """
+  Reset a game's whole prepare pipeline back to its blank, pre-prepare state:
+  delete every rulebook source (files, chunks, extracted/cleaned pages) and clear
+  every generated artifact (suggestions, categories, cheat sheet, setup, did-you-
+  know, voices, theme palette). The game row and its `bgg_data` are kept.
+
+  Refuses with `{:error, :has_questions}` if any question has been logged for the
+  game — a destructive wipe shouldn't be possible once players have engaged. The
+  caller (Prepare page) also gates the UI, so this is defense-in-depth.
+
+  Idempotent: safe to run when documents/artifacts are already gone.
+  """
+  def reset_preparation(%Game{} = game) do
+    if question_count(game) > 0 do
+      {:error, :has_questions}
+    else
+      # delete_document/1 handles per-source files, chunks, pool invalidation, and
+      # (on the last source) clear_game_generation_state.
+      Enum.each(list_documents(game), &delete_document/1)
+
+      RuleMaven.CheatSheet.clear(game.id)
+      RuleMaven.Setup.clear(game.id)
+      RuleMaven.Voices.clear_for_game(game.id)
+      Repo.delete_all(from c in GameCategory, where: c.game_id == ^game.id)
+
+      Enum.each(
+        ~w(suggestions categories did_you_know),
+        &RuleMaven.Settings.delete("#{&1}_#{game.id}")
+      )
+
+      # Belt-and-suspenders: covers the no-documents case where delete_document's
+      # last-source hook never fired.
+      clear_game_generation_state(game.id)
+      # update_all rather than update_game/2 so a stale in-memory `game` (theme set
+      # after it was loaded) can't make the change look like a no-op.
+      Repo.update_all(from(g in Game, where: g.id == ^game.id), set: [theme_palette: nil])
+
+      :ok
+    end
+  end
+
+  @doc """
   Drop a game's auto-cached answers from the answer pool. Called whenever the
   game's rulebook content materially changes (new/edited/cleaned/deleted source)
   so stale answers — computed against the old text — stop being served by
